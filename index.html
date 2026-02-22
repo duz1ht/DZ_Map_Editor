@@ -153,18 +153,19 @@
       width: min(980px, 100%);
       max-height: min(720px, 100%);
       overflow:auto;
-      background:var(--panel);
-      border:1px solid var(--line);
-      border-radius:12px;
-      box-shadow: 0 20px 60px rgba(0,0,0,.35);
-      padding: 12px;
+      background:#dcdcdc;
+      border:1px solid #9f9f9f;
+      border-radius:0;
+      box-shadow:none;
+      padding: 10px;
+      font-family: Tahoma, Arial, sans-serif;
     }
     #modalWindow input,
     #modalWindow select,
     #modalWindow button{
       font-size:12px;
-      padding:4px 6px;
-      border-radius:2px;
+      padding:2px 4px;
+      border-radius:0;
     }
     .windowTitle{
       font-size:13px;
@@ -176,47 +177,50 @@
     }
     .windowTitle .spacer{ flex:1; }
     .xbtn{
-      border:1px solid var(--line);
-      background:#fff;
-      border-radius:8px;
-      padding: 4px 10px;
+      border:1px solid #9b9b9b;
+      background:#efefef;
+      border-radius:0;
+      padding: 2px 8px;
       cursor:pointer;
     }
 
     .winTop{
       display:grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1.45fr 1fr 1.3fr auto;
       gap:10px;
-      align-items:end;
-      margin-bottom:8px;
-    }
-    .kv{
-      display:grid;
-      grid-template-columns: auto 1fr;
-      gap:6px;
-      align-items:center;
-    }
-    .kv label{
+      align-items:start;
+      margin-bottom:6px;
       font-size:12px;
-      color:var(--muted);
-      white-space:nowrap;
     }
-    .kv .span2{
-      grid-column: 1 / span 2;
+    .metaBlock{ display:grid; gap:4px; }
+    .metaValue{ font-weight:400; }
+    .subTypeWrap{
+      display:grid;
+      gap:3px;
+    }
+    .nextSsnWrap{
+      display:grid;
+      gap:3px;
+      justify-items:end;
+    }
+    .topHint{
+      font-size:11px;
+      color:var(--muted);
+      margin-bottom:8px;
     }
     .grid2{
       display:grid;
-      grid-template-columns: 1fr 1.15fr;
+      grid-template-columns: 1fr 1.2fr 1.45fr;
       gap:10px;
-      margin-top:8px;
+      margin-top:6px;
     }
     fieldset{
-      border:1px solid var(--line);
-      border-radius:8px;
+      border:1px solid #9f9f9f;
+      border-radius:0;
       padding:8px;
       margin:0;
       min-width:0;
-      background:#fff;
+      background:transparent;
     }
     legend{
       font-size:12px;
@@ -271,16 +275,6 @@
       color:var(--muted);
       margin-bottom:4px;
     }
-    .topMeta{
-      display:grid;
-      grid-template-columns: 1fr auto;
-      align-items:center;
-      gap:8px;
-      font-size:12px;
-    }
-    .metaLines{ display:grid; gap:4px; }
-    .topLine{ display:flex; gap:18px; flex-wrap:wrap; }
-    .metaValue{ font-weight:600; }
     .tinyInput{ width:44px; }
     .narrowInput{ max-width:72px; }
     .midInput{ max-width:140px; }
@@ -334,58 +328,54 @@
           </div>
 
           <div class="winTop">
-            <div class="topMeta">
-              <div class="metaLines">
-                <div class="topLine">
-                  <span>Social Security Number: <span id="ui_ssn" class="metaValue">0</span></span>
-                  <span>Type: <span id="ui_type" class="metaValue">-</span></span>
-                </div>
-                <div>Graphic: <span id="ui_graphic" class="metaValue">-</span></div>
-              </div>
+            <div class="metaBlock">
+              <div>Social Security Number: <span id="ui_ssn" class="metaValue">0</span></div>
+              <div>Graphic: <span id="ui_graphic" class="metaValue">-</span></div>
               <div>
-                <label class="inlineLabel" for="ui_nextssn">Next SSN</label>
-                <input class="tinyInput" id="ui_nextssn" disabled value="0" />
+                <label class="inlineLabel" for="ui_layer">Layer</label>
+                <select id="ui_layer" class="midInput"></select>
               </div>
             </div>
 
-            <div class="kv">
-              <label>Sub-Type:</label>
+            <div>Type: <span id="ui_type" class="metaValue">-</span></div>
+
+            <div class="subTypeWrap">
+              <label class="inlineLabel" for="ui_subtype">Sub-Type:</label>
               <select id="ui_subtype"></select>
-              <label class="span2 small" id="ui_itemTitle"></label>
-              <div class="span2 small" id="ui_presenceHint"></div>
+            </div>
+
+            <div class="nextSsnWrap">
+              <label class="inlineLabel" for="ui_nextssn">Next SSN</label>
+              <input class="tinyInput" id="ui_nextssn" disabled value="0" />
             </div>
           </div>
 
-          <div class="grid2">
-            <div style="display:grid; gap:10px;">
-              <fieldset>
-                <legend>Layer</legend>
-                <div class="section">
-                  <select id="ui_layer" class="midInput"></select>
-                </div>
-              </fieldset>
+          <div class="topHint" id="ui_itemTitle"></div>
+          <div class="topHint" id="ui_presenceHint"></div>
 
+          <div class="grid2">
+            <div style="display:grid; gap:10px; align-content:start;">
               <fieldset>
                 <legend>Position</legend>
                 <div class="section">
                   <div class="miniGrid">
                     <div>
-                      <div class="inlineLabel">X</div>
+                      <div class="inlineLabel">X:</div>
                       <input id="ui_posx" class="midInput" />
                     </div>
                     <div>
-                      <div class="inlineLabel">Y</div>
+                      <div class="inlineLabel">Y:</div>
                       <input id="ui_posy" class="midInput" />
                     </div>
                   </div>
                   <div class="miniGrid">
                     <div>
-                      <div class="inlineLabel">Z</div>
+                      <div class="inlineLabel">Z:</div>
                       <input id="ui_posz" class="midInput" />
                     </div>
                     <div></div>
                   </div>
-                  <div class="row" style="margin:4px 0 0 0;">
+                  <div class="row" style="margin:2px 0 0 0;">
                     <label class="checkRow" style="margin:0;">
                       <input type="checkbox" id="ui_absHeight" />
                       <span>Absolute Height</span>
@@ -438,21 +428,19 @@
                 </div>
               </fieldset>
 
-              <fieldset>
-                <legend>Spinmap Color Override</legend>
-                <div class="section">
-                  <select id="ui_spinmapColor">
-                    <option value="">Default Color</option>
-                    <option value="red">Red</option>
-                    <option value="blue">Blue</option>
-                    <option value="green">Green</option>
-                    <option value="yellow">Yellow</option>
-                  </select>
-                </div>
-              </fieldset>
+              <div>
+                <div class="inlineLabel">Spinmap Color Override</div>
+                <select id="ui_spinmapColor" class="midInput">
+                  <option value="">Default Color</option>
+                  <option value="red">Red</option>
+                  <option value="blue">Blue</option>
+                  <option value="green">Green</option>
+                  <option value="yellow">Yellow</option>
+                </select>
+              </div>
             </div>
 
-            <div style="display:grid; gap:10px;">
+            <div style="display:grid; gap:10px; align-content:start;">
               <fieldset>
                 <legend>AI Variables</legend>
                 <div class="section">
@@ -535,6 +523,15 @@
                 </div>
               </fieldset>
 
+              <div class="btnRow" style="justify-content:center;">
+                <button id="dupBtn" disabled style="display:none;">Duplicate</button>
+                <button id="delBtn" disabled style="display:none;">Delete</button>
+                <button id="cancelBtn">Cancel</button>
+                <button id="okBtn">OK</button>
+              </div>
+            </div>
+
+            <div style="display:grid; gap:10px; align-content:start;">
               <fieldset>
                 <legend>Waypoints</legend>
                 <div class="section">
@@ -552,7 +549,7 @@
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">Name</div>
-                      <input id="ui_wpName" />
+                      <input id="ui_wpName" class="midInput" />
                     </div>
                     <div>
                       <div class="inlineLabel">Distance</div>
@@ -560,18 +557,14 @@
                     </div>
                   </div>
 
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Advancement Event</div>
-                      <input id="ui_advEvent" class="midInput" />
-                    </div>
-                    <div>
-                      <label class="checkRow" style="margin-top:18px;">
-                        <input type="checkbox" id="ui_navWp" />
-                        <span>Navigation Waypoint</span>
-                      </label>
-                    </div>
+                  <div>
+                    <div class="inlineLabel">Advancement Event</div>
+                    <input id="ui_advEvent" class="midInput" />
                   </div>
+                  <label class="checkRow" style="margin-top:0;">
+                    <input type="checkbox" id="ui_navWp" />
+                    <span>Navigation Waypoint</span>
+                  </label>
                 </div>
               </fieldset>
 
@@ -579,13 +572,6 @@
                 <legend>AI Attributes</legend>
                 <div class="checks" id="ui_aiAttrs"></div>
               </fieldset>
-
-              <div class="btnRow">
-                <button id="dupBtn" disabled>Duplicate</button>
-                <button id="delBtn" disabled>Delete</button>
-                <button id="cancelBtn">Cancel</button>
-                <button id="okBtn">OK</button>
-              </div>
             </div>
           </div>
 
