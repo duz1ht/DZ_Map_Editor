@@ -695,6 +695,10 @@
     return it && it.kv && Object.prototype.hasOwnProperty.call(it.kv, key);
   }
 
+  function kvFindKey(it, keys){
+    return keys.find(k => kvHas(it, k)) || null;
+  }
+
   function setEnabled(el, enabled){
     el.disabled = !enabled;
   }
@@ -1176,8 +1180,9 @@
     setValueIf(ui.spinmapColor, kvHas(it, "map_symbol") ? it.kv.map_symbol : "");
 
     // AI Variables
-    setEnabled(ui.activeArea, kvHas(it, "attention"));
-    setValueIf(ui.activeArea, kvHas(it, "attention") ? it.kv.attention : "");
+    const activeAreaKey = kvFindKey(it, ["active_area", "attention"]);
+    setEnabled(ui.activeArea, !!activeAreaKey);
+    setValueIf(ui.activeArea, activeAreaKey ? it.kv[activeAreaKey] : "");
 
     setEnabled(ui.aiTextfile, kvHas(it, "ai_textfile"));
     setValueIf(ui.aiTextfile, kvHas(it, "ai_textfile") ? it.kv.ai_textfile : "");
@@ -1200,8 +1205,9 @@
     setEnabled(ui.fireTimer, kvHas(it, "shoottimer"));
     setValueIf(ui.fireTimer, kvHas(it, "shoottimer") ? it.kv.shoottimer : "");
 
-    setEnabled(ui.wpPause, kvHas(it, "wpdistance"));
-    setValueIf(ui.wpPause, kvHas(it, "wpdistance") ? it.kv.wpdistance : "");
+    const wpPauseKey = kvFindKey(it, ["wp_pause", "wppause"]);
+    setEnabled(ui.wpPause, !!wpPauseKey);
+    setValueIf(ui.wpPause, wpPauseKey ? it.kv[wpPauseKey] : "");
 
     setEnabled(ui.maxAttack, kvHas(it, "max_attack_distance"));
     setValueIf(ui.maxAttack, kvHas(it, "max_attack_distance") ? it.kv.max_attack_distance : "");
@@ -1216,17 +1222,18 @@
     setValueIf(ui.missionCritical, kvHas(it, "mission_critical") ? String(it.kv.mission_critical) === "1" : false);
 
     // Waypoints
-    const wpEnabled = kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "wpdistance");
+    const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
+    const wpEnabled = kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "wpname") || kvHas(it, "adv_event") || kvHas(it, "nav_wp") || !!wpDistanceKey;
     setEnabled(ui.wpList, wpEnabled && kvHas(it, "waypoint_id"));
     setEnabled(ui.wpNumber, wpEnabled && kvHas(it, "wpnumber"));
-    setEnabled(ui.wpDistance, wpEnabled && kvHas(it, "wpdistance"));
+    setEnabled(ui.wpDistance, wpEnabled && !!wpDistanceKey);
     setEnabled(ui.wpName, wpEnabled && kvHas(it, "wpname"));
     setEnabled(ui.advEvent, wpEnabled && kvHas(it, "adv_event"));
     setEnabled(ui.navWp, wpEnabled && kvHas(it, "nav_wp"));
 
     setValueIf(ui.wpList, kvHas(it, "waypoint_id") ? it.kv.waypoint_id : "");
     setValueIf(ui.wpNumber, kvHas(it, "wpnumber") ? it.kv.wpnumber : "");
-    setValueIf(ui.wpDistance, kvHas(it, "wpdistance") ? it.kv.wpdistance : "");
+    setValueIf(ui.wpDistance, wpDistanceKey ? it.kv[wpDistanceKey] : "");
     setValueIf(ui.wpName, kvHas(it, "wpname") ? it.kv.wpname : "");
     setValueIf(ui.advEvent, kvHas(it, "adv_event") ? it.kv.adv_event : "");
     setValueIf(ui.navWp, kvHas(it, "nav_wp") ? String(it.kv.nav_wp) === "1" : false);
@@ -1281,7 +1288,8 @@
 
     if (kvHas(it, "map_symbol")) it.kv.map_symbol = ui.spinmapColor.value;
 
-    if (kvHas(it, "attention")) it.kv.attention = String(parseFloatSafe(ui.activeArea.value));
+    const activeAreaKey = kvFindKey(it, ["active_area", "attention"]);
+    if (activeAreaKey) it.kv[activeAreaKey] = String(parseFloatSafe(ui.activeArea.value));
     if (kvHas(it, "ai_textfile")) it.kv.ai_textfile = ui.aiTextfile.value;
     if (kvHas(it, "group_id")) it.kv.group_id = ui.group.value;
     if (kvHas(it, "team")) it.kv.team = ui.team.value;
@@ -1289,7 +1297,8 @@
     if (kvHas(it, "waccuracy1")) it.kv.waccuracy1 = String(parseFloatSafe(ui.wacc1.value));
     if (kvHas(it, "waccuracy2")) it.kv.waccuracy2 = String(parseFloatSafe(ui.wacc2.value));
     if (kvHas(it, "shoottimer")) it.kv.shoottimer = String(parseFloatSafe(ui.fireTimer.value));
-    if (kvHas(it, "wpdistance")) it.kv.wpdistance = String(parseFloatSafe(ui.wpPause.value));
+    const wpPauseKey = kvFindKey(it, ["wp_pause", "wppause"]);
+    if (wpPauseKey) it.kv[wpPauseKey] = String(parseFloatSafe(ui.wpPause.value));
     if (kvHas(it, "max_attack_distance")) it.kv.max_attack_distance = String(parseFloatSafe(ui.maxAttack.value));
     if (kvHas(it, "edistances")) it.kv.edistances = String(parseFloatSafe(ui.maxEngage.value));
     if (kvHas(it, "perception2")) it.kv.perception2 = String(parseFloatSafe(ui.minEngage.value));
@@ -1298,7 +1307,8 @@
 
     if (kvHas(it, "waypoint_id")) it.kv.waypoint_id = ui.wpList.value;
     if (kvHas(it, "wpnumber")) it.kv.wpnumber = ui.wpNumber.value;
-    if (kvHas(it, "wpdistance")) it.kv.wpdistance = String(parseFloatSafe(ui.wpDistance.value));
+    const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
+    if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
     if (kvHas(it, "wpname")) it.kv.wpname = ui.wpName.value;
     if (kvHas(it, "adv_event")) it.kv.adv_event = ui.advEvent.value;
     if (kvHas(it, "nav_wp")) it.kv.nav_wp = ui.navWp.checked ? "1" : "0";
