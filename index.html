@@ -159,6 +159,13 @@
       box-shadow: 0 20px 60px rgba(0,0,0,.35);
       padding: 12px;
     }
+    #modalWindow input,
+    #modalWindow select,
+    #modalWindow button{
+      font-size:12px;
+      padding:4px 6px;
+      border-radius:2px;
+    }
     .windowTitle{
       font-size:13px;
       font-weight:600;
@@ -178,14 +185,14 @@
 
     .winTop{
       display:grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
       gap:10px;
       align-items:end;
       margin-bottom:8px;
     }
     .kv{
       display:grid;
-      grid-template-columns: 1.1fr 1fr;
+      grid-template-columns: auto 1fr;
       gap:6px;
       align-items:center;
     }
@@ -199,7 +206,7 @@
     }
     .grid2{
       display:grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1.15fr;
       gap:10px;
       margin-top:8px;
     }
@@ -264,6 +271,19 @@
       color:var(--muted);
       margin-bottom:4px;
     }
+    .topMeta{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      align-items:center;
+      gap:8px;
+      font-size:12px;
+    }
+    .metaLines{ display:grid; gap:4px; }
+    .topLine{ display:flex; gap:18px; flex-wrap:wrap; }
+    .metaValue{ font-weight:600; }
+    .tinyInput{ width:44px; }
+    .narrowInput{ max-width:72px; }
+    .midInput{ max-width:140px; }
   </style>
 </head>
 
@@ -314,25 +334,23 @@
           </div>
 
           <div class="winTop">
-            <div class="kv">
-              <label>Social Security Number:</label>
-              <input id="ui_ssn" disabled />
-              <label>Graphic:</label>
-              <input id="ui_graphic" disabled />
-              <label>Layer:</label>
-              <select id="ui_layer"></select>
+            <div class="topMeta">
+              <div class="metaLines">
+                <div class="topLine">
+                  <span>Social Security Number: <span id="ui_ssn" class="metaValue">0</span></span>
+                  <span>Type: <span id="ui_type" class="metaValue">-</span></span>
+                </div>
+                <div>Graphic: <span id="ui_graphic" class="metaValue">-</span></div>
+              </div>
+              <div>
+                <label class="inlineLabel" for="ui_nextssn">Next SSN</label>
+                <input class="tinyInput" id="ui_nextssn" disabled value="0" />
+              </div>
             </div>
 
             <div class="kv">
-              <label>Type:</label>
-              <input id="ui_type" disabled />
               <label>Sub-Type:</label>
               <select id="ui_subtype"></select>
-              <label>Next SSN</label>
-              <input id="ui_nextssn" disabled value="0" />
-            </div>
-
-            <div class="kv">
               <label class="span2 small" id="ui_itemTitle"></label>
               <div class="span2 small" id="ui_presenceHint"></div>
             </div>
@@ -341,22 +359,29 @@
           <div class="grid2">
             <div style="display:grid; gap:10px;">
               <fieldset>
+                <legend>Layer</legend>
+                <div class="section">
+                  <select id="ui_layer" class="midInput"></select>
+                </div>
+              </fieldset>
+
+              <fieldset>
                 <legend>Position</legend>
                 <div class="section">
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">X</div>
-                      <input id="ui_posx" />
+                      <input id="ui_posx" class="midInput" />
                     </div>
                     <div>
                       <div class="inlineLabel">Y</div>
-                      <input id="ui_posy" />
+                      <input id="ui_posy" class="midInput" />
                     </div>
                   </div>
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">Z</div>
-                      <input id="ui_posz" />
+                      <input id="ui_posz" class="midInput" />
                     </div>
                     <div></div>
                   </div>
@@ -379,11 +404,11 @@
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">Heading (0 = North)</div>
-                      <input id="ui_heading" />
+                      <input id="ui_heading" class="narrowInput" />
                     </div>
                     <div>
                       <div class="inlineLabel">Pitch (90 = up)</div>
-                      <input id="ui_pitch" />
+                      <input id="ui_pitch" class="narrowInput" />
                     </div>
                   </div>
                 </div>
@@ -395,14 +420,14 @@
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">Less Than...</div>
-                      <input id="ui_lessThan" />
+                      <input id="ui_lessThan" class="narrowInput" />
                     </div>
                     <div class="small">Players</div>
                   </div>
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">More Than...</div>
-                      <input id="ui_moreThan" />
+                      <input id="ui_moreThan" class="narrowInput" />
                     </div>
                     <div class="small">Players</div>
                   </div>
@@ -434,7 +459,7 @@
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">Active Area</div>
-                      <input id="ui_activeArea" />
+                      <input id="ui_activeArea" class="narrowInput" />
                     </div>
                     <div></div>
                   </div>
@@ -442,11 +467,11 @@
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">AI Textfile</div>
-                      <input id="ui_aiTextfile" />
+                      <input id="ui_aiTextfile" class="midInput" />
                     </div>
                     <div>
                       <div class="inlineLabel">Group</div>
-                      <input id="ui_group" />
+                      <input id="ui_group" class="midInput" />
                     </div>
                   </div>
 
@@ -462,44 +487,44 @@
                     </div>
                     <div>
                       <div class="inlineLabel">Alert State</div>
-                      <input id="ui_alertState" />
+                      <input id="ui_alertState" class="midInput" />
                     </div>
                   </div>
 
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">Weapon Accuracy 1</div>
-                      <input id="ui_wacc1" />
+                      <input id="ui_wacc1" class="narrowInput" />
                     </div>
                     <div>
                       <div class="inlineLabel">Weapon Accuracy 2</div>
-                      <input id="ui_wacc2" />
+                      <input id="ui_wacc2" class="narrowInput" />
                     </div>
                   </div>
 
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">Fire Timer</div>
-                      <input id="ui_fireTimer" />
+                      <input id="ui_fireTimer" class="narrowInput" />
                     </div>
                     <div>
                       <div class="inlineLabel">Spawns (WP pause)</div>
-                      <input id="ui_wpPause" />
+                      <input id="ui_wpPause" class="narrowInput" />
                     </div>
                   </div>
 
                   <div class="miniGrid3">
                     <div>
                       <div class="inlineLabel">Max Attack Distance</div>
-                      <input id="ui_maxAttack" />
+                      <input id="ui_maxAttack" class="narrowInput" />
                     </div>
                     <div>
                       <div class="inlineLabel">Max Engagement Distance</div>
-                      <input id="ui_maxEngage" />
+                      <input id="ui_maxEngage" class="narrowInput" />
                     </div>
                     <div>
                       <div class="inlineLabel">Min Engagement Distance</div>
-                      <input id="ui_minEngage" />
+                      <input id="ui_minEngage" class="narrowInput" />
                     </div>
                   </div>
 
@@ -520,7 +545,7 @@
                     </div>
                     <div>
                       <div class="inlineLabel">Number</div>
-                      <input id="ui_wpNumber" />
+                      <input id="ui_wpNumber" class="narrowInput" />
                     </div>
                   </div>
 
@@ -531,14 +556,14 @@
                     </div>
                     <div>
                       <div class="inlineLabel">Distance</div>
-                      <input id="ui_wpDistance" />
+                      <input id="ui_wpDistance" class="narrowInput" />
                     </div>
                   </div>
 
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">Advancement Event</div>
-                      <input id="ui_advEvent" />
+                      <input id="ui_advEvent" class="midInput" />
                     </div>
                     <div>
                       <label class="checkRow" style="margin-top:18px;">
@@ -689,8 +714,16 @@
   }
 
   function setValueIf(el, val){
-    if (el.type === "checkbox") el.checked = !!val;
-    else el.value = val ?? "";
+    if (!el) return;
+    if (el.type === "checkbox") {
+      el.checked = !!val;
+      return;
+    }
+    if ("value" in el) {
+      el.value = val ?? "";
+      return;
+    }
+    el.textContent = val ?? "";
   }
 
   function getSelected(){
