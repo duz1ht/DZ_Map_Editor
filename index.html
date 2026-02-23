@@ -399,12 +399,21 @@
     #sectionEditor{ display:grid; grid-template-rows:auto auto 1fr auto; gap:6px; }
     #sectionMeta{ font-size:12px; color:#444; }
     #sectionText{ width:100%; height:100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
-    #sectionWindow.groupMode{ width:min(640px,100%); max-height:min(500px,100%); }
-    #sectionWindow.groupMode #sectionBody{ grid-template-columns:1fr 240px; height:320px; }
+    #sectionWindow.compactMode{ width:min(640px,100%); max-height:min(500px,100%); }
+    #sectionWindow.compactMode #sectionBody{ grid-template-columns:1fr 240px; height:320px; }
     #sectionWindow.groupMode #sectionEditor{ grid-template-rows:auto auto auto; }
     #sectionWindow.groupMode #sectionHint{ display:none; }
     #sectionWindow.groupMode #sectionActions{ display:none; }
     #sectionWindow.groupMode #sectionText{ height:34px; min-height:34px; max-height:34px; resize:none; font-family:Tahoma, Arial, sans-serif; }
+    #sectionWindow.waypointMode #sectionHint{ display:none; }
+    #sectionWindow.waypointMode #sectionActions{ display:none; }
+    #sectionWindow.waypointMode #sectionText{ display:none; }
+    #sectionWindow.waypointMode #waypointEditor{ display:grid; }
+    #waypointEditor{ display:none; gap:8px; }
+    #waypointEditor .checkRow{ margin:0; }
+    #waypointTopActions{ display:none; gap:8px; }
+    #sectionWindow.waypointMode #waypointTopActions{ display:flex; }
+    #sectionWindow.waypointMode #sectionAddBtn{ display:none; }
     #sectionTopControls{ display:flex; gap:8px; flex-wrap:wrap; }
     #sectionTopControls select, #sectionTopControls input{ max-width:220px; }
   </style>
@@ -468,6 +477,11 @@
             </select>
             <input id="sectionSearch" placeholder="filtrar por id/texto" />
             <button id="sectionAddBtn">Adicionar bloco</button>
+            <div id="waypointTopActions">
+              <button id="wpSelectMarkersBtn">Select Markers</button>
+              <button id="wpSaveAsBtn">Save As</button>
+              <button id="wpOkBtn">Ok</button>
+            </div>
           </div>
           <div id="sectionBody">
             <div id="sectionList"></div>
@@ -475,6 +489,19 @@
               <div id="sectionMeta">Selecione um bloco.</div>
               <div class="hint" id="sectionHint">Edite o conteúdo interno do bloco (linhas entre begin/end). Uma linha por chave/valor.</div>
               <textarea id="sectionText"></textarea>
+              <div id="waypointEditor">
+                <div>
+                  <div class="inlineLabel">Description</div>
+                  <input id="wpDesc" />
+                </div>
+                <div>
+                  <div class="inlineLabel">Color</div>
+                  <select id="wpColor"></select>
+                </div>
+                <label class="checkRow"><input type="checkbox" id="wpNoLoop" /><span>Waypoint does NOT loop</span></label>
+                <label class="checkRow"><input type="checkbox" id="wpBlueTeam" /><span>Blue Team Waypoint</span></label>
+                <label class="checkRow"><input type="checkbox" id="wpRedTeam" /><span>Red Team Waypoint</span></label>
+              </div>
               <div class="btnRow" id="sectionActions"><button id="sectionDeleteBtn">Excluir bloco</button><button id="sectionApplyBtn">Aplicar bloco</button></div>
             </div>
           </div>
@@ -761,6 +788,7 @@
     sectionKind: "general_information",
     sectionSelectedId: null,
     groupSelectedNumber: 1,
+    waypointSelectedNumber: 1,
 
     contextMenuOpen: false,
     contextTargetId: null,
@@ -786,6 +814,14 @@
   const sectionApplyBtn = document.getElementById("sectionApplyBtn");
   const sectionDeleteBtn = document.getElementById("sectionDeleteBtn");
   const sectionAddBtn = document.getElementById("sectionAddBtn");
+  const wpSelectMarkersBtn = document.getElementById("wpSelectMarkersBtn");
+  const wpSaveAsBtn = document.getElementById("wpSaveAsBtn");
+  const wpOkBtn = document.getElementById("wpOkBtn");
+  const wpDesc = document.getElementById("wpDesc");
+  const wpColor = document.getElementById("wpColor");
+  const wpNoLoop = document.getElementById("wpNoLoop");
+  const wpBlueTeam = document.getElementById("wpBlueTeam");
+  const wpRedTeam = document.getElementById("wpRedTeam");
 
   const modalOverlay = document.getElementById("modalOverlay");
   const modalCloseBtn = document.getElementById("modalCloseBtn");
@@ -1097,6 +1133,94 @@
     if (!vals.length) ui.group.innerHTML = `<option value="">None</option>`;
   }
 
+
+  const WAYPOINT_COLORS = [
+    "Orange","Black","Yellow","Red","Green","Blue","Gray","LtGray","Purple","Cyan","Brown","Aqua","Indigo","Tan","Teal","Dark Red","White","Violet","Pink","Magenta","Dark Blue","Dark Green","Dark Yellow"
+  ];
+
+  function parseWaypointNumber(sec){
+    if (!sec || sec.kind !== "waypoint") return null;
+    const fromLabel = Number((sec.label || "").trim());
+    if (Number.isInteger(fromLabel) && fromLabel >= 1 && fromLabel <= 127) return fromLabel;
+    const m = String(sec.beginLine || "").trim().match(/^begin\s+waypoint\s+(\d+)$/i);
+    if (m) return Number(m[1]);
+    return null;
+  }
+
+  function getWaypointSectionByNumber(n){
+    return state.sectionBlocks.find(s => s.kind === "waypoint" && parseWaypointNumber(s) === n) || null;
+  }
+
+  function getWaypointDescription(sec){
+    return sec?.kv?.description ? String(sec.kv.description) : "";
+  }
+
+  function parseWaypointAttrib(val){
+    const n = Number(val);
+    if (!Number.isFinite(n) || n < 1) return { noLoop:false, blue:false, red:false };
+    return {
+      noLoop: (n & 1) !== 0,
+      blue: (n & 2) !== 0,
+      red: (n & 4) !== 0,
+    };
+  }
+
+  function buildWaypointAttrib(){
+    let v = 0;
+    if (wpNoLoop.checked) v += 1;
+    if (wpBlueTeam.checked) v += 2;
+    if (wpRedTeam.checked) v += 4;
+    return v;
+  }
+
+  function fillWaypointEditor(sec){
+    const desc = getWaypointDescription(sec);
+    const colorNum = Number(sec?.kv?.color || "0");
+    const attrib = parseWaypointAttrib(sec?.kv?.attrib || "0");
+    wpDesc.value = desc;
+    wpColor.value = Number.isFinite(colorNum) && colorNum >= 0 && colorNum <= 22 ? String(colorNum) : "0";
+    wpNoLoop.checked = attrib.noLoop;
+    wpBlueTeam.checked = attrib.blue;
+    wpRedTeam.checked = attrib.red;
+  }
+
+  function saveCurrentWaypoint(){
+    const n = state.waypointSelectedNumber || 1;
+    let sec = getWaypointSectionByNumber(n);
+    const desc = String(wpDesc.value || "").trim();
+    const colorVal = Number(wpColor.value || "0");
+    const attribVal = buildWaypointAttrib();
+
+    if (!sec){
+      const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
+      sec = {
+        id: nextId,
+        kind: 'waypoint',
+        label: String(n),
+        start: Number.MAX_SAFE_INTEGER - nextId,
+        end: Number.MAX_SAFE_INTEGER - nextId,
+        beginLine: `begin waypoint ${n}`,
+        lines: [],
+        kv: {},
+      };
+      state.sectionBlocks.push(sec);
+    }
+
+    sec.beginLine = `begin waypoint ${n}`;
+    sec.label = String(n);
+    sec.kv = {};
+    const lines = [];
+    if (desc){ sec.kv.description = desc; lines.push(`  description "${desc.replace(/"/g,"")}"`); }
+    if (colorVal > 0){ sec.kv.color = String(colorVal); lines.push(`  color ${colorVal}`); }
+    if (attribVal > 0){ sec.kv.attrib = String(attribVal); lines.push(`  attrib ${attribVal}`); }
+    sec.lines = lines;
+  }
+
+  function buildWaypointColorOptions(){
+    wpColor.innerHTML = WAYPOINT_COLORS.map((name, idx)=>`<option value="${idx}">${escapeHtml(name)}</option>`).join("");
+  }
+  buildWaypointColorOptions();
+
   function buildTypeFilterOptions(){
     // Filtro "type" da esquerda:
     // se DEF carregado: usa types do DEF (object/marker/vehicle...)
@@ -1261,6 +1385,11 @@
       const desc = getGroupDescription(sec);
       return `${n} - ${desc || ""}`;
     }
+    if (sec.kind === "waypoint"){
+      const n = parseWaypointNumber(sec) || sec.label || sec.id;
+      const desc = getWaypointDescription(sec);
+      return `${n} - ${desc || ""}`;
+    }
     const id = sec.label || sec.kv.id || sec.kv.name || sec.kv.description || sec.kv.title || sec.id;
     return `${sec.kind} ${id}`;
   }
@@ -1268,7 +1397,11 @@
 
   function updateSectionEditorMode(){
     const isGroup = state.sectionKind === "group";
+    const isWaypoint = state.sectionKind === "waypoint";
+    const isAreaTrig = state.sectionKind === "areatrig";
+    sectionWindow.classList.toggle("compactMode", isGroup || isWaypoint || isAreaTrig);
     sectionWindow.classList.toggle("groupMode", isGroup);
+    sectionWindow.classList.toggle("waypointMode", isWaypoint);
   }
 
   function openSectionEditor(kind){
@@ -1307,6 +1440,22 @@
       return;
     }
 
+    if (kind === "waypoint"){
+      sectionDeleteBtn.disabled = true;
+      const cards = [];
+      for (let n=1; n<=127; n++){
+        const sec = getWaypointSectionByNumber(n);
+        const desc = getWaypointDescription(sec);
+        const label = `${n} - ${desc || ""}`;
+        if (!q || label.toLowerCase().includes(q)) cards.push({ n, label });
+      }
+      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.waypointSelectedNumber===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("") || `<div class="hint">Nenhum waypoint.</div>`;
+      sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
+      if (!state.waypointSelectedNumber) state.waypointSelectedNumber = 1;
+      selectSectionBlock(state.waypointSelectedNumber);
+      return;
+    }
+
     sectionDeleteBtn.disabled = false;
     const secs = getSectionsByKind(kind).filter(s => !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
     sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
@@ -1321,6 +1470,15 @@
       const sec = getGroupSectionByNumber(state.groupSelectedNumber);
       sectionMeta.textContent = `begin group ${state.groupSelectedNumber}`;
       sectionText.value = sec ? getGroupDescription(sec) : '';
+      return;
+    }
+
+    if (state.sectionKind === "waypoint"){
+      state.waypointSelectedNumber = Math.max(1, Math.min(127, Number(id) || 1));
+      sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===state.waypointSelectedNumber));
+      const sec = getWaypointSectionByNumber(state.waypointSelectedNumber);
+      sectionMeta.textContent = `begin waypoint ${state.waypointSelectedNumber}`;
+      fillWaypointEditor(sec);
       return;
     }
 
@@ -1380,6 +1538,12 @@
       return;
     }
 
+    if (state.sectionKind === 'waypoint'){
+      saveCurrentWaypoint();
+      renderSectionList();
+      return;
+    }
+
     const sec = state.sectionBlocks.find(s => s.id === state.sectionSelectedId);
     if (!sec) return;
     sec.lines = sectionText.value.replace(/\r\n/g,'\n').split('\n');
@@ -1419,6 +1583,12 @@
       return;
     }
 
+    if (state.sectionKind === 'waypoint'){
+      saveCurrentWaypoint();
+      renderSectionList();
+      return;
+    }
+
     const kind = state.sectionKind;
     const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
     const sec = {
@@ -1444,6 +1614,21 @@
     const accessory = sec.kv.default_accessory || '';
     if (!primary && !secondary && !accessory) return;
     statusEl.textContent = `Loadout padrão: ${primary} | ${secondary} | ${accessory}`;
+  }
+
+
+  function saveWaypointsAs(){
+    const secs = [];
+    for (let n=1; n<=127; n++){
+      const sec = getWaypointSectionByNumber(n);
+      if (!sec) continue;
+      const block = [sec.beginLine || `begin waypoint ${n}`];
+      for (const line of sec.lines) block.push(line);
+      block.push('end waypoint');
+      secs.push(block.join('\n'));
+    }
+    const text = secs.join('\n\n') || '// no waypoints';
+    downloadText('waypoints_export.txt', text);
   }
 
   function runGlobalReplace(){
@@ -1925,6 +2110,9 @@
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
   sectionAddBtn.addEventListener("click", addSectionBlock);
+  wpSelectMarkersBtn.addEventListener("click", () => { statusEl.textContent = "Select Markers ainda não está implementado."; });
+  wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
+  wpOkBtn.addEventListener("click", () => { saveCurrentWaypoint(); closeSectionEditor(); });
 
   function closeItemContextMenu(){
     state.contextMenuOpen = false;
