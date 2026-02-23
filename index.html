@@ -881,15 +881,21 @@
     delBtn: document.getElementById("delBtn"),
   };
 
-  const AI_ATTRS = [
-    { label: "Coward", key: "ai_coward" },
-    { label: "Advanced Ammo", key: "ai_advanced_ammo" },
-    { label: "Hovering", key: "ai_hovering" },
-    { label: "Berserk", key: "ai_berserk" },
-    { label: "Flying Organic", key: "ai_flying_organic" },
-    { label: "Blind", key: "ai_blind" },
-    { label: "Guarding", key: "ai_guarding" },
-    { label: "Indestructable", key: "ai_indestructable" },
+  const ITEM_FLAGS = [
+    { label: "Blind", bit: 1 },
+    { label: "Guarding", bit: 2 },
+    { label: "RemoveIfLessThan", bit: 16 },
+    { label: "RemoveIfMoreThan", bit: 32 },
+    { label: "Multiplayer", bit: 64 },
+    { label: "Berserk", bit: 2048 },
+    { label: "FlyingOrganic", bit: 16384 },
+    { label: "Coward", bit: 65536 },
+    { label: "Hovering", bit: 131072 },
+    { label: "AdvancedAmmo", bit: 262144 },
+    { label: "Indestructible", bit: 2097152 },
+    { label: "NavigationWaypoint", bit: 4194304 },
+    { label: "Reflective", bit: 8388608 },
+    { label: "NoShadow", bit: 16777216 },
   ];
 
   function parseFloatSafe(v){
@@ -907,6 +913,31 @@
 
   function kvFindKey(it, keys){
     return keys.find(k => kvHas(it, k)) || null;
+  }
+
+  function getItemAttribValue(it){
+    const n = Number(it?.kv?.attrib || 0);
+    return Number.isFinite(n) ? Math.trunc(n) : 0;
+  }
+
+  function setItemAttribValue(it, value){
+    const v = Math.max(0, Math.trunc(Number(value) || 0));
+    if (v > 0) it.kv.attrib = String(v);
+    else delete it.kv.attrib;
+  }
+
+  function setAttribBit(it, bit, enabled){
+    let value = getItemAttribValue(it);
+    if (enabled) value |= bit;
+    else value &= ~bit;
+    setItemAttribValue(it, value);
+  }
+
+  function updateAttribFromCoreControls(it){
+    setAttribBit(it, 16, parseFloatSafe(ui.lessThan.value) > 0);
+    setAttribBit(it, 32, parseFloatSafe(ui.moreThan.value) > 0);
+    setAttribBit(it, 64, !!ui.multiplayerOnly.checked);
+    setAttribBit(it, 4194304, !!ui.navWp.checked);
   }
 
   function setEnabled(el, enabled){
@@ -1733,24 +1764,26 @@
 
   function renderAIAttrs(it){
     ui.aiAttrs.innerHTML = "";
-    for (const a of AI_ATTRS){
-      const has = kvHas(it, a.key);
-      const checked = has ? (String(it.kv[a.key]) === "1" || String(it.kv[a.key]).toLowerCase() === "true") : false;
-
+    for (const flag of ITEM_FLAGS){
       const row = document.createElement("label");
-      row.className = "checkRow" + (has ? "" : " disabled");
+      row.className = "checkRow";
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = checked;
-      cb.disabled = !has;
+      cb.checked = (getItemAttribValue(it) & flag.bit) !== 0;
 
       cb.addEventListener("change", () => {
-        if (!has) return;
-        it.kv[a.key] = cb.checked ? "1" : "0";
+        setAttribBit(it, flag.bit, cb.checked);
+
+        if (flag.bit === 64) setValueIf(ui.multiplayerOnly, cb.checked);
+        if (flag.bit === 4194304) setValueIf(ui.navWp, cb.checked);
+        if (flag.bit === 16 && !cb.checked && parseFloatSafe(ui.lessThan.value) > 0) setValueIf(ui.lessThan, "0");
+        if (flag.bit === 32 && !cb.checked && parseFloatSafe(ui.moreThan.value) > 0) setValueIf(ui.moreThan, "0");
+
+        commitFromWindow();
       });
 
       const span = document.createElement("span");
-      span.textContent = a.label;
+      span.textContent = flag.label;
 
       row.appendChild(cb);
       row.appendChild(span);
@@ -1830,10 +1863,12 @@
     // Remove If
     setEnabled(ui.lessThan, kvHas(it, "remove_if_less_than"));
     setEnabled(ui.moreThan, kvHas(it, "remove_if_more_than"));
-    setEnabled(ui.multiplayerOnly, kvHas(it, "remove_if_multiplayer"));
+    setEnabled(ui.multiplayerOnly, kvHas(it, "remove_if_multiplayer") || kvHas(it, "attrib"));
     setValueIf(ui.lessThan, kvHas(it, "remove_if_less_than") ? it.kv.remove_if_less_than : "");
     setValueIf(ui.moreThan, kvHas(it, "remove_if_more_than") ? it.kv.remove_if_more_than : "");
-    setValueIf(ui.multiplayerOnly, kvHas(it, "remove_if_multiplayer") ? String(it.kv.remove_if_multiplayer) === "1" : false);
+    const attribValue = getItemAttribValue(it);
+    const multiplayerFromAttrib = (attribValue & 64) !== 0;
+    setValueIf(ui.multiplayerOnly, kvHas(it, "remove_if_multiplayer") ? String(it.kv.remove_if_multiplayer) === "1" : multiplayerFromAttrib);
 
     // Spinmap
     setEnabled(ui.spinmapColor, kvHas(it, "map_symbol"));
@@ -1890,14 +1925,15 @@
     setEnabled(ui.wpDistance, wpEnabled && !!wpDistanceKey);
     setEnabled(ui.wpName, wpEnabled && kvHas(it, "wpname"));
     setEnabled(ui.advEvent, wpEnabled && kvHas(it, "adv_event"));
-    setEnabled(ui.navWp, wpEnabled && kvHas(it, "nav_wp"));
+    setEnabled(ui.navWp, wpEnabled && (kvHas(it, "nav_wp") || kvHas(it, "attrib")));
 
     setValueIf(ui.wpList, kvHas(it, "waypoint_id") ? it.kv.waypoint_id : "");
     setValueIf(ui.wpNumber, kvHas(it, "wpnumber") ? it.kv.wpnumber : "");
     setValueIf(ui.wpDistance, wpDistanceKey ? it.kv[wpDistanceKey] : "");
     setValueIf(ui.wpName, kvHas(it, "wpname") ? it.kv.wpname : "");
     setValueIf(ui.advEvent, kvHas(it, "adv_event") ? it.kv.adv_event : "");
-    setValueIf(ui.navWp, kvHas(it, "nav_wp") ? String(it.kv.nav_wp) === "1" : false);
+    const navFromAttrib = (attribValue & 4194304) !== 0;
+    setValueIf(ui.navWp, kvHas(it, "nav_wp") ? String(it.kv.nav_wp) === "1" : navFromAttrib);
 
     renderAIAttrs(it);
   }
@@ -1977,6 +2013,8 @@
     if (kvHas(it, "wpname")) it.kv.wpname = ui.wpName.value;
     if (kvHas(it, "adv_event")) it.kv.adv_event = ui.advEvent.value;
     if (kvHas(it, "nav_wp")) it.kv.nav_wp = ui.navWp.checked ? "1" : "0";
+
+    updateAttribFromCoreControls(it);
 
     const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
     if (sec) sec.kv = { ...it.kv };
