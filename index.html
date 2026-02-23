@@ -24,9 +24,21 @@
       margin:0;
       height:100vh;
       display:grid;
-      grid-template-columns: 420px 1fr;
+      grid-template-rows:auto 1fr;
       background:var(--bg);
       color:var(--text);
+    }
+    #globalMenuWrap{
+      background:var(--bg);
+      border-bottom:1px solid var(--line);
+      padding:10px;
+      position:relative;
+      z-index:20;
+    }
+    #appLayout{
+      display:grid;
+      grid-template-columns:420px 1fr;
+      min-height:0;
     }
     #sidebar{
       border-right:1px solid var(--line);
@@ -149,6 +161,49 @@
       padding: 18px;
     }
     #modalOverlay.open{ display:flex; }
+    #liveMisOverlay{
+      position:absolute;
+      inset:0;
+      background:var(--overlay);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:55;
+      padding:18px;
+    }
+    #liveMisOverlay.open{ display:flex; }
+    #liveMisWindow{
+      width:min(1120px,100%);
+      height:min(820px,100%);
+      background:#e5e5e5;
+      border:1px solid #999;
+      padding:10px;
+      display:grid;
+      grid-template-rows:auto 1fr;
+      gap:8px;
+      overflow:hidden;
+    }
+    #liveMisSearch{
+      min-width:280px;
+      max-width:360px;
+    }
+    #liveMisText{
+      width:100%;
+      height:100%;
+      min-height:0;
+      overflow:auto;
+      border:1px solid #9f9f9f;
+      background:#fff;
+      padding:8px;
+      white-space:pre;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px;
+      line-height:1.35;
+      box-sizing:border-box;
+      margin:0;
+    }
+    #liveMisText mark{ background:#ffe463; color:#111; }
+    #liveMisText mark.current{ background:#ff8a00; color:#111; }
     #modalWindow{
       width: min(980px, 100%);
       max-height: min(720px, 100%);
@@ -275,15 +330,31 @@
       color:var(--muted);
       margin-bottom:4px;
     }
+    .kvRow{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      align-items:center;
+      gap:8px;
+    }
+    .stackRows{
+      display:grid;
+      gap:6px;
+    }
+    .compactInput{
+      width:70%;
+      min-width:50px;
+      max-width:98px;
+      justify-self:end;
+    }
     .tinyInput{ width:44px; }
     .narrowInput{ max-width:72px; }
     .midInput{ max-width:140px; }
     .menuBar{
       display:flex;
       gap:8px;
-      margin-bottom:10px;
       position:relative;
       z-index:5;
+      flex-wrap:wrap;
     }
     .menuRoot{ position:relative; }
     .menuRootBtn{
@@ -316,6 +387,27 @@
       font-size:12px;
     }
     .menuItemBtn:hover{ background:#eef2ff; }
+    .menuItemBtn:disabled{
+      color:#8d8d8d;
+      background:transparent;
+      cursor:not-allowed;
+    }
+    .menuSep{
+      height:1px;
+      background:#d8d8d8;
+      margin:4px 0;
+    }
+    .contextMenu{
+      position:absolute;
+      min-width:220px;
+      background:#fff;
+      border:1px solid #9b9b9b;
+      box-shadow:0 2px 12px rgba(0,0,0,.18);
+      padding:4px 0;
+      z-index:70;
+      display:none;
+    }
+    .contextMenu.open{ display:block; }
 
     #sectionOverlay{
       position:absolute;
@@ -341,45 +433,63 @@
       display:grid;
       grid-template-columns: 290px 1fr;
       gap:10px;
-      min-height:520px;
+      height:520px;
+      min-height:0;
     }
-    #sectionList{ overflow:auto; border:1px solid #aaa; background:#fff; padding:6px; }
+    #sectionList{ overflow:auto; border:1px solid #aaa; background:#fff; padding:6px; min-height:0; max-height:100%; }
     .secCard{ border:1px solid #ccc; padding:6px; margin-bottom:5px; cursor:pointer; font-size:12px; background:#fff; }
     .secCard.active{ border-color:#5865f2; box-shadow:0 0 0 1px rgba(88,101,242,.25); }
     #sectionEditor{ display:grid; grid-template-rows:auto auto 1fr auto; gap:6px; }
     #sectionMeta{ font-size:12px; color:#444; }
     #sectionText{ width:100%; height:100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+    #sectionWindow.compactMode{ width:min(640px,100%); max-height:min(500px,100%); }
+    #sectionWindow.compactMode #sectionBody{ grid-template-columns:1fr 240px; height:320px; }
+    #sectionWindow.groupMode #sectionEditor{ grid-template-rows:auto auto auto; }
+    #sectionWindow.groupMode #sectionHint{ display:none; }
+    #sectionWindow.groupMode #sectionActions{ display:none; }
+    #sectionWindow.groupMode #sectionText{ height:34px; min-height:34px; max-height:34px; resize:none; font-family:Tahoma, Arial, sans-serif; }
+    #sectionWindow.waypointMode #sectionHint{ display:none; }
+    #sectionWindow.waypointMode #sectionActions{ display:none; }
+    #sectionWindow.waypointMode #sectionText{ display:none; }
+    #sectionWindow.waypointMode #waypointEditor{ display:grid; }
+    #waypointEditor{ display:none; gap:8px; }
+    #waypointEditor .checkRow{ margin:0; }
+    #waypointTopActions{ display:none; gap:8px; }
+    #sectionWindow.waypointMode #waypointTopActions{ display:flex; }
+    #sectionWindow.waypointMode #sectionAddBtn{ display:none; }
     #sectionTopControls{ display:flex; gap:8px; flex-wrap:wrap; }
     #sectionTopControls select, #sectionTopControls input{ max-width:220px; }
+    #sectionWindow.generalInfoMode{ width:min(1240px,100%); max-height:min(760px,100%); }
+    #sectionWindow.generalInfoMode #sectionTopControls,
+    #sectionWindow.generalInfoMode #sectionList,
+    #sectionWindow.generalInfoMode #sectionMeta,
+    #sectionWindow.generalInfoMode #sectionHint,
+    #sectionWindow.generalInfoMode #sectionText{ display:none; }
+    #sectionWindow.generalInfoMode #sectionBody{ grid-template-columns:1fr; height:auto; }
+    #sectionWindow.generalInfoMode #sectionEditor{ grid-template-rows:1fr auto; }
+    #sectionWindow.generalInfoMode #sectionActions{ justify-content:flex-start; }
+    #generalInfoEditor{ display:none; font-size:12px; }
+    #sectionWindow.generalInfoMode #generalInfoEditor{ display:block; }
+    .giLayout{ display:grid; grid-template-columns: 1fr 1.55fr 1fr; gap:10px; }
+    .giBox{ border:1px solid #9f9f9f; padding:6px; background:#ddd; }
+    .giRow{ margin-bottom:6px; }
+    .giRow label{ display:block; margin-bottom:2px; }
+    .giRow input, .giRow select{ width:100%; }
+    .giMapTypes label,.giFlags label{ display:block; margin:2px 0; }
+    .giCondRow{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; margin-bottom:4px; align-items:center; }
+    .giCondHead{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; color:#333; margin-bottom:4px; }
+    .giInline{ display:grid; grid-template-columns:1fr 90px; gap:6px; align-items:center; margin-bottom:6px; }
+    .giInline3{ display:grid; grid-template-columns:1fr 56px 56px 56px; gap:6px; align-items:center; margin-bottom:6px; }
   </style>
 </head>
 
 <body>
+  <div id="globalMenuWrap">
+    <div class="menuBar" id="menuBar"></div>
+  </div>
+
+  <div id="appLayout">
   <div id="sidebar">
-    <div class="menuBar" id="menuBar">
-      <div class="menuRoot" data-menu="file">
-        <button class="menuRootBtn" id="fileMenuBtn">File</button>
-        <div class="menuDropdown">
-          <button class="menuItemBtn" id="menuLoadMisBtn">Load map .mis</button>
-        </div>
-      </div>
-
-      <div class="menuRoot" data-menu="edit">
-        <button class="menuRootBtn" id="editMenuBtn">Edit</button>
-        <div class="menuDropdown">
-          <button class="menuItemBtn" id="openGeneralBtn">General Information</button>
-          <button class="menuItemBtn" id="openBriefingBtn">Briefing</button>
-          <button class="menuItemBtn" id="openGroupsBtn">Groups</button>
-          <button class="menuItemBtn" id="openAreasBtn">Area Triggers</button>
-          <button class="menuItemBtn" id="openWaypointsBtn">Waypoints</button>
-          <button class="menuItemBtn" id="openEventsBtn">Events</button>
-          <button class="menuItemBtn" id="openLayersBtn">Layer Names</button>
-          <button class="menuItemBtn" id="openWeaponsBtn">Weapon Loadouts</button>
-          <button class="menuItemBtn" id="openGlobalReplaceBtn">Global Replace</button>
-        </div>
-      </div>
-    </div>
-
     <input id="fileMis" type="file" accept=".mis,.txt" style="display:none;" />
 
     <div class="hint">
@@ -431,18 +541,100 @@
             </select>
             <input id="sectionSearch" placeholder="filtrar por id/texto" />
             <button id="sectionAddBtn">Adicionar bloco</button>
+            <div id="waypointTopActions">
+              <button id="wpSelectMarkersBtn">Select Markers</button>
+              <button id="wpSaveAsBtn">Save As</button>
+              <button id="wpOkBtn">Ok</button>
+            </div>
           </div>
           <div id="sectionBody">
             <div id="sectionList"></div>
             <div id="sectionEditor">
               <div id="sectionMeta">Selecione um bloco.</div>
-              <div class="hint">Edite o conteúdo interno do bloco (linhas entre begin/end). Uma linha por chave/valor.</div>
+              <div class="hint" id="sectionHint">Edite o conteúdo interno do bloco (linhas entre begin/end). Uma linha por chave/valor.</div>
               <textarea id="sectionText"></textarea>
-              <div class="btnRow"><button id="sectionDeleteBtn">Excluir bloco</button><button id="sectionApplyBtn">Aplicar bloco</button></div>
+              <div id="generalInfoEditor">
+                <div class="giLayout">
+                  <div>
+                    <div class="giRow"><label>Mission Name</label><input id="giMissionName" /></div>
+                    <div class="giRow"><label>Mission Designer</label><input id="giDesigner" /></div>
+                    <div class="giRow"><label>Mission Terrain</label><select id="giTerrain"></select></div>
+                    <div class="giRow"><label>Mission Tiles</label><select id="giTiles"></select></div>
+                    <div class="giRow"><label>Player Type</label><select id="giPlayerType"></select></div>
+                    <div class="giBox giMapTypes">
+                      <div><b>Map Types</b></div>
+                      <label><input type="checkbox" id="giMapCoop" /> Cooperative</label>
+                      <label><input type="checkbox" id="giMapDeathmatch" /> Deathmatch</label>
+                      <label><input type="checkbox" id="giMapTeamDeathmatch" /> Team Deathmatch</label>
+                      <label><input type="checkbox" id="giMapKoth" /> King of the Hill</label>
+                      <label><input type="checkbox" id="giMapTeamKoth" /> Team King of the Hill</label>
+                      <label><input type="checkbox" id="giMapCtf" /> Capture the Flag</label>
+                      <label><input type="checkbox" id="giMapFlagball" /> Flagball</label>
+                      <label><input type="checkbox" id="giMapSearchDestroy" /> Search & Destroy</label>
+                      <label><input type="checkbox" id="giMapAttackDefend" /> Attack & Defend</label>
+                    </div>
+                    <div class="giRow" style="margin-top:6px;"><label>Starting Spin-map Zoom</label><input id="giMapZoom" type="range" min="0" max="1" step="0.01" /></div>
+                    <div class="giInline"><label>Bonus Expiration</label><input id="giBonusExpiration" type="number" /></div>
+                    <div class="giInline"><label>Max Saved Games</label><input id="giMaxSaves" type="number" /></div>
+                  </div>
+                  <div>
+                    <div class="giBox">
+                      <div><b>Win Conditions</b></div>
+                      <div class="giCondHead"><span></span><span>Critical</span><span>Score</span></div>
+                      <div id="giWinRows"></div>
+                    </div>
+                    <div class="giBox" style="margin-top:8px;">
+                      <div><b>Lose Conditions</b></div>
+                      <div class="giCondHead"><span></span><span>Critical</span><span>Score</span></div>
+                      <div id="giLoseRows"></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="giBox">
+                      <div><b>Mission Overrides</b></div>
+                      <div class="giInline"><label><input type="checkbox" id="giWaterEnabled" /> Water Level (x0.5 m)</label><input id="giWaterLevel" type="number" step="0.5" /></div>
+                      <div class="giInline"><label><input type="checkbox" id="giFogDistEnabled" /> Fog Distance (m)</label><input id="giFogLevel" type="number" /></div>
+                      <div class="giInline3"><label><input type="checkbox" id="giFogColorEnabled" /> Fog Color</label><input id="giFogR" type="number" min="0" max="255" /><input id="giFogG" type="number" min="0" max="255" /><input id="giFogB" type="number" min="0" max="255" /></div>
+                      <div class="giInline"><label>Wind Speed (kph)</label><input id="giWindSpeed" type="number" /></div>
+                      <div class="giInline"><label>Wind Direction</label><input id="giWindDirection" type="number" /></div>
+                      <div class="giRow"><label>Enviroment File:</label><select id="giEnvironment"></select></div>
+                      <div class="giFlags">
+                        <label><input type="checkbox" id="giNvgAvailable" /> Night Vision Goggles Available</label>
+                        <label><input type="checkbox" id="giNvgStartOn" /> Start with NVG Turned On</label>
+                      </div>
+                    </div>
+                    <div class="giRow" style="margin-top:8px;"><label>Terrain Type</label><select id="giTerrainType"></select></div>
+                    <div class="giFlags"><label><input type="checkbox" id="giRotate180" /> Rotate Map 180 degrees</label></div>
+                  </div>
+                </div>
+              </div>
+              <div id="waypointEditor">
+                <div>
+                  <div class="inlineLabel">Description</div>
+                  <input id="wpDesc" />
+                </div>
+                <div>
+                  <div class="inlineLabel">Color</div>
+                  <select id="wpColor"></select>
+                </div>
+                <label class="checkRow"><input type="checkbox" id="wpNoLoop" /><span>Waypoint does NOT loop</span></label>
+                <label class="checkRow"><input type="checkbox" id="wpBlueTeam" /><span>Blue Team Waypoint</span></label>
+                <label class="checkRow"><input type="checkbox" id="wpRedTeam" /><span>Red Team Waypoint</span></label>
+              </div>
+              <div class="btnRow" id="sectionActions"><button id="sectionDeleteBtn">Excluir bloco</button><button id="sectionApplyBtn">Aplicar bloco</button></div>
             </div>
           </div>
         </div>
       </div>
+
+      <div id="liveMisOverlay" aria-hidden="true">
+        <div id="liveMisWindow" role="dialog" aria-modal="true" aria-label="MIS Live Changes">
+          <div class="windowTitle">MIS Live Changes <span class="spacer"></span><input id="liveMisSearch" placeholder="Pesquisar texto" /><button class="xbtn" id="liveMisCloseBtn">X</button></div>
+          <pre id="liveMisText"></pre>
+        </div>
+      </div>
+
+      <div class="contextMenu" id="itemContextMenu" aria-hidden="true"></div>
 
       <div id="modalOverlay" aria-hidden="true">
         <div id="modalWindow" role="dialog" aria-modal="true" aria-label="Item Attributes">
@@ -483,22 +675,19 @@
               <fieldset>
                 <legend>Position</legend>
                 <div class="section">
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">X:</div>
-                      <input id="ui_posx" class="midInput" />
+                  <div class="stackRows">
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">X:</div>
+                      <input id="ui_posx" class="compactInput" />
                     </div>
-                    <div>
-                      <div class="inlineLabel">Y:</div>
-                      <input id="ui_posy" class="midInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Y:</div>
+                      <input id="ui_posy" class="compactInput" />
                     </div>
-                  </div>
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Z:</div>
-                      <input id="ui_posz" class="midInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Z:</div>
+                      <input id="ui_posz" class="compactInput" />
                     </div>
-                    <div></div>
                   </div>
                   <div class="row" style="margin:2px 0 0 0;">
                     <label class="checkRow" style="margin:0;">
@@ -515,16 +704,14 @@
 
               <fieldset>
                 <legend>Facing</legend>
-                <div class="section">
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Heading (0 = North)</div>
-                      <input id="ui_heading" class="narrowInput" />
-                    </div>
-                    <div>
-                      <div class="inlineLabel">Pitch (90 = up)</div>
-                      <input id="ui_pitch" class="narrowInput" />
-                    </div>
+                <div class="section stackRows">
+                  <div class="kvRow">
+                    <div class="inlineLabel" style="margin:0;">Heading (0 = North)</div>
+                    <input id="ui_heading" class="compactInput" />
+                  </div>
+                  <div class="kvRow">
+                    <div class="inlineLabel" style="margin:0;">Pitch (90 = up)</div>
+                    <input id="ui_pitch" class="compactInput" />
                   </div>
                 </div>
               </fieldset>
@@ -569,12 +756,9 @@
               <fieldset>
                 <legend>AI Variables</legend>
                 <div class="section">
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Active Area</div>
-                      <input id="ui_activeArea" class="narrowInput" />
-                    </div>
-                    <div></div>
+                  <div class="kvRow">
+                    <div class="inlineLabel" style="margin:0;">Active Area</div>
+                    <input id="ui_activeArea" class="compactInput" />
                   </div>
 
                   <div class="miniGrid">
@@ -584,7 +768,7 @@
                     </div>
                     <div>
                       <div class="inlineLabel">Group</div>
-                      <input id="ui_group" class="midInput" />
+                      <select id="ui_group" class="midInput"></select>
                     </div>
                   </div>
 
@@ -592,10 +776,11 @@
                     <div>
                       <div class="inlineLabel">Team</div>
                       <select id="ui_team">
-                        <option value="">None</option>
                         <option value="0">Neutral (Green)</option>
-                        <option value="1">Blue</option>
-                        <option value="2">Red</option>
+                        <option value="1">Good (Blue)</option>
+                        <option value="2">Evil (Red)</option>
+                        <option value="3">Yellow</option>
+                        <option value="4">Violet</option>
                       </select>
                     </div>
                     <div>
@@ -604,40 +789,34 @@
                     </div>
                   </div>
 
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Weapon Accuracy 1</div>
-                      <input id="ui_wacc1" class="narrowInput" />
+                  <div class="stackRows">
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Weapon Accuracy 1</div>
+                      <input id="ui_wacc1" class="compactInput" />
                     </div>
-                    <div>
-                      <div class="inlineLabel">Weapon Accuracy 2</div>
-                      <input id="ui_wacc2" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Weapon Accuracy 2</div>
+                      <input id="ui_wacc2" class="compactInput" />
                     </div>
-                  </div>
-
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Fire Timer</div>
-                      <input id="ui_fireTimer" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Fire Timer</div>
+                      <input id="ui_fireTimer" class="compactInput" />
                     </div>
-                    <div>
-                      <div class="inlineLabel">Spawns (WP pause)</div>
-                      <input id="ui_wpPause" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Spawns (WP pause)</div>
+                      <input id="ui_wpPause" class="compactInput" />
                     </div>
-                  </div>
-
-                  <div class="miniGrid3">
-                    <div>
-                      <div class="inlineLabel">Max Attack Distance</div>
-                      <input id="ui_maxAttack" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Max Attack Distance</div>
+                      <input id="ui_maxAttack" class="compactInput" />
                     </div>
-                    <div>
-                      <div class="inlineLabel">Max Engagement Distance</div>
-                      <input id="ui_maxEngage" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Max Engagement Distance</div>
+                      <input id="ui_maxEngage" class="compactInput" />
                     </div>
-                    <div>
-                      <div class="inlineLabel">Min Engagement Distance</div>
-                      <input id="ui_minEngage" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Min Engagement Distance</div>
+                      <input id="ui_minEngage" class="compactInput" />
                     </div>
                   </div>
 
@@ -708,6 +887,7 @@
 
     </div>
   </div>
+  </div>
 
 <script src="itemsDef.js"></script>
 
@@ -733,6 +913,15 @@
     sectionEditorOpen: false,
     sectionKind: "general_information",
     sectionSelectedId: null,
+    groupSelectedNumber: 1,
+    waypointSelectedNumber: 1,
+    liveMisOpen: false,
+    liveMisSearchTerm: "",
+    liveMisSearchIndex: -1,
+    liveMisRawText: "",
+
+    contextMenuOpen: false,
+    contextTargetId: null,
   };
 
   // UI refs
@@ -745,6 +934,7 @@
   const statusEl = document.getElementById("status");
 
   const sectionOverlay = document.getElementById("sectionOverlay");
+  const sectionWindow = document.getElementById("sectionWindow");
   const sectionCloseBtn = document.getElementById("sectionCloseBtn");
   const sectionKindSelect = document.getElementById("sectionKindSelect");
   const sectionSearch = document.getElementById("sectionSearch");
@@ -754,11 +944,50 @@
   const sectionApplyBtn = document.getElementById("sectionApplyBtn");
   const sectionDeleteBtn = document.getElementById("sectionDeleteBtn");
   const sectionAddBtn = document.getElementById("sectionAddBtn");
+  const liveMisOverlay = document.getElementById("liveMisOverlay");
+  const liveMisCloseBtn = document.getElementById("liveMisCloseBtn");
+  const liveMisText = document.getElementById("liveMisText");
+  const liveMisSearch = document.getElementById("liveMisSearch");
+  const wpSelectMarkersBtn = document.getElementById("wpSelectMarkersBtn");
+  const wpSaveAsBtn = document.getElementById("wpSaveAsBtn");
+  const wpOkBtn = document.getElementById("wpOkBtn");
+  const wpDesc = document.getElementById("wpDesc");
+  const wpColor = document.getElementById("wpColor");
+  const wpNoLoop = document.getElementById("wpNoLoop");
+  const wpBlueTeam = document.getElementById("wpBlueTeam");
+  const wpRedTeam = document.getElementById("wpRedTeam");
+
+  const giMissionName = document.getElementById("giMissionName");
+  const giDesigner = document.getElementById("giDesigner");
+  const giTerrain = document.getElementById("giTerrain");
+  const giTiles = document.getElementById("giTiles");
+  const giPlayerType = document.getElementById("giPlayerType");
+  const giMapZoom = document.getElementById("giMapZoom");
+  const giBonusExpiration = document.getElementById("giBonusExpiration");
+  const giMaxSaves = document.getElementById("giMaxSaves");
+  const giWinRows = document.getElementById("giWinRows");
+  const giLoseRows = document.getElementById("giLoseRows");
+  const giWaterEnabled = document.getElementById("giWaterEnabled");
+  const giWaterLevel = document.getElementById("giWaterLevel");
+  const giFogDistEnabled = document.getElementById("giFogDistEnabled");
+  const giFogLevel = document.getElementById("giFogLevel");
+  const giFogColorEnabled = document.getElementById("giFogColorEnabled");
+  const giFogR = document.getElementById("giFogR");
+  const giFogG = document.getElementById("giFogG");
+  const giFogB = document.getElementById("giFogB");
+  const giWindSpeed = document.getElementById("giWindSpeed");
+  const giWindDirection = document.getElementById("giWindDirection");
+  const giEnvironment = document.getElementById("giEnvironment");
+  const giNvgAvailable = document.getElementById("giNvgAvailable");
+  const giNvgStartOn = document.getElementById("giNvgStartOn");
+  const giTerrainType = document.getElementById("giTerrainType");
+  const giRotate180 = document.getElementById("giRotate180");
 
   const modalOverlay = document.getElementById("modalOverlay");
   const modalCloseBtn = document.getElementById("modalCloseBtn");
   const okBtn = document.getElementById("okBtn");
   const cancelBtn = document.getElementById("cancelBtn");
+  const itemContextMenu = document.getElementById("itemContextMenu");
 
   const ui = {
     ssn: document.getElementById("ui_ssn"),
@@ -812,15 +1041,68 @@
     delBtn: document.getElementById("delBtn"),
   };
 
-  const AI_ATTRS = [
-    { label: "Coward", key: "ai_coward" },
-    { label: "Advanced Ammo", key: "ai_advanced_ammo" },
-    { label: "Hovering", key: "ai_hovering" },
-    { label: "Berserk", key: "ai_berserk" },
-    { label: "Flying Organic", key: "ai_flying_organic" },
-    { label: "Blind", key: "ai_blind" },
-    { label: "Guarding", key: "ai_guarding" },
-    { label: "Indestructable", key: "ai_indestructable" },
+  const ITEM_FLAGS = [
+    { label: "Blind", bit: 1 },
+    { label: "Guarding", bit: 2 },
+    { label: "RemoveIfLessThan", bit: 16 },
+    { label: "RemoveIfMoreThan", bit: 32 },
+    { label: "Multiplayer", bit: 64 },
+    { label: "Berserk", bit: 2048 },
+    { label: "FlyingOrganic", bit: 16384 },
+    { label: "Coward", bit: 65536 },
+    { label: "Hovering", bit: 131072 },
+    { label: "AdvancedAmmo", bit: 262144 },
+    { label: "Indestructible", bit: 2097152 },
+    { label: "NavigationWaypoint", bit: 4194304 },
+    { label: "Reflective", bit: 8388608 },
+    { label: "NoShadow", bit: 16777216 },
+  ];
+
+  const GENERAL_MAP_TYPE_BITS = [
+    { id:"giMapCoop", bit:1 },
+    { id:"giMapDeathmatch", bit:2 },
+    { id:"giMapTeamDeathmatch", bit:4 },
+    { id:"giMapKoth", bit:8 },
+    { id:"giMapTeamKoth", bit:16 },
+    { id:"giMapCtf", bit:32 },
+    { id:"giMapFlagball", bit:64 },
+    { id:"giMapSearchDestroy", bit:128 },
+    { id:"giMapAttackDefend", bit:256 },
+  ];
+
+  const GENERAL_ATTRIB_BITS = {
+    rotate180: 512,
+    nvgAvailable: 1024,
+    nvgStartOn: 2048,
+    waterOverride: 4096,
+    fogDistanceOverride: 8192,
+    fogColorOverride: 16384,
+  };
+
+  const GENERAL_KNOWN_ATTRIB_MASK = GENERAL_MAP_TYPE_BITS.reduce((m, f) => (m | f.bit), 0)
+    | GENERAL_ATTRIB_BITS.rotate180
+    | GENERAL_ATTRIB_BITS.nvgAvailable
+    | GENERAL_ATTRIB_BITS.nvgStartOn
+    | GENERAL_ATTRIB_BITS.waterOverride
+    | GENERAL_ATTRIB_BITS.fogDistanceOverride
+    | GENERAL_ATTRIB_BITS.fogColorOverride;
+
+  const GENERAL_TERRAINS = ["dvd1","dvd2","dvd3","jungle1","arctic1","desert1"];
+  const GENERAL_TILES = ["trntile11","trntile12","trntile13","trntile21","trntile31"];
+  const GENERAL_PLAYERS = ["Delta Force","SEALs","SAS","Spetsnaz","GIGN"];
+  const GENERAL_SUBGOALS = [
+    { value:0, label:"null" },
+    { value:1, label:"Reach Final Waypoint" },
+    { value:2, label:"Destroy Technicals" },
+    { value:3, label:"Player dies" },
+    { value:4, label:"Destroy target" },
+    { value:5, label:"Protect target" },
+    { value:6, label:"Extract team" },
+  ];
+  const GENERAL_ENV_FILES = [
+    { value:"day1", label:"Daytime 1" }, { value:"day2", label:"Daytime 2" },
+    { value:"dawn1", label:"Dawn 1" }, { value:"dusk1", label:"Dusk 1" },
+    { value:"overcst1", label:"Overcast 1" },
   ];
 
   function parseFloatSafe(v){
@@ -838,6 +1120,31 @@
 
   function kvFindKey(it, keys){
     return keys.find(k => kvHas(it, k)) || null;
+  }
+
+  function getItemAttribValue(it){
+    const n = Number(it?.kv?.attrib || 0);
+    return Number.isFinite(n) ? Math.trunc(n) : 0;
+  }
+
+  function setItemAttribValue(it, value){
+    const v = Math.max(0, Math.trunc(Number(value) || 0));
+    if (v > 0) it.kv.attrib = String(v);
+    else delete it.kv.attrib;
+  }
+
+  function setAttribBit(it, bit, enabled){
+    let value = getItemAttribValue(it);
+    if (enabled) value |= bit;
+    else value &= ~bit;
+    setItemAttribValue(it, value);
+  }
+
+  function updateAttribFromCoreControls(it){
+    setAttribBit(it, 16, parseFloatSafe(ui.lessThan.value) > 0);
+    setAttribBit(it, 32, parseFloatSafe(ui.moreThan.value) > 0);
+    setAttribBit(it, 64, !!ui.multiplayerOnly.checked);
+    setAttribBit(it, 4194304, !!ui.navWp.checked);
   }
 
   function setEnabled(el, enabled){
@@ -861,11 +1168,24 @@
     return state.items.find(x => x.id === state.selectedId) || null;
   }
 
+  function toDefIdFromMisTypeId(typeId){
+    const n = Number(typeId);
+    if (!Number.isFinite(n)) return "";
+    return String(Math.trunc(n) + 100000);
+  }
+
+  function toMisTypeIdFromDefId(defId){
+    const n = Number(defId);
+    if (!Number.isFinite(n)) return "";
+    return String(Math.trunc(n) - 100000);
+  }
+
   function getDefForItem(it){
     if (!it) return null;
     const tid = kvHas(it, "type_id") ? String(it.kv.type_id) : "";
     if (!tid) return null;
-    return state.defsById.get(tid) || null;
+    const mappedDefId = toDefIdFromMisTypeId(tid);
+    return state.defsById.get(mappedDefId) || state.defsById.get(tid) || null;
   }
 
   // DEF parser (ITEMS.DEF)
@@ -1010,6 +1330,316 @@
       return `<option value="${escapeHtml(v)}">${escapeHtml(c.label)}</option>`;
     }).join("");
   }
+
+
+  function ensureSelectOptions(selectEl, options, currentValue){
+    const vals = options.map(o => typeof o === "string" ? { value:o, label:o } : o);
+    if (currentValue !== undefined && currentValue !== null && currentValue !== "" && !vals.some(o => String(o.value) === String(currentValue))){
+      vals.push({ value:String(currentValue), label:String(currentValue) });
+    }
+    selectEl.innerHTML = vals.map(o => `<option value="${escapeHtml(String(o.value))}">${escapeHtml(String(o.label))}</option>`).join("");
+  }
+
+  function parseIntList(raw, count){
+    const parts = String(raw || "").trim().split(/\s+/).filter(Boolean).map(v => Number(v));
+    const out = [];
+    for (let i=0; i<count; i++) out.push(Number.isFinite(parts[i]) ? Math.trunc(parts[i]) : 0);
+    return out;
+  }
+
+  function buildGeneralConditionRows(container, prefix){
+    const opts = GENERAL_SUBGOALS.map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`).join("");
+    let html = "";
+    for (let i=0; i<8; i++){
+      html += `<div class="giCondRow"><input type="checkbox" id="${prefix}Enabled${i}" /><select id="${prefix}Goal${i}">${opts}</select><input id="${prefix}Score${i}" type="number" /></div>`;
+    }
+    container.innerHTML = html;
+  }
+
+  function decodeFogColor(n){
+    const v = Math.max(0, Math.trunc(Number(n) || 0));
+    return { r:(v >> 16) & 255, g:(v >> 8) & 255, b:v & 255 };
+  }
+
+  function encodeFogColor(r,g,b){
+    const rr = Math.max(0, Math.min(255, Math.trunc(Number(r) || 0)));
+    const gg = Math.max(0, Math.min(255, Math.trunc(Number(g) || 0)));
+    const bb = Math.max(0, Math.min(255, Math.trunc(Number(b) || 0)));
+    return (rr << 16) | (gg << 8) | bb;
+  }
+
+  function updateGeneralInfoEnables(){
+    giWaterLevel.disabled = !giWaterEnabled.checked;
+    giFogLevel.disabled = !giFogDistEnabled.checked;
+    const fogEnabled = giFogColorEnabled.checked;
+    giFogR.disabled = !fogEnabled;
+    giFogG.disabled = !fogEnabled;
+    giFogB.disabled = !fogEnabled;
+    giNvgStartOn.disabled = !giNvgAvailable.checked;
+  }
+
+  function readGeneralConditionRows(prefix){
+    const goals = [];
+    const scores = [];
+    for (let i=0; i<8; i++){
+      const enabled = document.getElementById(`${prefix}Enabled${i}`).checked;
+      const goal = Number(document.getElementById(`${prefix}Goal${i}`).value || 0);
+      const score = Number(document.getElementById(`${prefix}Score${i}`).value || 0);
+      goals.push(enabled ? Math.max(0, Math.trunc(goal)) : 0);
+      scores.push(enabled ? Math.max(0, Math.trunc(score)) : 0);
+    }
+    return { goals, scores };
+  }
+
+  function fillGeneralInfoEditor(sec){
+    const kv = sec?.kv || {};
+    ensureSelectOptions(giTerrain, GENERAL_TERRAINS.map(v=>({ value:v, label:v })), kv.terrain || "dvd1");
+    ensureSelectOptions(giTiles, GENERAL_TILES.map(v=>({ value:v, label:v })), kv.terrain_tile_tga || "trntile11");
+    ensureSelectOptions(giPlayerType, GENERAL_PLAYERS.map((label, idx)=>({ value:String(idx), label })), kv.player_type || "0");
+    ensureSelectOptions(giEnvironment, GENERAL_ENV_FILES, kv.sunset || "day1");
+
+    const terrainColorRaw = String(kv.terrain_color ?? "");
+    ensureSelectOptions(
+      giTerrainType,
+      [{ value: terrainColorRaw || "", label: terrainColorRaw ? `Preserve (${terrainColorRaw})` : "Preserve (unknown)" }],
+      terrainColorRaw
+    );
+    giTerrainType.disabled = true;
+
+    giMissionName.value = String(kv.name || "").replace(/^"|"$/g, "");
+    giDesigner.value = String(kv.designer || "").replace(/^"|"$/g, "");
+    giMapZoom.value = String(Number(kv.map_zoom || 0));
+    giBonusExpiration.value = kv.bonus_expiration || "0";
+    giMaxSaves.value = kv.max_saves || "0";
+
+    const attrib = Number(kv.attrib || 0);
+    for (const f of GENERAL_MAP_TYPE_BITS){
+      const el = document.getElementById(f.id);
+      if (el) el.checked = (attrib & f.bit) !== 0;
+    }
+
+    const winGoals = parseIntList(kv.subgoals_win, 8);
+    const winScores = parseIntList(kv.win_scores, 8);
+    const loseGoals = parseIntList(kv.subgoals_lose, 8);
+    const loseScores = parseIntList(kv.lose_scores, 8);
+    for (let i=0; i<8; i++){
+      const wEnabled = winGoals[i] > 0 || winScores[i] > 0;
+      document.getElementById(`giWinEnabled${i}`).checked = wEnabled;
+      document.getElementById(`giWinGoal${i}`).value = String(winGoals[i]);
+      document.getElementById(`giWinScore${i}`).value = String(winScores[i]);
+
+      const lEnabled = loseGoals[i] > 0 || loseScores[i] > 0;
+      document.getElementById(`giLoseEnabled${i}`).checked = lEnabled;
+      document.getElementById(`giLoseGoal${i}`).value = String(loseGoals[i]);
+      document.getElementById(`giLoseScore${i}`).value = String(loseScores[i]);
+    }
+
+    const waterRaw = Number(kv.water_level || 0);
+    giWaterEnabled.checked = ((attrib & GENERAL_ATTRIB_BITS.waterOverride) !== 0) || Object.prototype.hasOwnProperty.call(kv, "water_level");
+    giWaterLevel.value = Number.isFinite(waterRaw) ? String(waterRaw * 0.5) : "0";
+
+    giFogDistEnabled.checked = ((attrib & GENERAL_ATTRIB_BITS.fogDistanceOverride) !== 0) || Object.prototype.hasOwnProperty.call(kv, "fog_level");
+    giFogLevel.value = kv.fog_level || "0";
+
+    giFogColorEnabled.checked = ((attrib & GENERAL_ATTRIB_BITS.fogColorOverride) !== 0) || Object.prototype.hasOwnProperty.call(kv, "fog_color");
+    const rgb = decodeFogColor(kv.fog_color || 0);
+    giFogR.value = String(rgb.r); giFogG.value = String(rgb.g); giFogB.value = String(rgb.b);
+
+    const wind = parseIntList(kv.wind, 2);
+    giWindSpeed.value = String(wind[0]);
+    giWindDirection.value = String(wind[1]);
+
+    giNvgAvailable.checked = (attrib & GENERAL_ATTRIB_BITS.nvgAvailable) !== 0;
+    giNvgStartOn.checked = (attrib & GENERAL_ATTRIB_BITS.nvgStartOn) !== 0;
+    giRotate180.checked = (attrib & GENERAL_ATTRIB_BITS.rotate180) !== 0;
+
+    updateGeneralInfoEnables();
+  }
+
+  function quoteMisString(s){
+    return `"${String(s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+
+  function applyGeneralInfoSection(sec){
+    const kv = { ...(sec.kv || {}) };
+    kv.name = quoteMisString(giMissionName.value);
+    kv.designer = quoteMisString(giDesigner.value);
+    kv.terrain = giTerrain.value || "dvd1";
+    kv.terrain_tile_tga = giTiles.value || "trntile11";
+    kv.player_type = String(Math.max(0, Math.trunc(Number(giPlayerType.value || 0))));
+
+    let attrib = Number(kv.attrib || 0);
+    attrib = (Number.isFinite(attrib) ? Math.trunc(attrib) : 0) & ~GENERAL_KNOWN_ATTRIB_MASK;
+
+    for (const f of GENERAL_MAP_TYPE_BITS){
+      const el = document.getElementById(f.id);
+      if (el && el.checked) attrib |= f.bit;
+    }
+    if (giRotate180.checked) attrib |= GENERAL_ATTRIB_BITS.rotate180;
+    if (giNvgAvailable.checked) attrib |= GENERAL_ATTRIB_BITS.nvgAvailable;
+    if (giNvgStartOn.checked) attrib |= GENERAL_ATTRIB_BITS.nvgStartOn;
+    if (giWaterEnabled.checked) attrib |= GENERAL_ATTRIB_BITS.waterOverride;
+    if (giFogDistEnabled.checked) attrib |= GENERAL_ATTRIB_BITS.fogDistanceOverride;
+    if (giFogColorEnabled.checked) attrib |= GENERAL_ATTRIB_BITS.fogColorOverride;
+    kv.attrib = String(attrib);
+
+    kv.map_zoom = String(Number(giMapZoom.value || 0).toFixed(2));
+    kv.bonus_expiration = String(Math.max(0, Math.trunc(Number(giBonusExpiration.value || 0))));
+    kv.max_saves = String(Math.max(0, Math.trunc(Number(giMaxSaves.value || 0))));
+
+    const win = readGeneralConditionRows("giWin");
+    const lose = readGeneralConditionRows("giLose");
+    kv.subgoals_win = win.goals.join(" ");
+    kv.win_scores = win.scores.join(" ");
+    kv.subgoals_lose = lose.goals.join(" ");
+    kv.lose_scores = lose.scores.join(" ");
+
+    kv.water_level = String(Math.max(0, Math.round(Number(giWaterLevel.value || 0) / 0.5)));
+    kv.fog_level = String(Math.max(0, Math.trunc(Number(giFogLevel.value || 0))));
+    kv.fog_color = String(encodeFogColor(giFogR.value, giFogG.value, giFogB.value));
+
+    kv.wind = `${Math.max(0, Math.trunc(Number(giWindSpeed.value || 0)))} ${Math.max(0, Math.trunc(Number(giWindDirection.value || 0)))}`;
+    kv.sunset = giEnvironment.value || "day1";
+
+    // Legacy keys from previous implementation are no longer written by this dialog.
+    delete kv.terrain_type;
+    delete kv.nvg_available;
+    delete kv.nvg_start_on;
+    delete kv.rotate_map_180;
+
+    sec.kv = kv;
+    sec.lines = Object.entries(kv).map(([k,v]) => `  ${k} ${v}`);
+    syncWeaponLoadoutsFromGeneral(sec);
+  }
+
+  function parseGroupNumber(sec){
+    if (!sec || sec.kind !== "group") return null;
+    const fromLabel = Number((sec.label || "").trim());
+    if (Number.isInteger(fromLabel) && fromLabel >= 1 && fromLabel <= 63) return fromLabel;
+    const m = String(sec.beginLine || "").trim().match(/^begin\s+group\s+(\d+)$/i);
+    if (m) return Number(m[1]);
+    return null;
+  }
+
+  function getGroupSectionByNumber(n){
+    return state.sectionBlocks.find(s => s.kind === "group" && parseGroupNumber(s) === n) || null;
+  }
+
+  function getGroupDescription(sec){
+    if (!sec) return "";
+    if (sec.kv && sec.kv.description) return String(sec.kv.description);
+    return "";
+  }
+
+  function buildGroupOptions(){
+    const existing = new Set();
+    for (const sec of state.sectionBlocks){
+      const n = parseGroupNumber(sec);
+      if (n) existing.add(n);
+    }
+    for (const it of state.items){
+      const gid = Number(it.kv?.group_id || "");
+      if (Number.isInteger(gid) && gid >= 1 && gid <= 63) existing.add(gid);
+    }
+    const vals = Array.from(existing).sort((a,b)=>a-b);
+    ui.group.innerHTML = `<option value="">None</option>` + vals.map(n => {
+      const sec = getGroupSectionByNumber(n);
+      const desc = getGroupDescription(sec);
+      const label = `${n} - ${desc || ""}`;
+      return `<option value="${escapeHtml(String(n))}">${escapeHtml(label)}</option>`;
+    }).join("");
+    if (!vals.length) ui.group.innerHTML = `<option value="">None</option>`;
+  }
+
+
+  const WAYPOINT_COLORS = [
+    "Orange","Black","Yellow","Red","Green","Blue","Gray","LtGray","Purple","Cyan","Brown","Aqua","Indigo","Tan","Teal","Dark Red","White","Violet","Pink","Magenta","Dark Blue","Dark Green","Dark Yellow"
+  ];
+
+  function parseWaypointNumber(sec){
+    if (!sec || sec.kind !== "waypoint") return null;
+    const fromLabel = Number((sec.label || "").trim());
+    if (Number.isInteger(fromLabel) && fromLabel >= 1 && fromLabel <= 127) return fromLabel;
+    const m = String(sec.beginLine || "").trim().match(/^begin\s+waypoint\s+(\d+)$/i);
+    if (m) return Number(m[1]);
+    return null;
+  }
+
+  function getWaypointSectionByNumber(n){
+    return state.sectionBlocks.find(s => s.kind === "waypoint" && parseWaypointNumber(s) === n) || null;
+  }
+
+  function getWaypointDescription(sec){
+    return sec?.kv?.description ? String(sec.kv.description) : "";
+  }
+
+  function parseWaypointAttrib(val){
+    const n = Number(val);
+    if (!Number.isFinite(n) || n < 1) return { noLoop:false, blue:false, red:false };
+    return {
+      noLoop: (n & 1) !== 0,
+      blue: (n & 2) !== 0,
+      red: (n & 4) !== 0,
+    };
+  }
+
+  function buildWaypointAttrib(){
+    let v = 0;
+    if (wpNoLoop.checked) v += 1;
+    if (wpBlueTeam.checked) v += 2;
+    if (wpRedTeam.checked) v += 4;
+    return v;
+  }
+
+  function fillWaypointEditor(sec){
+    const desc = getWaypointDescription(sec);
+    const colorNum = Number(sec?.kv?.color || "0");
+    const attrib = parseWaypointAttrib(sec?.kv?.attrib || "0");
+    wpDesc.value = desc;
+    wpColor.value = Number.isFinite(colorNum) && colorNum >= 0 && colorNum <= 22 ? String(colorNum) : "0";
+    wpNoLoop.checked = attrib.noLoop;
+    wpBlueTeam.checked = attrib.blue;
+    wpRedTeam.checked = attrib.red;
+  }
+
+  function saveCurrentWaypoint(){
+    const n = state.waypointSelectedNumber || 1;
+    let sec = getWaypointSectionByNumber(n);
+    const desc = String(wpDesc.value || "").trim();
+    const colorVal = Number(wpColor.value || "0");
+    const attribVal = buildWaypointAttrib();
+
+    if (!sec){
+      const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
+      sec = {
+        id: nextId,
+        kind: 'waypoint',
+        label: String(n),
+        start: Number.MAX_SAFE_INTEGER - nextId,
+        end: Number.MAX_SAFE_INTEGER - nextId,
+        beginLine: `begin waypoint ${n}`,
+        lines: [],
+        kv: {},
+      };
+      state.sectionBlocks.push(sec);
+    }
+
+    sec.beginLine = `begin waypoint ${n}`;
+    sec.label = String(n);
+    sec.kv = {};
+    const lines = [];
+    if (desc){ sec.kv.description = desc; lines.push(`  description "${desc.replace(/"/g,"")}"`); }
+    if (colorVal > 0){ sec.kv.color = String(colorVal); lines.push(`  color ${colorVal}`); }
+    if (attribVal > 0){ sec.kv.attrib = String(attribVal); lines.push(`  attrib ${attribVal}`); }
+    sec.lines = lines;
+  }
+
+  function buildWaypointColorOptions(){
+    wpColor.innerHTML = WAYPOINT_COLORS.map((name, idx)=>`<option value="${idx}">${escapeHtml(name)}</option>`).join("");
+  }
+  buildWaypointColorOptions();
+  buildGeneralConditionRows(giWinRows, "giWin");
+  buildGeneralConditionRows(giLoseRows, "giLose");
 
   function buildTypeFilterOptions(){
     // Filtro "type" da esquerda:
@@ -1170,8 +1800,37 @@
   }
 
   function sectionCardLabel(sec){
+    if (sec.kind === "group"){
+      const n = parseGroupNumber(sec) || sec.label || sec.id;
+      const desc = getGroupDescription(sec);
+      return `${n} - ${desc || ""}`;
+    }
+    if (sec.kind === "waypoint"){
+      const n = parseWaypointNumber(sec) || sec.label || sec.id;
+      const desc = getWaypointDescription(sec);
+      return `${n} - ${desc || ""}`;
+    }
     const id = sec.label || sec.kv.id || sec.kv.name || sec.kv.description || sec.kv.title || sec.id;
     return `${sec.kind} ${id}`;
+  }
+
+
+  function updateSectionEditorMode(){
+    const isGeneralInfo = state.sectionKind === "general_information";
+    const isGroup = state.sectionKind === "group";
+    const isWaypoint = state.sectionKind === "waypoint";
+    const isAreaTrig = state.sectionKind === "areatrig";
+    sectionWindow.classList.toggle("compactMode", isGroup || isWaypoint || isAreaTrig);
+    sectionWindow.classList.toggle("groupMode", isGroup);
+    sectionWindow.classList.toggle("waypointMode", isWaypoint);
+    sectionWindow.classList.toggle("generalInfoMode", isGeneralInfo);
+    if (isGeneralInfo){
+      sectionApplyBtn.textContent = "OK";
+      sectionDeleteBtn.textContent = "Cancel";
+    } else {
+      sectionApplyBtn.textContent = "Aplicar bloco";
+      sectionDeleteBtn.textContent = "Excluir bloco";
+    }
   }
 
   function openSectionEditor(kind){
@@ -1179,6 +1838,23 @@
     state.sectionKind = kind;
     state.sectionSelectedId = null;
     sectionKindSelect.value = kind;
+    sectionAddBtn.textContent = kind === "group" ? "Editar" : "Adicionar bloco";
+
+    if (kind === "general_information" && !state.sectionBlocks.some(s => s.kind === "general_information")){
+      const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
+      state.sectionBlocks.push({
+        id: nextId,
+        kind: "general_information",
+        label: "",
+        start: Number.MAX_SAFE_INTEGER - nextId,
+        end: Number.MAX_SAFE_INTEGER - nextId,
+        beginLine: "begin general_information",
+        lines: [],
+        kv: {},
+      });
+    }
+
+    updateSectionEditorMode();
     sectionOverlay.classList.add("open");
     renderSectionList();
   }
@@ -1188,9 +1864,127 @@
     sectionOverlay.classList.remove("open");
   }
 
+  function renderLiveMisHighlighted(){
+    const raw = state.liveMisRawText || "";
+    const term = (state.liveMisSearchTerm || "").toLowerCase();
+
+    if (!term){
+      liveMisText.textContent = raw;
+      return;
+    }
+
+    const lower = raw.toLowerCase();
+    let html = "";
+    let pos = 0;
+    while (pos < raw.length){
+      const idx = lower.indexOf(term, pos);
+      if (idx === -1){
+        html += escapeHtml(raw.slice(pos));
+        break;
+      }
+      html += escapeHtml(raw.slice(pos, idx));
+      const chunk = raw.slice(idx, idx + term.length);
+      if (idx === state.liveMisSearchIndex) html += `<mark class="current" id="liveMisCurrent">${escapeHtml(chunk)}</mark>`;
+      else html += `<mark>${escapeHtml(chunk)}</mark>`;
+      pos = idx + term.length;
+    }
+    liveMisText.innerHTML = html;
+  }
+
+  function refreshLiveMisWindow(){
+    state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
+    if (!state.liveMisOpen) return;
+    renderLiveMisHighlighted();
+  }
+
+  function openLiveMisWindow(){
+    state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
+    state.liveMisSearchTerm = "";
+    state.liveMisSearchIndex = -1;
+    state.liveMisOpen = true;
+    liveMisOverlay.classList.add("open");
+    liveMisOverlay.setAttribute("aria-hidden", "false");
+    renderLiveMisHighlighted();
+    liveMisSearch.focus();
+  }
+
+  function closeLiveMisWindow(){
+    state.liveMisOpen = false;
+    liveMisOverlay.classList.remove("open");
+    liveMisOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  function findInLiveMis(next=false, focusResult=false){
+    const term = (liveMisSearch.value || "").toLowerCase();
+    if (!term){
+      state.liveMisSearchTerm = "";
+      state.liveMisSearchIndex = -1;
+      renderLiveMisHighlighted();
+      return;
+    }
+
+    const text = (state.liveMisRawText || "").toLowerCase();
+    let start = 0;
+    if (next && term === state.liveMisSearchTerm && state.liveMisSearchIndex >= 0){
+      start = state.liveMisSearchIndex + 1;
+    }
+
+    let idx = text.indexOf(term, start);
+    if (idx === -1 && next) idx = text.indexOf(term, 0);
+    if (idx === -1) return;
+
+    state.liveMisSearchTerm = term;
+    state.liveMisSearchIndex = idx;
+    renderLiveMisHighlighted();
+
+    const cur = document.getElementById("liveMisCurrent");
+    if (cur){
+      const cRect = liveMisText.getBoundingClientRect();
+      const mRect = cur.getBoundingClientRect();
+      const currentMid = mRect.top + (mRect.height / 2);
+      const containerMid = cRect.top + (cRect.height / 2);
+      liveMisText.scrollTop += currentMid - containerMid;
+      if (focusResult) liveMisText.focus();
+    }
+  }
+
   function renderSectionList(){
     const kind = state.sectionKind;
     const q = (sectionSearch.value || "").toLowerCase().trim();
+
+    if (kind === "group"){
+      sectionDeleteBtn.disabled = true;
+      const cards = [];
+      for (let n=1; n<=63; n++){
+        const sec = getGroupSectionByNumber(n);
+        const desc = getGroupDescription(sec);
+        const label = `${n} - ${desc || ""}`;
+        if (!q || label.toLowerCase().includes(q)) cards.push({ n, label });
+      }
+      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.groupSelectedNumber===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("") || `<div class="hint">Nenhum grupo.</div>`;
+      sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
+      if (!state.groupSelectedNumber) state.groupSelectedNumber = 1;
+      selectSectionBlock(state.groupSelectedNumber);
+      return;
+    }
+
+    if (kind === "waypoint"){
+      sectionDeleteBtn.disabled = true;
+      const cards = [];
+      for (let n=1; n<=127; n++){
+        const sec = getWaypointSectionByNumber(n);
+        const desc = getWaypointDescription(sec);
+        const label = `${n} - ${desc || ""}`;
+        if (!q || label.toLowerCase().includes(q)) cards.push({ n, label });
+      }
+      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.waypointSelectedNumber===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("") || `<div class="hint">Nenhum waypoint.</div>`;
+      sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
+      if (!state.waypointSelectedNumber) state.waypointSelectedNumber = 1;
+      selectSectionBlock(state.waypointSelectedNumber);
+      return;
+    }
+
+    sectionDeleteBtn.disabled = false;
     const secs = getSectionsByKind(kind).filter(s => !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
     sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
     sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
@@ -1198,6 +1992,24 @@
   }
 
   function selectSectionBlock(id){
+    if (state.sectionKind === "group"){
+      state.groupSelectedNumber = Math.max(1, Math.min(63, Number(id) || 1));
+      sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===state.groupSelectedNumber));
+      const sec = getGroupSectionByNumber(state.groupSelectedNumber);
+      sectionMeta.textContent = `begin group ${state.groupSelectedNumber}`;
+      sectionText.value = sec ? getGroupDescription(sec) : '';
+      return;
+    }
+
+    if (state.sectionKind === "waypoint"){
+      state.waypointSelectedNumber = Math.max(1, Math.min(127, Number(id) || 1));
+      sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===state.waypointSelectedNumber));
+      const sec = getWaypointSectionByNumber(state.waypointSelectedNumber);
+      sectionMeta.textContent = `begin waypoint ${state.waypointSelectedNumber}`;
+      fillWaypointEditor(sec);
+      return;
+    }
+
     state.sectionSelectedId = id;
     const sec = state.sectionBlocks.find(s => s.id === id);
     sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===id));
@@ -1207,7 +2019,8 @@
       return;
     }
     sectionMeta.textContent = `${sec.beginLine}`;
-    sectionText.value = sec.lines.join('\\n');
+    sectionText.value = sec.lines.join('\n');
+    if (state.sectionKind === "general_information") fillGeneralInfoEditor(sec);
   }
 
   function parseBlockLinesToKV(lines){
@@ -1223,6 +2036,53 @@
   }
 
   function applySectionBlock(){
+    if (state.sectionKind === 'group'){
+      const n = state.groupSelectedNumber || 1;
+      let sec = getGroupSectionByNumber(n);
+      const desc = String(sectionText.value || '').trim();
+
+      if (!sec){
+        const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
+        sec = {
+          id: nextId,
+          kind: 'group',
+          label: String(n),
+          start: Number.MAX_SAFE_INTEGER - nextId,
+          end: Number.MAX_SAFE_INTEGER - nextId,
+          beginLine: `begin group ${n}`,
+          lines: [],
+          kv: {},
+        };
+        state.sectionBlocks.push(sec);
+      }
+
+      sec.beginLine = `begin group ${n}`;
+      sec.label = String(n);
+      sec.lines = desc ? [`  description "${desc.replace(/"/g,"")}"`] : [];
+      sec.kv = desc ? { description: desc } : {};
+
+      buildGroupOptions();
+      renderSectionList();
+      if (state.modalOpen) renderItemWindow();
+      return;
+    }
+
+    if (state.sectionKind === 'waypoint'){
+      saveCurrentWaypoint();
+      renderSectionList();
+      return;
+    }
+
+    if (state.sectionKind === 'general_information'){
+      const sec = state.sectionBlocks.find(s => s.id === state.sectionSelectedId);
+      if (!sec) return;
+      applyGeneralInfoSection(sec);
+      renderSectionList();
+      refreshLiveMisWindow();
+      closeSectionEditor();
+      return;
+    }
+
     const sec = state.sectionBlocks.find(s => s.id === state.sectionSelectedId);
     if (!sec) return;
     sec.lines = sectionText.value.replace(/\r\n/g,'\n').split('\n');
@@ -1242,6 +2102,10 @@
   }
 
   function deleteSectionBlock(){
+    if (state.sectionKind === "general_information"){
+      closeSectionEditor();
+      return;
+    }
     const idx = state.sectionBlocks.findIndex(s => s.id === state.sectionSelectedId);
     if (idx === -1) return;
     const sec = state.sectionBlocks[idx];
@@ -1251,11 +2115,24 @@
     state.sectionBlocks.splice(idx,1);
     state.sectionSelectedId = null;
     renderSectionList();
+    buildGroupOptions();
     renderList();
     draw();
+    refreshLiveMisWindow();
   }
 
   function addSectionBlock(){
+    if (state.sectionKind === 'group'){
+      applySectionBlock();
+      return;
+    }
+
+    if (state.sectionKind === 'waypoint'){
+      saveCurrentWaypoint();
+      renderSectionList();
+      return;
+    }
+
     const kind = state.sectionKind;
     const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
     const sec = {
@@ -1281,6 +2158,21 @@
     const accessory = sec.kv.default_accessory || '';
     if (!primary && !secondary && !accessory) return;
     statusEl.textContent = `Loadout padrão: ${primary} | ${secondary} | ${accessory}`;
+  }
+
+
+  function saveWaypointsAs(){
+    const secs = [];
+    for (let n=1; n<=127; n++){
+      const sec = getWaypointSectionByNumber(n);
+      if (!sec) continue;
+      const block = [sec.beginLine || `begin waypoint ${n}`];
+      for (const line of sec.lines) block.push(line);
+      block.push('end waypoint');
+      secs.push(block.join('\n'));
+    }
+    const text = secs.join('\n\n') || '// no waypoints';
+    downloadText('waypoints_export.txt', text);
   }
 
   function runGlobalReplace(){
@@ -1385,24 +2277,26 @@
 
   function renderAIAttrs(it){
     ui.aiAttrs.innerHTML = "";
-    for (const a of AI_ATTRS){
-      const has = kvHas(it, a.key);
-      const checked = has ? (String(it.kv[a.key]) === "1" || String(it.kv[a.key]).toLowerCase() === "true") : false;
-
+    for (const flag of ITEM_FLAGS){
       const row = document.createElement("label");
-      row.className = "checkRow" + (has ? "" : " disabled");
+      row.className = "checkRow";
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = checked;
-      cb.disabled = !has;
+      cb.checked = (getItemAttribValue(it) & flag.bit) !== 0;
 
       cb.addEventListener("change", () => {
-        if (!has) return;
-        it.kv[a.key] = cb.checked ? "1" : "0";
+        setAttribBit(it, flag.bit, cb.checked);
+
+        if (flag.bit === 64) setValueIf(ui.multiplayerOnly, cb.checked);
+        if (flag.bit === 4194304) setValueIf(ui.navWp, cb.checked);
+        if (flag.bit === 16 && !cb.checked && parseFloatSafe(ui.lessThan.value) > 0) setValueIf(ui.lessThan, "0");
+        if (flag.bit === 32 && !cb.checked && parseFloatSafe(ui.moreThan.value) > 0) setValueIf(ui.moreThan, "0");
+
+        commitFromWindow();
       });
 
       const span = document.createElement("span");
-      span.textContent = a.label;
+      span.textContent = flag.label;
 
       row.appendChild(cb);
       row.appendChild(span);
@@ -1450,7 +2344,8 @@
     setEnabled(ui.subtype, canSubtype);
 
     if (canSubtype){
-      ui.subtype.value = String(it.kv.type_id || "");
+      const mappedDefId = toDefIdFromMisTypeId(String(it.kv.type_id || ""));
+      ui.subtype.value = mappedDefId || String(it.kv.type_id || "");
     } else {
       // fallback: mostra vazio
       if (!state.defLoaded) ui.subtype.innerHTML = `<option value="">(carregue o DEF)</option>`;
@@ -1481,10 +2376,12 @@
     // Remove If
     setEnabled(ui.lessThan, kvHas(it, "remove_if_less_than"));
     setEnabled(ui.moreThan, kvHas(it, "remove_if_more_than"));
-    setEnabled(ui.multiplayerOnly, kvHas(it, "remove_if_multiplayer"));
+    setEnabled(ui.multiplayerOnly, kvHas(it, "remove_if_multiplayer") || kvHas(it, "attrib"));
     setValueIf(ui.lessThan, kvHas(it, "remove_if_less_than") ? it.kv.remove_if_less_than : "");
     setValueIf(ui.moreThan, kvHas(it, "remove_if_more_than") ? it.kv.remove_if_more_than : "");
-    setValueIf(ui.multiplayerOnly, kvHas(it, "remove_if_multiplayer") ? String(it.kv.remove_if_multiplayer) === "1" : false);
+    const attribValue = getItemAttribValue(it);
+    const multiplayerFromAttrib = (attribValue & 64) !== 0;
+    setValueIf(ui.multiplayerOnly, kvHas(it, "remove_if_multiplayer") ? String(it.kv.remove_if_multiplayer) === "1" : multiplayerFromAttrib);
 
     // Spinmap
     setEnabled(ui.spinmapColor, kvHas(it, "map_symbol"));
@@ -1498,11 +2395,12 @@
     setEnabled(ui.aiTextfile, kvHas(it, "ai_textfile"));
     setValueIf(ui.aiTextfile, kvHas(it, "ai_textfile") ? it.kv.ai_textfile : "");
 
-    setEnabled(ui.group, kvHas(it, "group_id"));
+    buildGroupOptions();
+    setEnabled(ui.group, ui.group.options.length > 1);
     setValueIf(ui.group, kvHas(it, "group_id") ? it.kv.group_id : "");
 
-    setEnabled(ui.team, kvHas(it, "team"));
-    setValueIf(ui.team, kvHas(it, "team") ? it.kv.team : "");
+    setEnabled(ui.team, true);
+    setValueIf(ui.team, kvHas(it, "team") ? it.kv.team : "0");
 
     setEnabled(ui.alertState, kvHas(it, "alert_state"));
     setValueIf(ui.alertState, kvHas(it, "alert_state") ? it.kv.alert_state : "");
@@ -1540,14 +2438,15 @@
     setEnabled(ui.wpDistance, wpEnabled && !!wpDistanceKey);
     setEnabled(ui.wpName, wpEnabled && kvHas(it, "wpname"));
     setEnabled(ui.advEvent, wpEnabled && kvHas(it, "adv_event"));
-    setEnabled(ui.navWp, wpEnabled && kvHas(it, "nav_wp"));
+    setEnabled(ui.navWp, wpEnabled && (kvHas(it, "nav_wp") || kvHas(it, "attrib")));
 
     setValueIf(ui.wpList, kvHas(it, "waypoint_id") ? it.kv.waypoint_id : "");
     setValueIf(ui.wpNumber, kvHas(it, "wpnumber") ? it.kv.wpnumber : "");
     setValueIf(ui.wpDistance, wpDistanceKey ? it.kv[wpDistanceKey] : "");
     setValueIf(ui.wpName, kvHas(it, "wpname") ? it.kv.wpname : "");
     setValueIf(ui.advEvent, kvHas(it, "adv_event") ? it.kv.adv_event : "");
-    setValueIf(ui.navWp, kvHas(it, "nav_wp") ? String(it.kv.nav_wp) === "1" : false);
+    const navFromAttrib = (attribValue & 4194304) !== 0;
+    setValueIf(ui.navWp, kvHas(it, "nav_wp") ? String(it.kv.nav_wp) === "1" : navFromAttrib);
 
     renderAIAttrs(it);
   }
@@ -1559,11 +2458,12 @@
 
     // Sub-Type (DEF)
     if (state.defLoaded && kvHas(it, "type_id") && !ui.subtype.disabled){
-      const newTypeId = ui.subtype.value;
-      if (newTypeId){
-        it.kv.type_id = String(newTypeId);
+      const selectedDefId = ui.subtype.value;
+      if (selectedDefId){
+        const misTypeId = toMisTypeIdFromDefId(selectedDefId);
+        it.kv.type_id = String(misTypeId || selectedDefId);
         // Atualiza name para o nome do DEF (o editor oficial mostra isso)
-        const def = state.defsById.get(String(newTypeId));
+        const def = state.defsById.get(String(selectedDefId));
         if (def && kvHas(it, "name")) it.kv.name = `"${def.name}"`.replace(/^"|"$/g,"");
         if (def && kvHas(it, "iai_name")) it.kv.iai_name = `"${def.name}"`.replace(/^"|"$/g,"");
         // Se não tem name/iai_name, não inventa chave nova (mantém regra: só mexe se existir)
@@ -1602,8 +2502,11 @@
     const activeAreaKey = kvFindKey(it, ["active_area", "attention"]);
     if (activeAreaKey) it.kv[activeAreaKey] = String(parseFloatSafe(ui.activeArea.value));
     if (kvHas(it, "ai_textfile")) it.kv.ai_textfile = ui.aiTextfile.value;
-    if (kvHas(it, "group_id")) it.kv.group_id = ui.group.value;
-    if (kvHas(it, "team")) it.kv.team = ui.team.value;
+    if (!ui.group.disabled){
+      if (ui.group.value) it.kv.group_id = ui.group.value;
+      else if (kvHas(it, "group_id")) it.kv.group_id = "";
+    }
+    it.kv.team = ui.team.value;
 
     if (kvHas(it, "waccuracy1")) it.kv.waccuracy1 = String(parseFloatSafe(ui.wacc1.value));
     if (kvHas(it, "waccuracy2")) it.kv.waccuracy2 = String(parseFloatSafe(ui.wacc2.value));
@@ -1623,6 +2526,10 @@
     if (kvHas(it, "wpname")) it.kv.wpname = ui.wpName.value;
     if (kvHas(it, "adv_event")) it.kv.adv_event = ui.advEvent.value;
     if (kvHas(it, "nav_wp")) it.kv.nav_wp = ui.navWp.checked ? "1" : "0";
+
+    updateAttribFromCoreControls(it);
+
+    refreshLiveMisWindow();
 
     const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
     if (sec) sec.kv = { ...it.kv };
@@ -1699,6 +2606,7 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && state.modalOpen) closeModalCancel();
     if (e.key === "Escape" && state.sectionEditorOpen) closeSectionEditor();
+    if (e.key === "Escape" && state.liveMisOpen) closeLiveMisWindow();
   });
 
   ui.dupBtn.addEventListener("click", () => {
@@ -1726,17 +2634,20 @@
     statusEl.textContent = `Duplicado: #${it.id} -> #${copy.id}`;
   });
 
-  ui.delBtn.addEventListener("click", () => {
+  function deleteSelectedItem(){
     const it = getSelected();
     if (!it) return;
     state.items = state.items.filter(x => x.id !== it.id);
     state.sectionBlocks = state.sectionBlocks.filter(s => !(s.kind === "item" && s.start === it.start));
     state.selectedId = null;
-    closeModalOk();
+    closeItemContextMenu();
+    if (state.modalOpen) closeModalOk();
     renderList();
     draw();
     statusEl.textContent = `Apagado: #${it.id}`;
-  });
+  }
+
+  ui.delBtn.addEventListener("click", deleteSelectedItem);
 
   exportBtn.addEventListener("click", () => {
     const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
@@ -1748,24 +2659,263 @@
 
   sectionCloseBtn.addEventListener("click", closeSectionEditor);
   sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
-  sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; renderSectionList(); });
+  liveMisCloseBtn.addEventListener("click", closeLiveMisWindow);
+  liveMisOverlay.addEventListener("mousedown", (e) => { if (e.target === liveMisOverlay) closeLiveMisWindow(); });
+  liveMisSearch.addEventListener("input", () => findInLiveMis(false, false));
+  liveMisSearch.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); findInLiveMis(true, true); } });
+  sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; sectionAddBtn.textContent = state.sectionKind === "group" ? "Editar" : "Adicionar bloco"; updateSectionEditorMode(); renderSectionList(); });
   sectionSearch.addEventListener("input", renderSectionList);
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
   sectionAddBtn.addEventListener("click", addSectionBlock);
+  [giWaterEnabled, giFogDistEnabled, giFogColorEnabled, giNvgAvailable].forEach(el => {
+    if (el) el.addEventListener("change", updateGeneralInfoEnables);
+  });
+  wpSelectMarkersBtn.addEventListener("click", () => { statusEl.textContent = "Select Markers ainda não está implementado."; });
+  wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
+  wpOkBtn.addEventListener("click", () => { saveCurrentWaypoint(); closeSectionEditor(); });
 
-  document.getElementById("openGeneralBtn").addEventListener("click", () => openSectionEditor("general_information"));
-  document.getElementById("openBriefingBtn").addEventListener("click", () => openSectionEditor("briefing"));
-  document.getElementById("openGroupsBtn").addEventListener("click", () => openSectionEditor("group"));
-  document.getElementById("openAreasBtn").addEventListener("click", () => openSectionEditor("areatrig"));
-  document.getElementById("openWaypointsBtn").addEventListener("click", () => openSectionEditor("waypoint"));
-  document.getElementById("openEventsBtn").addEventListener("click", () => openSectionEditor("event"));
-  document.getElementById("openLayersBtn").addEventListener("click", () => openSectionEditor("layer"));
-  document.getElementById("openWeaponsBtn").addEventListener("click", () => openSectionEditor("weapon_availability"));
-  document.getElementById("openGlobalReplaceBtn").addEventListener("click", runGlobalReplace);
+  function closeItemContextMenu(){
+    state.contextMenuOpen = false;
+    state.contextTargetId = null;
+    itemContextMenu.classList.remove("open");
+    itemContextMenu.setAttribute("aria-hidden", "true");
+  }
 
+  function showItemContextMenu(clientX, clientY){
+    const selected = getSelected();
+    if (!selected) return;
+    state.contextMenuOpen = true;
+    state.contextTargetId = selected.id;
+
+    const menuItems = [
+      { label: "Edit Item Attributes", action: () => openModal() },
+      { separator: true },
+      { label: "Cut", action: () => showNotImplemented("Cut") },
+      { label: "Copy", action: () => showNotImplemented("Copy") },
+      { label: "Paste", action: () => showNotImplemented("Paste") },
+      { separator: true },
+      { label: "Move", action: () => statusEl.textContent = "Use Shift + arrastar para mover o item selecionado." },
+      { label: "Numeric Move", action: () => showNotImplemented("Numeric Move") },
+      { label: "Group Rotate", action: () => showNotImplemented("Group Rotate") },
+      { label: "Snap to Grid", action: () => showNotImplemented("Snap to Grid") },
+      { separator: true },
+      { label: "Hide Selected", action: () => showNotImplemented("Hide Selected") },
+      { label: "Hide Unselected", action: () => showNotImplemented("Hide Unselected") },
+      { label: "Unhide All", action: () => showNotImplemented("Unhide All") },
+      { separator: true },
+      { label: "Select This Type", action: () => showNotImplemented("Select This Type") },
+      { label: "Select This Group", action: () => showNotImplemented("Select This Group") },
+      { label: "Select This BGRP", action: () => showNotImplemented("Select This BGRP") },
+      { label: "Select This WPLIST", action: () => showNotImplemented("Select This WPLIST") },
+      { separator: true },
+      { label: "Deselect This Type", action: () => showNotImplemented("Deselect This Type") },
+      { separator: true },
+      { label: "Snap to Terrain", action: () => showNotImplemented("Snap to Terrain") },
+      { separator: true },
+      { label: "Delete", action: () => deleteSelectedItem() }
+    ];
+
+    itemContextMenu.innerHTML = "";
+    for (const entry of menuItems){
+      if (entry.separator){
+        const sep = document.createElement("div");
+        sep.className = "menuSep";
+        itemContextMenu.appendChild(sep);
+        continue;
+      }
+      const btn = document.createElement("button");
+      btn.className = "menuItemBtn";
+      btn.textContent = entry.label;
+      btn.addEventListener("click", () => {
+        closeItemContextMenu();
+        entry.action();
+      });
+      itemContextMenu.appendChild(btn);
+    }
+
+    const host = cv.parentElement.getBoundingClientRect();
+    itemContextMenu.style.left = `${Math.max(4, clientX - host.left)}px`;
+    itemContextMenu.style.top = `${Math.max(4, clientY - host.top)}px`;
+    itemContextMenu.classList.add("open");
+    itemContextMenu.setAttribute("aria-hidden", "false");
+
+    const menuRect = itemContextMenu.getBoundingClientRect();
+    let x = clientX - host.left;
+    let y = clientY - host.top;
+    if (menuRect.right > host.right - 4) x -= (menuRect.right - host.right + 4);
+    if (menuRect.bottom > host.bottom - 4) y -= (menuRect.bottom - host.bottom + 4);
+    itemContextMenu.style.left = `${Math.max(4, x)}px`;
+    itemContextMenu.style.top = `${Math.max(4, y)}px`;
+  }
 
   const menuBar = document.getElementById("menuBar");
+
+  function showNotImplemented(label){
+    statusEl.textContent = `Comando '${label}' ainda não está implementado no editor web.`;
+  }
+
+  const menuHandlers = {
+    "file.clear": () => {
+      state.rawText = "";
+      state.items = [];
+      state.sectionBlocks = [];
+      state.selectedId = null;
+      state.filename = "";
+      exportBtn.disabled = true;
+      renderList();
+      draw();
+      statusEl.textContent = "Mapa limpo.";
+    },
+    "file.open": () => fileMisEl.click(),
+    "file.saveAs": () => {
+      if (!state.rawText) return showNotImplemented("Save As");
+      const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
+      downloadText(state.filename || "edited.mis", out);
+      statusEl.textContent = "Arquivo salvo.";
+    },
+    "edit.briefing": () => openSectionEditor("briefing"),
+    "edit.generalInfo": () => openSectionEditor("general_information"),
+    "edit.groups": () => openSectionEditor("group"),
+    "edit.areaTriggers": () => openSectionEditor("areatrig"),
+    "edit.waypoints": () => openSectionEditor("waypoint"),
+    "edit.events": () => openSectionEditor("event"),
+    "edit.layerNames": () => openSectionEditor("layer"),
+    "edit.globalReplace": runGlobalReplace,
+    "edit.weaponLoadouts": () => openSectionEditor("weapon_availability"),
+    "mis.liveChanges": openLiveMisWindow
+  };
+
+  const menuTree = [
+    {
+      label: "File",
+      children: [
+        { label: "Clear", command: "file.clear" },
+        { label: "Open", command: "file.open" },
+        { label: "Save As", command: "file.saveAs" },
+        { label: "Export Binary Mission", command: "file.exportBinaryMission" },
+        { label: "Save and Export", command: "file.saveAndExport" },
+        { label: "Save and Export w/Stats", command: "file.saveAndExportWithStats" },
+        { separator: true },
+        { label: "Exit", command: "app.exit" }
+      ]
+    },
+    {
+      label: "Edit",
+      children: [
+        { label: "Redo", command: "edit.redo" },
+        { label: "Undo", command: "edit.undo" },
+        { separator: true },
+        { label: "Cut", command: "edit.cut" },
+        { label: "Copy", command: "edit.copy" },
+        { label: "Paste", command: "edit.paste" },
+        { label: "Delete", command: "edit.delete" },
+        { separator: true },
+        { label: "Insert Mode", command: "edit.insertMode" },
+        { separator: true },
+        { label: "Briefing", command: "edit.briefing" },
+        { label: "General Information", command: "edit.generalInfo" },
+        { label: "Groups", command: "edit.groups" },
+        { label: "Area Triggers", command: "edit.areaTriggers" },
+        { label: "Waypoints", command: "edit.waypoints" },
+        { label: "Player Waypoint Names", command: "edit.playerWaypointNames" },
+        { label: "Events", command: "edit.events" },
+        { label: "Layer Names", command: "edit.layerNames" },
+        { label: "Global Replace", command: "edit.globalReplace" },
+        { label: "Weapon Loadouts", command: "edit.weaponLoadouts" }
+      ]
+    },
+    {
+      label: "View",
+      children: [
+        { label: "View by Layer", command: "view.byLayer" },
+        { label: "View by Type", command: "view.byType" },
+        { label: "View by Side", command: "view.bySide" },
+        { separator: true },
+        { label: "Select Blink Group", command: "view.selectBlinkGroup" },
+        { label: "Select by SSN", command: "view.selectBySSN" }
+      ]
+    },
+    {
+      label: "Tools",
+      children: [
+        { label: "Tile Tool", command: "tools.tileTool" },
+        { label: "Run Text Tool", command: "tools.textTool" },
+        { separator: true },
+        { label: "Integrity Check", command: "tools.integrityCheck" },
+        { label: "Wrap Objects", command: "tools.wrapObjects" },
+        { label: "Cleanup SSNs", command: "tools.cleanupSSNs" }
+      ]
+    },
+    {
+      label: "Page",
+      children: [
+        { label: "Page 1", command: "page.one" },
+        { label: "Page 2", command: "page.two" }
+      ]
+    },
+    {
+      label: "Info",
+      children: [
+        { label: "About", command: "info.about" }
+      ]
+    },
+    {
+      label: "MIS Live Changes",
+      directCommand: "mis.liveChanges"
+    }
+  ];
+
+  function renderMenuBar(){
+    menuBar.innerHTML = "";
+    for (const rootDef of menuTree){
+      const root = document.createElement("div");
+      root.className = "menuRoot";
+      root.dataset.menu = rootDef.label.toLowerCase();
+
+      const btn = document.createElement("button");
+      btn.className = "menuRootBtn";
+      btn.textContent = rootDef.label;
+      root.appendChild(btn);
+
+      if (rootDef.directCommand){
+        btn.addEventListener("click", () => {
+          const handler = menuHandlers[rootDef.directCommand];
+          if (handler) handler();
+          else showNotImplemented(rootDef.label);
+        });
+        menuBar.appendChild(root);
+        continue;
+      }
+
+      const dropdown = document.createElement("div");
+      dropdown.className = "menuDropdown";
+
+      for (const child of rootDef.children){
+        if (child.separator){
+          const sep = document.createElement("div");
+          sep.className = "menuSep";
+          dropdown.appendChild(sep);
+          continue;
+        }
+        const itemBtn = document.createElement("button");
+        itemBtn.className = "menuItemBtn";
+        itemBtn.textContent = child.label;
+        const handler = menuHandlers[child.command];
+        itemBtn.addEventListener("click", () => {
+          closeMenus();
+          if (handler) handler();
+          else showNotImplemented(child.label);
+        });
+        dropdown.appendChild(itemBtn);
+      }
+
+      root.appendChild(dropdown);
+      menuBar.appendChild(root);
+    }
+  }
+
+  renderMenuBar();
   const menuRoots = Array.from(menuBar.querySelectorAll(".menuRoot"));
 
   function closeMenus(){
@@ -1784,11 +2934,7 @@
 
   document.addEventListener("click", (e) => {
     if (!menuBar.contains(e.target)) closeMenus();
-  });
-
-  document.getElementById("menuLoadMisBtn").addEventListener("click", () => {
-    closeMenus();
-    fileMisEl.click();
+    if (!itemContextMenu.contains(e.target)) closeItemContextMenu();
   });
 
   // File inputs
@@ -1809,12 +2955,14 @@
 
     buildLayerOptions();
     buildWaypointList();
+    buildGroupOptions();
     buildTypeFilterOptions();
 
     statusEl.textContent = `${f.name} carregado. items: ${state.items.length}`;
     fitView();
     renderList();
     draw();
+    refreshLiveMisWindow();
   });
   // Canvas
   const cv = document.getElementById("cv");
@@ -1913,6 +3061,8 @@
 
   cv.addEventListener("mousedown", (e) => {
     if (state.modalOpen) return;
+    closeItemContextMenu();
+    if (e.button !== 0) return;
 
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
@@ -1927,6 +3077,24 @@
     }
     state.draggingPan = !state.draggingItem;
     state.lastMouse = { sx, sy };
+  });
+
+  cv.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (state.modalOpen) return;
+
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const picked = pickItemAt(sx, sy);
+
+    if (!picked){
+      closeItemContextMenu();
+      return;
+    }
+
+    if (state.selectedId !== picked.id) selectById(picked.id);
+    showItemContextMenu(e.clientX, e.clientY);
   });
 
   cv.addEventListener("dblclick", (e) => {
