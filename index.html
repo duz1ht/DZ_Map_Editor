@@ -136,6 +136,36 @@
       display:grid;
       gap:6px;
     }
+    #misRealtimePanel{
+      margin-top:12px;
+      border:1px solid var(--line);
+      background:#0f1117;
+      color:#d7deff;
+      border-radius:8px;
+      padding:8px;
+      min-height:360px;
+      display:grid;
+      grid-template-rows:auto 1fr;
+      gap:8px;
+    }
+    #misRealtimeTitle{
+      font-size:12px;
+      color:#c7ceeb;
+      font-weight:600;
+      letter-spacing:.2px;
+    }
+    #misRealtimeConsole{
+      margin:0;
+      overflow:auto;
+      white-space:pre;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:11px;
+      line-height:1.35;
+      background:#0b0d12;
+      border:1px solid #2a2f3d;
+      border-radius:6px;
+      padding:8px;
+    }
     .itemCard{
       padding:8px;
       border:1px solid var(--line);
@@ -510,8 +540,10 @@
       <button id="exportBtn" disabled>Exportar .mis</button>
     </div>
 
-    <h3 style="margin:12px 0 6px 0; font-size:14px;">Itens</h3>
-    <div id="list"></div>
+    <div id="misRealtimePanel">
+      <div id="misRealtimeTitle">MIS Realtime Console (live)</div>
+      <pre id="misRealtimeConsole">// Open a .mis file to track live code changes here.</pre>
+    </div>
   </div>
 
   <div id="main">
@@ -933,6 +965,7 @@
   const searchEl = document.getElementById("search");
   const typeFilterEl = document.getElementById("typeFilter");
   const listEl = document.getElementById("list");
+  const misRealtimeConsoleEl = document.getElementById("misRealtimeConsole");
   const exportBtn = document.getElementById("exportBtn");
   const statusEl = document.getElementById("status");
 
@@ -1763,6 +1796,7 @@
     if (colorVal > 0){ sec.kv.color = String(colorVal); lines.push(`  color ${colorVal}`); }
     if (attribVal > 0){ sec.kv.attrib = String(attribVal); lines.push(`  attrib ${attribVal}`); }
     sec.lines = lines;
+    refreshLiveMisWindow();
   }
 
   function buildWaypointColorOptions(){
@@ -2028,6 +2062,9 @@
 
   function refreshLiveMisWindow(){
     state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
+    if (misRealtimeConsoleEl){
+      misRealtimeConsoleEl.textContent = state.liveMisRawText || "// No MIS content available yet.";
+    }
     if (!state.liveMisOpen) return;
     renderLiveMisHighlighted();
   }
@@ -2198,6 +2235,7 @@
 
       buildGroupOptions();
       renderSectionList();
+      refreshLiveMisWindow();
       if (state.modalOpen) renderItemWindow();
       return;
     }
@@ -2234,6 +2272,7 @@
     if (sec.kind === 'general_information') syncWeaponLoadoutsFromGeneral(sec);
 
     renderSectionList();
+    refreshLiveMisWindow();
   }
 
   function deleteSectionBlock(){
@@ -2380,6 +2419,7 @@
   }
 
   function renderList(){
+    if (!listEl) return;
     const items = getFilteredItems();
     listEl.innerHTML = items.slice(0, 1200).map(it => {
       const active = it.id === state.selectedId ? "active" : "";
@@ -2716,6 +2756,7 @@
 
     renderList();
     draw();
+    refreshLiveMisWindow();
   }
 
   function closeModalOk(){
@@ -2727,6 +2768,7 @@
 
     renderList();
     draw();
+    refreshLiveMisWindow();
   }
 
   modalOverlay.addEventListener("mousedown", (e) => {
@@ -2764,6 +2806,7 @@
     }
     selectById(copy.id);
     renderItemWindow();
+    refreshLiveMisWindow();
     statusEl.textContent = `Duplicado: #${it.id} -> #${copy.id}`;
   });
 
@@ -2777,6 +2820,7 @@
     if (state.modalOpen) closeModalOk();
     renderList();
     draw();
+    refreshLiveMisWindow();
     statusEl.textContent = `Apagado: #${it.id}`;
   }
 
@@ -3260,6 +3304,7 @@
         it.kv.position = `${it.x} ${it.y} ${it.z}`;
         renderList();
         draw();
+        refreshLiveMisWindow();
       }
     } else if (state.draggingPan){
       state.view.ox += dx;
