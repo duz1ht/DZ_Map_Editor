@@ -608,7 +608,7 @@
                     </div>
                     <div>
                       <div class="inlineLabel">Group</div>
-                      <input id="ui_group" class="midInput" />
+                      <select id="ui_group" class="midInput"></select>
                     </div>
                   </div>
 
@@ -616,10 +616,11 @@
                     <div>
                       <div class="inlineLabel">Team</div>
                       <select id="ui_team">
-                        <option value="">None</option>
                         <option value="0">Neutral (Green)</option>
-                        <option value="1">Blue</option>
-                        <option value="2">Red</option>
+                        <option value="1">Good (Blue)</option>
+                        <option value="2">Evil (Red)</option>
+                        <option value="3">Yellow</option>
+                        <option value="4">Violet</option>
                       </select>
                     </div>
                     <div>
@@ -752,6 +753,7 @@
     sectionEditorOpen: false,
     sectionKind: "general_information",
     sectionSelectedId: null,
+    groupSelectedNumber: 1,
 
     contextMenuOpen: false,
     contextTargetId: null,
@@ -1047,6 +1049,46 @@
     }).join("");
   }
 
+
+  function parseGroupNumber(sec){
+    if (!sec || sec.kind !== "group") return null;
+    const fromLabel = Number((sec.label || "").trim());
+    if (Number.isInteger(fromLabel) && fromLabel >= 1 && fromLabel <= 63) return fromLabel;
+    const m = String(sec.beginLine || "").trim().match(/^begin\s+group\s+(\d+)$/i);
+    if (m) return Number(m[1]);
+    return null;
+  }
+
+  function getGroupSectionByNumber(n){
+    return state.sectionBlocks.find(s => s.kind === "group" && parseGroupNumber(s) === n) || null;
+  }
+
+  function getGroupDescription(sec){
+    if (!sec) return "";
+    if (sec.kv && sec.kv.description) return String(sec.kv.description);
+    return "";
+  }
+
+  function buildGroupOptions(){
+    const existing = new Set();
+    for (const sec of state.sectionBlocks){
+      const n = parseGroupNumber(sec);
+      if (n) existing.add(n);
+    }
+    for (const it of state.items){
+      const gid = Number(it.kv?.group_id || "");
+      if (Number.isInteger(gid) && gid >= 1 && gid <= 63) existing.add(gid);
+    }
+    const vals = Array.from(existing).sort((a,b)=>a-b);
+    ui.group.innerHTML = `<option value="">None</option>` + vals.map(n => {
+      const sec = getGroupSectionByNumber(n);
+      const desc = getGroupDescription(sec);
+      const label = `${n} - ${desc || ""}`;
+      return `<option value="${escapeHtml(String(n))}">${escapeHtml(label)}</option>`;
+    }).join("");
+    if (!vals.length) ui.group.innerHTML = `<option value="">None</option>`;
+  }
+
   function buildTypeFilterOptions(){
     // Filtro "type" da esquerda:
     // se DEF carregado: usa types do DEF (object/marker/vehicle...)
@@ -1206,6 +1248,11 @@
   }
 
   function sectionCardLabel(sec){
+    if (sec.kind === "group"){
+      const n = parseGroupNumber(sec) || sec.label || sec.id;
+      const desc = getGroupDescription(sec);
+      return `${n} - ${desc || ""}`;
+    }
     const id = sec.label || sec.kv.id || sec.kv.name || sec.kv.description || sec.kv.title || sec.id;
     return `${sec.kind} ${id}`;
   }
@@ -1215,6 +1262,7 @@
     state.sectionKind = kind;
     state.sectionSelectedId = null;
     sectionKindSelect.value = kind;
+    sectionAddBtn.textContent = kind === "group" ? "Editar" : "Adicionar bloco";
     sectionOverlay.classList.add("open");
     renderSectionList();
   }
@@ -1227,6 +1275,24 @@
   function renderSectionList(){
     const kind = state.sectionKind;
     const q = (sectionSearch.value || "").toLowerCase().trim();
+
+    if (kind === "group"){
+      sectionDeleteBtn.disabled = true;
+      const cards = [];
+      for (let n=1; n<=63; n++){
+        const sec = getGroupSectionByNumber(n);
+        const desc = getGroupDescription(sec);
+        const label = `${n} - ${desc || ""}`;
+        if (!q || label.toLowerCase().includes(q)) cards.push({ n, label });
+      }
+      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.groupSelectedNumber===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("") || `<div class="hint">Nenhum grupo.</div>`;
+      sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
+      if (!state.groupSelectedNumber) state.groupSelectedNumber = 1;
+      selectSectionBlock(state.groupSelectedNumber);
+      return;
+    }
+
+    sectionDeleteBtn.disabled = false;
     const secs = getSectionsByKind(kind).filter(s => !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
     sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
     sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
@@ -1234,6 +1300,15 @@
   }
 
   function selectSectionBlock(id){
+    if (state.sectionKind === "group"){
+      state.groupSelectedNumber = Math.max(1, Math.min(63, Number(id) || 1));
+      sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===state.groupSelectedNumber));
+      const sec = getGroupSectionByNumber(state.groupSelectedNumber);
+      sectionMeta.textContent = `begin group ${state.groupSelectedNumber}`;
+      sectionText.value = sec ? sec.lines.join('\n') : `  description ""`;
+      return;
+    }
+
     state.sectionSelectedId = id;
     const sec = state.sectionBlocks.find(s => s.id === id);
     sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===id));
@@ -1243,7 +1318,7 @@
       return;
     }
     sectionMeta.textContent = `${sec.beginLine}`;
-    sectionText.value = sec.lines.join('\\n');
+    sectionText.value = sec.lines.join('\n');
   }
 
   function parseBlockLinesToKV(lines){
@@ -1259,6 +1334,39 @@
   }
 
   function applySectionBlock(){
+    if (state.sectionKind === 'group'){
+      const n = state.groupSelectedNumber || 1;
+      let sec = getGroupSectionByNumber(n);
+      const lines = sectionText.value.replace(/\r\n/g,'\n').split('\n');
+      const kv = parseBlockLinesToKV(lines);
+      const desc = String(kv.description || '').trim();
+
+      if (!sec){
+        const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
+        sec = {
+          id: nextId,
+          kind: 'group',
+          label: String(n),
+          start: Number.MAX_SAFE_INTEGER - nextId,
+          end: Number.MAX_SAFE_INTEGER - nextId,
+          beginLine: `begin group ${n}`,
+          lines: [],
+          kv: {},
+        };
+        state.sectionBlocks.push(sec);
+      }
+
+      sec.beginLine = `begin group ${n}`;
+      sec.label = String(n);
+      sec.lines = desc ? [`  description "${desc.replace(/"/g,"")}"`] : [];
+      sec.kv = desc ? { description: desc } : {};
+
+      buildGroupOptions();
+      renderSectionList();
+      if (state.modalOpen) renderItemWindow();
+      return;
+    }
+
     const sec = state.sectionBlocks.find(s => s.id === state.sectionSelectedId);
     if (!sec) return;
     sec.lines = sectionText.value.replace(/\r\n/g,'\n').split('\n');
@@ -1287,11 +1395,23 @@
     state.sectionBlocks.splice(idx,1);
     state.sectionSelectedId = null;
     renderSectionList();
+    buildGroupOptions();
     renderList();
     draw();
   }
 
   function addSectionBlock(){
+    if (state.sectionKind === 'group'){
+      const n = state.groupSelectedNumber || 1;
+      const sec = getGroupSectionByNumber(n);
+      const current = sec ? getGroupDescription(sec) : '';
+      const desc = prompt(`Nome do grupo ${n}:`, current);
+      if (desc === null) return;
+      sectionText.value = `  description "${String(desc).replace(/"/g,'')}"`;
+      applySectionBlock();
+      return;
+    }
+
     const kind = state.sectionKind;
     const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
     const sec = {
@@ -1535,6 +1655,7 @@
     setEnabled(ui.aiTextfile, kvHas(it, "ai_textfile"));
     setValueIf(ui.aiTextfile, kvHas(it, "ai_textfile") ? it.kv.ai_textfile : "");
 
+    buildGroupOptions();
     setEnabled(ui.group, kvHas(it, "group_id"));
     setValueIf(ui.group, kvHas(it, "group_id") ? it.kv.group_id : "");
 
@@ -1789,7 +1910,7 @@
 
   sectionCloseBtn.addEventListener("click", closeSectionEditor);
   sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
-  sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; renderSectionList(); });
+  sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; sectionAddBtn.textContent = state.sectionKind === "group" ? "Editar" : "Adicionar bloco"; renderSectionList(); });
   sectionSearch.addEventListener("input", renderSectionList);
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
@@ -2066,6 +2187,7 @@
 
     buildLayerOptions();
     buildWaypointList();
+    buildGroupOptions();
     buildTypeFilterOptions();
 
     statusEl.textContent = `${f.name} carregado. items: ${state.items.length}`;
