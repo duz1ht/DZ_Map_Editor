@@ -1097,24 +1097,25 @@
   ];
 
   const GENERAL_MAP_TYPE_BITS = [
-    { id:"giMapCoop", bit:1 },
-    { id:"giMapDeathmatch", bit:2 },
-    { id:"giMapTeamDeathmatch", bit:4 },
-    { id:"giMapKoth", bit:8 },
-    { id:"giMapTeamKoth", bit:16 },
-    { id:"giMapCtf", bit:32 },
-    { id:"giMapFlagball", bit:64 },
-    { id:"giMapSearchDestroy", bit:128 },
-    { id:"giMapAttackDefend", bit:256 },
+    { id:"giMapCoop", bit:16777216 },
+    { id:"giMapDeathmatch", bit:33554432 },
+    { id:"giMapTeamDeathmatch", bit:536870912 },
+    { id:"giMapKoth", bit:67108864 },
+    { id:"giMapTeamKoth", bit:1073741824 },
+    { id:"giMapCtf", bit:268435456 },
+    { id:"giMapFlagball", bit:134217728 },
+    { id:"giMapSearchDestroy", bit:2147483648 },
+    { id:"giMapAttackDefend", bit:8388608 },
   ];
 
   const GENERAL_ATTRIB_BITS = {
-    rotate180: 512,
-    nvgAvailable: 1024,
-    nvgStartOn: 2048,
-    waterOverride: 4096,
-    fogDistanceOverride: 8192,
-    fogColorOverride: 16384,
+    rotate180: 32,
+    nvgAvailable: 1048576,
+    nvgStartOn: 4194304,
+    waterOverride: 1,
+    fogDistanceOverride: 2,
+    fogColorOverride: 4,
+    weatherOverride: 8,
   };
 
   const GENERAL_KNOWN_ATTRIB_MASK = GENERAL_MAP_TYPE_BITS.reduce((m, f) => (m | f.bit), 0)
@@ -1289,14 +1290,18 @@
   }
 
   function getItemAttribValue(it){
-    const n = Number(it?.kv?.attrib || 0);
+    const n = Number(it?.kv?.bmsi_attributes ?? it?.kv?.attrib ?? 0);
     return Number.isFinite(n) ? Math.trunc(n) : 0;
   }
 
   function setItemAttribValue(it, value){
     const v = Math.max(0, Math.trunc(Number(value) || 0));
-    if (v > 0) it.kv.attrib = String(v);
-    else delete it.kv.attrib;
+    const key = kvHas(it, "bmsi_attributes") ? "bmsi_attributes" : (kvHas(it, "attrib") ? "attrib" : "bmsi_attributes");
+    if (v > 0) it.kv[key] = String(v);
+    else {
+      delete it.kv.bmsi_attributes;
+      delete it.kv.attrib;
+    }
   }
 
   function setAttribBit(it, bit, enabled){
@@ -1923,6 +1928,11 @@
 
       const kv = { ...(it ? it.kv : liveSec.kv) };
       const srcLines = (it ? it.lines : liveSec.lines) || [];
+
+      if (liveSec.kind === "general_information"){
+        kv.num_items = String(items.length);
+        kv.num_events = String(sectionBlocks.filter(s => s.kind === "event").length);
+      }
 
       if (it){
         if ("position" in kv) kv.position = `${it.x} ${it.y} ${it.z}`;
@@ -2648,19 +2658,20 @@
 
     // Waypoints
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
-    const wpEnabled = kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "wpname") || kvHas(it, "adv_event") || kvHas(it, "nav_wp") || !!wpDistanceKey;
+    const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
+    const wpEnabled = kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "wpname") || !!wpAdvKey || kvHas(it, "nav_wp") || !!wpDistanceKey;
     setEnabled(ui.wpList, wpEnabled && kvHas(it, "waypoint_id"));
     setEnabled(ui.wpNumber, wpEnabled && kvHas(it, "wpnumber"));
     setEnabled(ui.wpDistance, wpEnabled && !!wpDistanceKey);
     setEnabled(ui.wpName, wpEnabled && kvHas(it, "wpname"));
-    setEnabled(ui.advEvent, wpEnabled && kvHas(it, "adv_event"));
+    setEnabled(ui.advEvent, wpEnabled && !!wpAdvKey);
     setEnabled(ui.navWp, wpEnabled && (kvHas(it, "nav_wp") || kvHas(it, "attrib")));
 
     setValueIf(ui.wpList, kvHas(it, "waypoint_id") ? it.kv.waypoint_id : "");
     setValueIf(ui.wpNumber, kvHas(it, "wpnumber") ? it.kv.wpnumber : "");
     setValueIf(ui.wpDistance, wpDistanceKey ? it.kv[wpDistanceKey] : "");
     setValueIf(ui.wpName, kvHas(it, "wpname") ? it.kv.wpname : "");
-    setValueIf(ui.advEvent, kvHas(it, "adv_event") ? it.kv.adv_event : "");
+    setValueIf(ui.advEvent, wpAdvKey ? it.kv[wpAdvKey] : "");
     const navFromAttrib = (attribValue & 4194304) !== 0;
     setValueIf(ui.navWp, kvHas(it, "nav_wp") ? String(it.kv.nav_wp) === "1" : navFromAttrib);
 
@@ -2740,7 +2751,8 @@
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
     if (kvHas(it, "wpname")) it.kv.wpname = ui.wpName.value;
-    if (kvHas(it, "adv_event")) it.kv.adv_event = ui.advEvent.value;
+    const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
+    if (wpAdvKey) it.kv[wpAdvKey] = ui.advEvent.value;
     if (kvHas(it, "nav_wp")) it.kv.nav_wp = ui.navWp.checked ? "1" : "0";
 
     updateAttribFromCoreControls(it);
