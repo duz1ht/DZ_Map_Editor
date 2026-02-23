@@ -278,19 +278,115 @@
     .tinyInput{ width:44px; }
     .narrowInput{ max-width:72px; }
     .midInput{ max-width:140px; }
+    .menuBar{
+      display:flex;
+      gap:8px;
+      margin-bottom:10px;
+      position:relative;
+      z-index:5;
+    }
+    .menuRoot{ position:relative; }
+    .menuRootBtn{
+      border:1px solid #9b9b9b;
+      border-radius:0;
+      padding:4px 10px;
+      min-width:72px;
+      text-align:left;
+      background:#f8f8f8;
+    }
+    .menuDropdown{
+      position:absolute;
+      top:100%;
+      left:0;
+      min-width:210px;
+      background:#fff;
+      border:1px solid #9b9b9b;
+      box-shadow:0 2px 10px rgba(0,0,0,.12);
+      display:none;
+      padding:4px 0;
+    }
+    .menuRoot.open .menuDropdown{ display:block; }
+    .menuItemBtn{
+      width:100%;
+      border:0;
+      border-radius:0;
+      background:transparent;
+      text-align:left;
+      padding:6px 10px;
+      font-size:12px;
+    }
+    .menuItemBtn:hover{ background:#eef2ff; }
+
+    #sectionOverlay{
+      position:absolute;
+      inset:0;
+      background:var(--overlay);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:60;
+      padding:18px;
+    }
+    #sectionOverlay.open{ display:flex; }
+    #sectionWindow{
+      width:min(1000px, 100%);
+      max-height:min(760px, 100%);
+      background:#e5e5e5;
+      border:1px solid #999;
+      padding:10px;
+      display:grid;
+      gap:8px;
+    }
+    #sectionBody{
+      display:grid;
+      grid-template-columns: 290px 1fr;
+      gap:10px;
+      min-height:520px;
+    }
+    #sectionList{ overflow:auto; border:1px solid #aaa; background:#fff; padding:6px; }
+    .secCard{ border:1px solid #ccc; padding:6px; margin-bottom:5px; cursor:pointer; font-size:12px; background:#fff; }
+    .secCard.active{ border-color:#5865f2; box-shadow:0 0 0 1px rgba(88,101,242,.25); }
+    #sectionEditor{ display:grid; grid-template-rows:auto auto 1fr auto; gap:6px; }
+    #sectionMeta{ font-size:12px; color:#444; }
+    #sectionText{ width:100%; height:100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+    #sectionTopControls{ display:flex; gap:8px; flex-wrap:wrap; }
+    #sectionTopControls select, #sectionTopControls input{ max-width:220px; }
   </style>
 </head>
 
 <body>
   <div id="sidebar">
+    <div class="menuBar" id="menuBar">
+      <div class="menuRoot" data-menu="file">
+        <button class="menuRootBtn" id="fileMenuBtn">File</button>
+        <div class="menuDropdown">
+          <button class="menuItemBtn" id="menuLoadMisBtn">Load map .mis</button>
+        </div>
+      </div>
+
+      <div class="menuRoot" data-menu="edit">
+        <button class="menuRootBtn" id="editMenuBtn">Edit</button>
+        <div class="menuDropdown">
+          <button class="menuItemBtn" id="openGeneralBtn">General Information</button>
+          <button class="menuItemBtn" id="openBriefingBtn">Briefing</button>
+          <button class="menuItemBtn" id="openGroupsBtn">Groups</button>
+          <button class="menuItemBtn" id="openAreasBtn">Area Triggers</button>
+          <button class="menuItemBtn" id="openWaypointsBtn">Waypoints</button>
+          <button class="menuItemBtn" id="openEventsBtn">Events</button>
+          <button class="menuItemBtn" id="openLayersBtn">Layer Names</button>
+          <button class="menuItemBtn" id="openWeaponsBtn">Weapon Loadouts</button>
+          <button class="menuItemBtn" id="openGlobalReplaceBtn">Global Replace</button>
+        </div>
+      </div>
+    </div>
+
+    <input id="fileMis" type="file" accept=".mis,.txt" style="display:none;" />
+
     <div class="hint">
       Controles: Zoom <span class="kbd">roda</span> Pan <span class="kbd">arrastar</span> Selecionar <span class="kbd">clique</span> Mover item <span class="kbd">Shift</span> + arrastar
       <br>Duplo clique no item para abrir Item Attributes.
     </div>
 
-    <div class="row" style="margin-top:10px;">
-      <input id="fileMis" type="file" accept=".mis,.txt" />
-    </div>
 <div class="hint" id="defStatus" style="margin-top:6px;">Catálogo de itens carregado (ITEMS.DEF embutido).</div>
 
     <div class="row" style="margin-top:10px;">
@@ -318,6 +414,35 @@
 
     <div id="canvasWrap">
       <canvas id="cv"></canvas>
+
+      <div id="sectionOverlay" aria-hidden="true">
+        <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="Mission Section Editor">
+          <div class="windowTitle">Mission Section Editor <span class="spacer"></span><button class="xbtn" id="sectionCloseBtn">X</button></div>
+          <div id="sectionTopControls">
+            <select id="sectionKindSelect">
+              <option value="general_information">General Information</option>
+              <option value="briefing">Briefing</option>
+              <option value="group">Groups</option>
+              <option value="areatrig">Area Triggers</option>
+              <option value="waypoint">Waypoints</option>
+              <option value="event">Events</option>
+              <option value="layer">Layer Names</option>
+              <option value="weapon_availability">Weapon Loadouts</option>
+            </select>
+            <input id="sectionSearch" placeholder="filtrar por id/texto" />
+            <button id="sectionAddBtn">Adicionar bloco</button>
+          </div>
+          <div id="sectionBody">
+            <div id="sectionList"></div>
+            <div id="sectionEditor">
+              <div id="sectionMeta">Selecione um bloco.</div>
+              <div class="hint">Edite o conteúdo interno do bloco (linhas entre begin/end). Uma linha por chave/valor.</div>
+              <textarea id="sectionText"></textarea>
+              <div class="btnRow"><button id="sectionDeleteBtn">Excluir bloco</button><button id="sectionApplyBtn">Aplicar bloco</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div id="modalOverlay" aria-hidden="true">
         <div id="modalWindow" role="dialog" aria-modal="true" aria-label="Item Attributes">
@@ -603,6 +728,11 @@
     defsById: new Map(),     // type_id -> def
     defsSorted: [],          // array defs
     defTypes: new Set(),     // marker/object/vehicle/building/decoration etc
+
+    sectionBlocks: [],
+    sectionEditorOpen: false,
+    sectionKind: "general_information",
+    sectionSelectedId: null,
   };
 
   // UI refs
@@ -613,6 +743,17 @@
   const listEl = document.getElementById("list");
   const exportBtn = document.getElementById("exportBtn");
   const statusEl = document.getElementById("status");
+
+  const sectionOverlay = document.getElementById("sectionOverlay");
+  const sectionCloseBtn = document.getElementById("sectionCloseBtn");
+  const sectionKindSelect = document.getElementById("sectionKindSelect");
+  const sectionSearch = document.getElementById("sectionSearch");
+  const sectionList = document.getElementById("sectionList");
+  const sectionMeta = document.getElementById("sectionMeta");
+  const sectionText = document.getElementById("sectionText");
+  const sectionApplyBtn = document.getElementById("sectionApplyBtn");
+  const sectionDeleteBtn = document.getElementById("sectionDeleteBtn");
+  const sectionAddBtn = document.getElementById("sectionAddBtn");
 
   const modalOverlay = document.getElementById("modalOverlay");
   const modalCloseBtn = document.getElementById("modalCloseBtn");
@@ -891,16 +1032,21 @@
   function parseMIS(text){
     const lines = text.replace(/\r\n/g, "\n").split("\n");
     const items = [];
+    const sectionBlocks = [];
 
     let i = 0;
     while (i < lines.length){
       const line = lines[i].trim();
-      if (line === "begin item" || line.startsWith("begin item")){
+      const mBegin = line.match(/^begin\s+([^\s]+)(?:\s+(.+))?$/i);
+      if (mBegin){
+        const kind = mBegin[1].toLowerCase();
+        const label = (mBegin[2] || "").trim();
         const start = i;
         const beginLine = lines[i];
         const blockLines = [];
         i++;
-        while (i < lines.length && lines[i].trim() !== "end item"){
+        const endToken = `end ${kind}`;
+        while (i < lines.length && lines[i].trim().toLowerCase() !== endToken){
           blockLines.push(lines[i]);
           i++;
         }
@@ -918,61 +1064,82 @@
           kv[key] = val;
         }
 
-        let x=0,y=0,z=0;
-        if (kv.position){
-          const p = kv.position.split(/\s+/).map(Number);
-          if (p.length >= 3 && p.every(n => Number.isFinite(n))){
-            x=p[0]; y=p[1]; z=p[2];
+        if (kind === "item"){
+          let x=0,y=0,z=0;
+          if (kv.position){
+            const p = kv.position.split(/\s+/).map(Number);
+            if (p.length >= 3 && p.every(n => Number.isFinite(n))){
+              x=p[0]; y=p[1]; z=p[2];
+            }
           }
+
+          let heading = 0, pitch = 0;
+          if (kv.facing){
+            const f = kv.facing.split(/\s+/).map(Number);
+            if (f.length >= 1 && Number.isFinite(f[0])) heading = f[0];
+            if (f.length >= 2 && Number.isFinite(f[1])) pitch = f[1];
+          } else if (kv.rot){
+            heading = parseFloatSafe(kv.rot);
+          }
+
+          items.push({
+            id: items.length ? items[items.length-1].id + 1 : 1,
+            start, end, beginLine,
+            lines: blockLines.slice(),
+            kv,
+            x,y,z,
+            heading,
+            pitch,
+          });
         }
 
-        let heading = 0, pitch = 0;
-        if (kv.facing){
-          const f = kv.facing.split(/\s+/).map(Number);
-          if (f.length >= 1 && Number.isFinite(f[0])) heading = f[0];
-          if (f.length >= 2 && Number.isFinite(f[1])) pitch = f[1];
-        } else if (kv.rot){
-          heading = parseFloatSafe(kv.rot);
-        }
-
-        items.push({
-          id: items.length ? items[items.length-1].id + 1 : 1,
-          start, end, beginLine,
+        sectionBlocks.push({
+          id: sectionBlocks.length + 1,
+          kind,
+          label,
+          start,
+          end,
+          beginLine,
           lines: blockLines.slice(),
           kv,
-          x,y,z,
-          heading,
-          pitch,
         });
       }
       i++;
     }
 
-    return { lines, items };
+    return { lines, items, sectionBlocks };
   }
 
-  function rebuildMIS(originalText, items){
+  function rebuildMIS(originalText, items, sectionBlocks){
     const out = originalText.replace(/\r\n/g, "\n").split("\n");
 
-    const sorted = items.slice().sort((a,b) => b.start - a.start);
-    for (const it of sorted){
+    const sorted = sectionBlocks.slice().sort((a,b) => b.start - a.start);
+    for (const liveSec of sorted){
       const newBlock = [];
-      newBlock.push(it.beginLine || "begin item");
 
-      const kv = { ...it.kv };
+      let it = null;
+      if (liveSec.kind === "item"){
+        it = items.find(x => x.start === liveSec.start) || null;
+      }
 
-      if ("position" in kv) kv.position = `${it.x} ${it.y} ${it.z}`;
+      newBlock.push(liveSec.beginLine || `begin ${liveSec.kind}`);
 
-      if ("facing" in kv){
-        const parts = String(kv.facing).split(/\s+/).map(Number);
-        const b = (parts.length >= 2 && Number.isFinite(parts[1])) ? parts[1] : (it.pitch ?? 0);
-        kv.facing = `${it.heading} ${b}`;
-      } else if ("rot" in kv){
-        kv.rot = String(it.heading);
+      const kv = { ...(it ? it.kv : liveSec.kv) };
+      const srcLines = (it ? it.lines : liveSec.lines) || [];
+
+      if (it){
+        if ("position" in kv) kv.position = `${it.x} ${it.y} ${it.z}`;
+        if ("facing" in kv){
+          const parts = String(kv.facing).split(/\s+/).map(Number);
+          const b = (parts.length >= 2 && Number.isFinite(parts[1])) ? parts[1] : (it.pitch ?? 0);
+          kv.facing = `${it.heading} ${b}`;
+        } else if ("rot" in kv){
+          kv.rot = String(it.heading);
+        }
       }
 
       const seen = new Set();
-      for (const raw of it.lines){
+      for (const raw of srcLines){
         const t = raw.trim();
         if (!t || t.startsWith("//")) { newBlock.push(raw); continue; }
         const m = t.match(/^([A-Za-z0-9_]+)\s+(.*)$/);
@@ -990,13 +1157,157 @@
         if (!seen.has(k)) newBlock.push(`  ${k} ${v}`);
       }
 
-      newBlock.push("end item");
-      out.splice(it.start, it.end - it.start + 1, ...newBlock);
+      newBlock.push(`end ${liveSec.kind}`);
+      out.splice(liveSec.start, liveSec.end - liveSec.start + 1, ...newBlock);
     }
 
     return out.join("\n");
   }
 
+
+  function getSectionsByKind(kind){
+    return state.sectionBlocks.filter(s => s.kind === kind);
+  }
+
+  function sectionCardLabel(sec){
+    const id = sec.label || sec.kv.id || sec.kv.name || sec.kv.description || sec.kv.title || sec.id;
+    return `${sec.kind} ${id}`;
+  }
+
+  function openSectionEditor(kind){
+    state.sectionEditorOpen = true;
+    state.sectionKind = kind;
+    state.sectionSelectedId = null;
+    sectionKindSelect.value = kind;
+    sectionOverlay.classList.add("open");
+    renderSectionList();
+  }
+
+  function closeSectionEditor(){
+    state.sectionEditorOpen = false;
+    sectionOverlay.classList.remove("open");
+  }
+
+  function renderSectionList(){
+    const kind = state.sectionKind;
+    const q = (sectionSearch.value || "").toLowerCase().trim();
+    const secs = getSectionsByKind(kind).filter(s => !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
+    sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
+    sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
+    if (!state.sectionSelectedId && secs.length) selectSectionBlock(secs[0].id);
+  }
+
+  function selectSectionBlock(id){
+    state.sectionSelectedId = id;
+    const sec = state.sectionBlocks.find(s => s.id === id);
+    sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===id));
+    if (!sec){
+      sectionMeta.textContent = 'Selecione um bloco.';
+      sectionText.value = '';
+      return;
+    }
+    sectionMeta.textContent = `${sec.beginLine}`;
+    sectionText.value = sec.lines.join('\\n');
+  }
+
+  function parseBlockLinesToKV(lines){
+    const kv = {};
+    for (const raw of lines){
+      const t = raw.trim();
+      if (!t || t.startsWith('//')) continue;
+      const m = t.match(/^([A-Za-z0-9_]+)\s+(.*)$/);
+      if (!m) continue;
+      kv[m[1]] = m[2].trim().replace(/^"|"$/g, '');
+    }
+    return kv;
+  }
+
+  function applySectionBlock(){
+    const sec = state.sectionBlocks.find(s => s.id === state.sectionSelectedId);
+    if (!sec) return;
+    sec.lines = sectionText.value.replace(/\r\n/g,'\n').split('\n');
+    sec.kv = parseBlockLinesToKV(sec.lines);
+
+    if (sec.kind === 'item'){
+      const it = state.items.find(x => x.start === sec.start);
+      if (it){
+        it.lines = sec.lines.slice();
+        it.kv = { ...sec.kv };
+      }
+    }
+
+    if (sec.kind === 'general_information') syncWeaponLoadoutsFromGeneral(sec);
+
+    renderSectionList();
+  }
+
+  function deleteSectionBlock(){
+    const idx = state.sectionBlocks.findIndex(s => s.id === state.sectionSelectedId);
+    if (idx === -1) return;
+    const sec = state.sectionBlocks[idx];
+    if (sec.kind === 'item'){
+      state.items = state.items.filter(x => x.start !== sec.start);
+    }
+    state.sectionBlocks.splice(idx,1);
+    state.sectionSelectedId = null;
+    renderSectionList();
+    renderList();
+    draw();
+  }
+
+  function addSectionBlock(){
+    const kind = state.sectionKind;
+    const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
+    const sec = {
+      id: nextId,
+      kind,
+      label: '',
+      start: Number.MAX_SAFE_INTEGER - nextId,
+      end: Number.MAX_SAFE_INTEGER - nextId,
+      beginLine: `begin ${kind}`,
+      lines: ['  // novo bloco'],
+      kv: {},
+    };
+    if (kind === 'item') sec.beginLine = 'begin item';
+    state.sectionBlocks.push(sec);
+    state.sectionSelectedId = sec.id;
+    renderSectionList();
+    selectSectionBlock(sec.id);
+  }
+
+  function syncWeaponLoadoutsFromGeneral(sec){
+    const primary = sec.kv.default_primary || '';
+    const secondary = sec.kv.default_secondary || '';
+    const accessory = sec.kv.default_accessory || '';
+    if (!primary && !secondary && !accessory) return;
+    statusEl.textContent = `Loadout padrão: ${primary} | ${secondary} | ${accessory}`;
+  }
+
+  function runGlobalReplace(){
+    const target = prompt('Global Replace: chave (vazio = qualquer chave):', 'name');
+    if (target === null) return;
+    const from = prompt('Procurar por:', '');
+    if (from === null || from === '') return;
+    const to = prompt('Substituir por:', '');
+    if (to === null) return;
+
+    let changed = 0;
+    for (const it of state.items){
+      for (const [k,v] of Object.entries(it.kv)){
+        if (target && k !== target) continue;
+        const nv = String(v).split(from).join(to);
+        if (nv !== String(v)){
+          it.kv[k] = nv;
+          changed++;
+        }
+      }
+      const sec = state.sectionBlocks.find(s => s.kind==='item' && s.start===it.start);
+      if (sec) sec.kv = { ...it.kv };
+    }
+    statusEl.textContent = `Global Replace alterou ${changed} campos.`;
+    renderItemWindow();
+    renderList();
+  }
   function downloadText(name, text){
     const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
     const a = document.createElement("a");
@@ -1313,6 +1624,9 @@
     if (kvHas(it, "adv_event")) it.kv.adv_event = ui.advEvent.value;
     if (kvHas(it, "nav_wp")) it.kv.nav_wp = ui.navWp.checked ? "1" : "0";
 
+    const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
+    if (sec) sec.kv = { ...it.kv };
+
     renderList();
     draw();
     if (state.modalOpen) renderItemWindow(); // atualiza Type/Graphic/Title se DEF mudou
@@ -1384,6 +1698,7 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && state.modalOpen) closeModalCancel();
+    if (e.key === "Escape" && state.sectionEditorOpen) closeSectionEditor();
   });
 
   ui.dupBtn.addEventListener("click", () => {
@@ -1396,6 +1711,16 @@
     copy.y += 50000;
     if (copy.kv.position) copy.kv.position = `${copy.x} ${copy.y} ${copy.z}`;
     state.items.push(copy);
+    const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
+    if (sec){
+      const newSec = structuredClone(sec);
+      newSec.id = state.sectionBlocks.reduce((m,x)=>Math.max(m,x.id),0)+1;
+      newSec.start = Number.MAX_SAFE_INTEGER - newSec.id;
+      newSec.end = newSec.start;
+      newSec.kv = { ...copy.kv };
+      newSec.lines = copy.lines.slice();
+      state.sectionBlocks.push(newSec);
+    }
     selectById(copy.id);
     renderItemWindow();
     statusEl.textContent = `Duplicado: #${it.id} -> #${copy.id}`;
@@ -1405,6 +1730,7 @@
     const it = getSelected();
     if (!it) return;
     state.items = state.items.filter(x => x.id !== it.id);
+    state.sectionBlocks = state.sectionBlocks.filter(s => !(s.kind === "item" && s.start === it.start));
     state.selectedId = null;
     closeModalOk();
     renderList();
@@ -1413,12 +1739,57 @@
   });
 
   exportBtn.addEventListener("click", () => {
-    const out = rebuildMIS(state.rawText, state.items);
+    const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
     downloadText("edited.mis", out);
   });
 
   searchEl.addEventListener("input", () => { renderList(); draw(); });
   typeFilterEl.addEventListener("change", () => { renderList(); draw(); });
+
+  sectionCloseBtn.addEventListener("click", closeSectionEditor);
+  sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
+  sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; renderSectionList(); });
+  sectionSearch.addEventListener("input", renderSectionList);
+  sectionApplyBtn.addEventListener("click", applySectionBlock);
+  sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
+  sectionAddBtn.addEventListener("click", addSectionBlock);
+
+  document.getElementById("openGeneralBtn").addEventListener("click", () => openSectionEditor("general_information"));
+  document.getElementById("openBriefingBtn").addEventListener("click", () => openSectionEditor("briefing"));
+  document.getElementById("openGroupsBtn").addEventListener("click", () => openSectionEditor("group"));
+  document.getElementById("openAreasBtn").addEventListener("click", () => openSectionEditor("areatrig"));
+  document.getElementById("openWaypointsBtn").addEventListener("click", () => openSectionEditor("waypoint"));
+  document.getElementById("openEventsBtn").addEventListener("click", () => openSectionEditor("event"));
+  document.getElementById("openLayersBtn").addEventListener("click", () => openSectionEditor("layer"));
+  document.getElementById("openWeaponsBtn").addEventListener("click", () => openSectionEditor("weapon_availability"));
+  document.getElementById("openGlobalReplaceBtn").addEventListener("click", runGlobalReplace);
+
+
+  const menuBar = document.getElementById("menuBar");
+  const menuRoots = Array.from(menuBar.querySelectorAll(".menuRoot"));
+
+  function closeMenus(){
+    menuRoots.forEach(m => m.classList.remove("open"));
+  }
+
+  menuRoots.forEach(root => {
+    const btn = root.querySelector(".menuRootBtn");
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const willOpen = !root.classList.contains("open");
+      closeMenus();
+      if (willOpen) root.classList.add("open");
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!menuBar.contains(e.target)) closeMenus();
+  });
+
+  document.getElementById("menuLoadMisBtn").addEventListener("click", () => {
+    closeMenus();
+    fileMisEl.click();
+  });
 
   // File inputs
   fileMisEl.addEventListener("change", async (e) => {
@@ -1431,6 +1802,7 @@
 
     const parsed = parseMIS(text);
     state.items = parsed.items;
+    state.sectionBlocks = parsed.sectionBlocks;
     state.selectedId = null;
 
     exportBtn.disabled = state.items.length === 0;
