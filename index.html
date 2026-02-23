@@ -24,9 +24,21 @@
       margin:0;
       height:100vh;
       display:grid;
-      grid-template-columns: 420px 1fr;
+      grid-template-rows:auto 1fr;
       background:var(--bg);
       color:var(--text);
+    }
+    #globalMenuWrap{
+      background:var(--bg);
+      border-bottom:1px solid var(--line);
+      padding:10px;
+      position:relative;
+      z-index:20;
+    }
+    #appLayout{
+      display:grid;
+      grid-template-columns:420px 1fr;
+      min-height:0;
     }
     #sidebar{
       border-right:1px solid var(--line);
@@ -281,9 +293,9 @@
     .menuBar{
       display:flex;
       gap:8px;
-      margin-bottom:10px;
       position:relative;
       z-index:5;
+      flex-wrap:wrap;
     }
     .menuRoot{ position:relative; }
     .menuRootBtn{
@@ -376,9 +388,12 @@
 </head>
 
 <body>
-  <div id="sidebar">
+  <div id="globalMenuWrap">
     <div class="menuBar" id="menuBar"></div>
+  </div>
 
+  <div id="appLayout">
+  <div id="sidebar">
     <input id="fileMis" type="file" accept=".mis,.txt" style="display:none;" />
 
     <div class="hint">
@@ -708,6 +723,7 @@
       </div>
 
     </div>
+  </div>
   </div>
 
 <script src="itemsDef.js"></script>
