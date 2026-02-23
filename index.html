@@ -174,12 +174,14 @@
     #liveMisOverlay.open{ display:flex; }
     #liveMisWindow{
       width:min(1120px,100%);
-      max-height:min(820px,100%);
+      height:min(820px,100%);
       background:#e5e5e5;
       border:1px solid #999;
       padding:10px;
       display:grid;
+      grid-template-rows:auto 1fr;
       gap:8px;
+      overflow:hidden;
     }
     #liveMisSearch{
       min-width:280px;
@@ -187,8 +189,8 @@
     }
     #liveMisText{
       width:100%;
-      min-height:620px;
-      max-height:760px;
+      height:100%;
+      min-height:0;
       overflow:auto;
       border:1px solid #9f9f9f;
       background:#fff;
@@ -197,6 +199,8 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size:12px;
       line-height:1.35;
+      box-sizing:border-box;
+      margin:0;
     }
     #liveMisText mark{ background:#ffe463; color:#111; }
     #liveMisText mark.current{ background:#ff8a00; color:#111; }
