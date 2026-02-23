@@ -459,6 +459,27 @@
     #sectionWindow.waypointMode #sectionAddBtn{ display:none; }
     #sectionTopControls{ display:flex; gap:8px; flex-wrap:wrap; }
     #sectionTopControls select, #sectionTopControls input{ max-width:220px; }
+    #sectionWindow.generalInfoMode{ width:min(1240px,100%); max-height:min(760px,100%); }
+    #sectionWindow.generalInfoMode #sectionTopControls,
+    #sectionWindow.generalInfoMode #sectionList,
+    #sectionWindow.generalInfoMode #sectionMeta,
+    #sectionWindow.generalInfoMode #sectionHint,
+    #sectionWindow.generalInfoMode #sectionText{ display:none; }
+    #sectionWindow.generalInfoMode #sectionBody{ grid-template-columns:1fr; height:auto; }
+    #sectionWindow.generalInfoMode #sectionEditor{ grid-template-rows:1fr auto; }
+    #sectionWindow.generalInfoMode #sectionActions{ justify-content:flex-start; }
+    #generalInfoEditor{ display:none; font-size:12px; }
+    #sectionWindow.generalInfoMode #generalInfoEditor{ display:block; }
+    .giLayout{ display:grid; grid-template-columns: 1fr 1.55fr 1fr; gap:10px; }
+    .giBox{ border:1px solid #9f9f9f; padding:6px; background:#ddd; }
+    .giRow{ margin-bottom:6px; }
+    .giRow label{ display:block; margin-bottom:2px; }
+    .giRow input, .giRow select{ width:100%; }
+    .giMapTypes label,.giFlags label{ display:block; margin:2px 0; }
+    .giCondRow{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; margin-bottom:4px; align-items:center; }
+    .giCondHead{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; color:#333; margin-bottom:4px; }
+    .giInline{ display:grid; grid-template-columns:1fr 90px; gap:6px; align-items:center; margin-bottom:6px; }
+    .giInline3{ display:grid; grid-template-columns:1fr 56px 56px 56px; gap:6px; align-items:center; margin-bottom:6px; }
   </style>
 </head>
 
@@ -532,6 +553,61 @@
               <div id="sectionMeta">Selecione um bloco.</div>
               <div class="hint" id="sectionHint">Edite o conteúdo interno do bloco (linhas entre begin/end). Uma linha por chave/valor.</div>
               <textarea id="sectionText"></textarea>
+              <div id="generalInfoEditor">
+                <div class="giLayout">
+                  <div>
+                    <div class="giRow"><label>Mission Name</label><input id="giMissionName" /></div>
+                    <div class="giRow"><label>Mission Designer</label><input id="giDesigner" /></div>
+                    <div class="giRow"><label>Mission Terrain</label><select id="giTerrain"></select></div>
+                    <div class="giRow"><label>Mission Tiles</label><select id="giTiles"></select></div>
+                    <div class="giRow"><label>Player Type</label><select id="giPlayerType"></select></div>
+                    <div class="giBox giMapTypes">
+                      <div><b>Map Types</b></div>
+                      <label><input type="checkbox" id="giMapCoop" /> Cooperative</label>
+                      <label><input type="checkbox" id="giMapDeathmatch" /> Deathmatch</label>
+                      <label><input type="checkbox" id="giMapTeamDeathmatch" /> Team Deathmatch</label>
+                      <label><input type="checkbox" id="giMapKoth" /> King of the Hill</label>
+                      <label><input type="checkbox" id="giMapTeamKoth" /> Team King of the Hill</label>
+                      <label><input type="checkbox" id="giMapCtf" /> Capture the Flag</label>
+                      <label><input type="checkbox" id="giMapFlagball" /> Flagball</label>
+                      <label><input type="checkbox" id="giMapSearchDestroy" /> Search & Destroy</label>
+                      <label><input type="checkbox" id="giMapAttackDefend" /> Attack & Defend</label>
+                    </div>
+                    <div class="giRow" style="margin-top:6px;"><label>Starting Spin-map Zoom</label><input id="giMapZoom" type="range" min="0" max="1" step="0.01" /></div>
+                    <div class="giInline"><label>Bonus Expiration</label><input id="giBonusExpiration" type="number" /></div>
+                    <div class="giInline"><label>Max Saved Games</label><input id="giMaxSaves" type="number" /></div>
+                  </div>
+                  <div>
+                    <div class="giBox">
+                      <div><b>Win Conditions</b></div>
+                      <div class="giCondHead"><span></span><span>Critical</span><span>Score</span></div>
+                      <div id="giWinRows"></div>
+                    </div>
+                    <div class="giBox" style="margin-top:8px;">
+                      <div><b>Lose Conditions</b></div>
+                      <div class="giCondHead"><span></span><span>Critical</span><span>Score</span></div>
+                      <div id="giLoseRows"></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="giBox">
+                      <div><b>Mission Overrides</b></div>
+                      <div class="giInline"><label><input type="checkbox" id="giWaterEnabled" /> Water Level (x0.5 m)</label><input id="giWaterLevel" type="number" step="0.5" /></div>
+                      <div class="giInline"><label><input type="checkbox" id="giFogDistEnabled" /> Fog Distance (m)</label><input id="giFogLevel" type="number" /></div>
+                      <div class="giInline3"><label><input type="checkbox" id="giFogColorEnabled" /> Fog Color</label><input id="giFogR" type="number" min="0" max="255" /><input id="giFogG" type="number" min="0" max="255" /><input id="giFogB" type="number" min="0" max="255" /></div>
+                      <div class="giInline"><label>Wind Speed (kph)</label><input id="giWindSpeed" type="number" /></div>
+                      <div class="giInline"><label>Wind Direction</label><input id="giWindDirection" type="number" /></div>
+                      <div class="giRow"><label>Enviroment File:</label><select id="giEnvironment"></select></div>
+                      <div class="giFlags">
+                        <label><input type="checkbox" id="giNvgAvailable" /> Night Vision Goggles Available</label>
+                        <label><input type="checkbox" id="giNvgStartOn" /> Start with NVG Turned On</label>
+                      </div>
+                    </div>
+                    <div class="giRow" style="margin-top:8px;"><label>Terrain Type</label><select id="giTerrainType"></select></div>
+                    <div class="giFlags"><label><input type="checkbox" id="giRotate180" /> Rotate Map 180 degrees</label></div>
+                  </div>
+                </div>
+              </div>
               <div id="waypointEditor">
                 <div>
                   <div class="inlineLabel">Description</div>
@@ -881,6 +957,32 @@
   const wpBlueTeam = document.getElementById("wpBlueTeam");
   const wpRedTeam = document.getElementById("wpRedTeam");
 
+  const giMissionName = document.getElementById("giMissionName");
+  const giDesigner = document.getElementById("giDesigner");
+  const giTerrain = document.getElementById("giTerrain");
+  const giTiles = document.getElementById("giTiles");
+  const giPlayerType = document.getElementById("giPlayerType");
+  const giMapZoom = document.getElementById("giMapZoom");
+  const giBonusExpiration = document.getElementById("giBonusExpiration");
+  const giMaxSaves = document.getElementById("giMaxSaves");
+  const giWinRows = document.getElementById("giWinRows");
+  const giLoseRows = document.getElementById("giLoseRows");
+  const giWaterEnabled = document.getElementById("giWaterEnabled");
+  const giWaterLevel = document.getElementById("giWaterLevel");
+  const giFogDistEnabled = document.getElementById("giFogDistEnabled");
+  const giFogLevel = document.getElementById("giFogLevel");
+  const giFogColorEnabled = document.getElementById("giFogColorEnabled");
+  const giFogR = document.getElementById("giFogR");
+  const giFogG = document.getElementById("giFogG");
+  const giFogB = document.getElementById("giFogB");
+  const giWindSpeed = document.getElementById("giWindSpeed");
+  const giWindDirection = document.getElementById("giWindDirection");
+  const giEnvironment = document.getElementById("giEnvironment");
+  const giNvgAvailable = document.getElementById("giNvgAvailable");
+  const giNvgStartOn = document.getElementById("giNvgStartOn");
+  const giTerrainType = document.getElementById("giTerrainType");
+  const giRotate180 = document.getElementById("giRotate180");
+
   const modalOverlay = document.getElementById("modalOverlay");
   const modalCloseBtn = document.getElementById("modalCloseBtn");
   const okBtn = document.getElementById("okBtn");
@@ -955,6 +1057,37 @@
     { label: "Reflective", bit: 8388608 },
     { label: "NoShadow", bit: 16777216 },
   ];
+
+  const GENERAL_MAP_TYPE_BITS = [
+    { id:"giMapCoop", bit:1 },
+    { id:"giMapDeathmatch", bit:2 },
+    { id:"giMapTeamDeathmatch", bit:4 },
+    { id:"giMapKoth", bit:8 },
+    { id:"giMapTeamKoth", bit:16 },
+    { id:"giMapCtf", bit:32 },
+    { id:"giMapFlagball", bit:64 },
+    { id:"giMapSearchDestroy", bit:128 },
+    { id:"giMapAttackDefend", bit:256 },
+  ];
+
+  const GENERAL_TERRAINS = ["dvd1","dvd2","dvd3","jungle1","arctic1","desert1"];
+  const GENERAL_TILES = ["trntile11","trntile12","trntile13","trntile21","trntile31"];
+  const GENERAL_PLAYERS = ["Delta Force","SEALs","SAS","Spetsnaz","GIGN"];
+  const GENERAL_SUBGOALS = [
+    { value:0, label:"null" },
+    { value:1, label:"Reach Final Waypoint" },
+    { value:2, label:"Destroy Technicals" },
+    { value:3, label:"Player dies" },
+    { value:4, label:"Destroy target" },
+    { value:5, label:"Protect target" },
+    { value:6, label:"Extract team" },
+  ];
+  const GENERAL_ENV_FILES = [
+    { token:"day1", label:"Daytime 1" }, { token:"day2", label:"Daytime 2" },
+    { token:"dawn1", label:"Dawn 1" }, { token:"dusk1", label:"Dusk 1" },
+    { token:"overcst1", label:"Overcast 1" },
+  ];
+  const GENERAL_TERRAIN_TYPES = ["Desert","Jungle","Arctic","Temperate"];
 
   function parseFloatSafe(v){
     const n = Number(v);
@@ -1183,6 +1316,174 @@
   }
 
 
+  function ensureSelectOptions(selectEl, options, currentValue){
+    const vals = options.map(o => typeof o === "string" ? { value:o, label:o } : o);
+    if (currentValue !== undefined && currentValue !== null && currentValue !== "" && !vals.some(o => String(o.value) === String(currentValue))){
+      vals.push({ value:String(currentValue), label:String(currentValue) });
+    }
+    selectEl.innerHTML = vals.map(o => `<option value="${escapeHtml(String(o.value))}">${escapeHtml(String(o.label))}</option>`).join("");
+  }
+
+  function parseIntList(raw, count){
+    const parts = String(raw || "").trim().split(/\s+/).filter(Boolean).map(v => Number(v));
+    const out = [];
+    for (let i=0; i<count; i++) out.push(Number.isFinite(parts[i]) ? Math.trunc(parts[i]) : 0);
+    return out;
+  }
+
+  function buildGeneralConditionRows(container, prefix){
+    const opts = GENERAL_SUBGOALS.map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`).join("");
+    let html = "";
+    for (let i=0; i<8; i++){
+      html += `<div class="giCondRow"><input type="checkbox" id="${prefix}Enabled${i}" /><select id="${prefix}Goal${i}">${opts}</select><input id="${prefix}Score${i}" type="number" /></div>`;
+    }
+    container.innerHTML = html;
+  }
+
+  function decodeFogColor(n){
+    const v = Math.max(0, Math.trunc(Number(n) || 0));
+    return { r:(v >> 16) & 255, g:(v >> 8) & 255, b:v & 255 };
+  }
+
+  function encodeFogColor(r,g,b){
+    const rr = Math.max(0, Math.min(255, Math.trunc(Number(r) || 0)));
+    const gg = Math.max(0, Math.min(255, Math.trunc(Number(g) || 0)));
+    const bb = Math.max(0, Math.min(255, Math.trunc(Number(b) || 0)));
+    return (rr << 16) | (gg << 8) | bb;
+  }
+
+  function updateGeneralInfoEnables(){
+    giWaterLevel.disabled = !giWaterEnabled.checked;
+    giFogLevel.disabled = !giFogDistEnabled.checked;
+    const fogEnabled = giFogColorEnabled.checked;
+    giFogR.disabled = !fogEnabled;
+    giFogG.disabled = !fogEnabled;
+    giFogB.disabled = !fogEnabled;
+    giNvgStartOn.disabled = !giNvgAvailable.checked;
+  }
+
+  function readGeneralConditionRows(prefix){
+    const goals = [];
+    const scores = [];
+    for (let i=0; i<8; i++){
+      const enabled = document.getElementById(`${prefix}Enabled${i}`).checked;
+      const goal = Number(document.getElementById(`${prefix}Goal${i}`).value || 0);
+      const score = Number(document.getElementById(`${prefix}Score${i}`).value || 0);
+      goals.push(enabled ? Math.max(0, Math.trunc(goal)) : 0);
+      scores.push(enabled ? Math.max(0, Math.trunc(score)) : 0);
+    }
+    return { goals, scores };
+  }
+
+  function fillGeneralInfoEditor(sec){
+    const kv = sec?.kv || {};
+    ensureSelectOptions(giTerrain, GENERAL_TERRAINS.map(v=>({ value:v, label:v })), kv.terrain || "dvd1");
+    ensureSelectOptions(giTiles, GENERAL_TILES.map(v=>({ value:v, label:v })), kv.terrain_tile_tga || "trntile11");
+    ensureSelectOptions(giPlayerType, GENERAL_PLAYERS.map((label, idx)=>({ value:String(idx), label })), kv.player_type || "0");
+    ensureSelectOptions(giEnvironment, GENERAL_ENV_FILES, kv.sunset || "day1");
+    ensureSelectOptions(giTerrainType, GENERAL_TERRAIN_TYPES.map(v=>({ value:v, label:v })), kv.terrain_type || "Desert");
+
+    giMissionName.value = kv.name || "";
+    giDesigner.value = kv.designer || "";
+    giMapZoom.value = String(Number(kv.map_zoom || 0));
+    giBonusExpiration.value = kv.bonus_expiration || "0";
+    giMaxSaves.value = kv.max_saves || "0";
+
+    const attrib = Number(kv.attrib || 0);
+    for (const f of GENERAL_MAP_TYPE_BITS){
+      const el = document.getElementById(f.id);
+      if (el) el.checked = (attrib & f.bit) !== 0;
+    }
+
+    const winGoals = parseIntList(kv.subgoals_win, 8);
+    const winScores = parseIntList(kv.win_scores, 8);
+    const loseGoals = parseIntList(kv.subgoals_lose, 8);
+    const loseScores = parseIntList(kv.lose_scores, 8);
+    for (let i=0; i<8; i++){
+      const wEnabled = winGoals[i] > 0 || winScores[i] > 0;
+      document.getElementById(`giWinEnabled${i}`).checked = wEnabled;
+      document.getElementById(`giWinGoal${i}`).value = String(winGoals[i]);
+      document.getElementById(`giWinScore${i}`).value = String(winScores[i]);
+
+      const lEnabled = loseGoals[i] > 0 || loseScores[i] > 0;
+      document.getElementById(`giLoseEnabled${i}`).checked = lEnabled;
+      document.getElementById(`giLoseGoal${i}`).value = String(loseGoals[i]);
+      document.getElementById(`giLoseScore${i}`).value = String(loseScores[i]);
+    }
+
+    const waterRaw = Number(kv.water_level || 0);
+    giWaterEnabled.checked = Object.prototype.hasOwnProperty.call(kv, "water_level");
+    giWaterLevel.value = Number.isFinite(waterRaw) ? String(waterRaw * 0.5) : "0";
+
+    giFogDistEnabled.checked = Object.prototype.hasOwnProperty.call(kv, "fog_level");
+    giFogLevel.value = kv.fog_level || "0";
+
+    giFogColorEnabled.checked = Object.prototype.hasOwnProperty.call(kv, "fog_color");
+    const rgb = decodeFogColor(kv.fog_color || 0);
+    giFogR.value = String(rgb.r); giFogG.value = String(rgb.g); giFogB.value = String(rgb.b);
+
+    const wind = parseIntList(kv.wind, 2);
+    giWindSpeed.value = String(wind[0]);
+    giWindDirection.value = String(wind[1]);
+
+    giNvgAvailable.checked = Number(kv.nvg_available || 0) > 0;
+    giNvgStartOn.checked = Number(kv.nvg_start_on || 0) > 0;
+    giRotate180.checked = Number(kv.rotate_map_180 || 0) > 0;
+
+    updateGeneralInfoEnables();
+  }
+
+  function quoteMisString(s){
+    return `"${String(s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+
+  function applyGeneralInfoSection(sec){
+    const kv = { ...(sec.kv || {}) };
+    kv.name = quoteMisString(giMissionName.value);
+    kv.designer = quoteMisString(giDesigner.value);
+    kv.terrain = giTerrain.value || "dvd1";
+    kv.terrain_tile_tga = giTiles.value || "trntile11";
+    kv.player_type = String(Math.max(0, Math.trunc(Number(giPlayerType.value || 0))));
+
+    let attrib = 0;
+    for (const f of GENERAL_MAP_TYPE_BITS){
+      const el = document.getElementById(f.id);
+      if (el && el.checked) attrib |= f.bit;
+    }
+    kv.attrib = String(attrib);
+
+    kv.map_zoom = String(Number(giMapZoom.value || 0).toFixed(2));
+    kv.bonus_expiration = String(Math.max(0, Math.trunc(Number(giBonusExpiration.value || 0))));
+    kv.max_saves = String(Math.max(0, Math.trunc(Number(giMaxSaves.value || 0))));
+
+    const win = readGeneralConditionRows("giWin");
+    const lose = readGeneralConditionRows("giLose");
+    kv.subgoals_win = win.goals.join(" ");
+    kv.win_scores = win.scores.join(" ");
+    kv.subgoals_lose = lose.goals.join(" ");
+    kv.lose_scores = lose.scores.join(" ");
+
+    if (giWaterEnabled.checked) kv.water_level = String(Math.max(0, Math.round(Number(giWaterLevel.value || 0) / 0.5)));
+    else delete kv.water_level;
+
+    if (giFogDistEnabled.checked) kv.fog_level = String(Math.max(0, Math.trunc(Number(giFogLevel.value || 0))));
+    else delete kv.fog_level;
+
+    if (giFogColorEnabled.checked) kv.fog_color = String(encodeFogColor(giFogR.value, giFogG.value, giFogB.value));
+    else delete kv.fog_color;
+
+    kv.wind = `${Math.max(0, Math.trunc(Number(giWindSpeed.value || 0)))} ${Math.max(0, Math.trunc(Number(giWindDirection.value || 0)))}`;
+    kv.sunset = giEnvironment.value || "day1";
+    kv.terrain_type = giTerrainType.value || "Desert";
+    kv.nvg_available = giNvgAvailable.checked ? "1" : "0";
+    kv.nvg_start_on = giNvgStartOn.checked ? "1" : "0";
+    kv.rotate_map_180 = giRotate180.checked ? "1" : "0";
+
+    sec.kv = kv;
+    sec.lines = Object.entries(kv).map(([k,v]) => `  ${k} ${v}`);
+    syncWeaponLoadoutsFromGeneral(sec);
+  }
+
   function parseGroupNumber(sec){
     if (!sec || sec.kind !== "group") return null;
     const fromLabel = Number((sec.label || "").trim());
@@ -1309,6 +1610,8 @@
     wpColor.innerHTML = WAYPOINT_COLORS.map((name, idx)=>`<option value="${idx}">${escapeHtml(name)}</option>`).join("");
   }
   buildWaypointColorOptions();
+  buildGeneralConditionRows(giWinRows, "giWin");
+  buildGeneralConditionRows(giLoseRows, "giLose");
 
   function buildTypeFilterOptions(){
     // Filtro "type" da esquerda:
@@ -1485,12 +1788,21 @@
 
 
   function updateSectionEditorMode(){
+    const isGeneralInfo = state.sectionKind === "general_information";
     const isGroup = state.sectionKind === "group";
     const isWaypoint = state.sectionKind === "waypoint";
     const isAreaTrig = state.sectionKind === "areatrig";
     sectionWindow.classList.toggle("compactMode", isGroup || isWaypoint || isAreaTrig);
     sectionWindow.classList.toggle("groupMode", isGroup);
     sectionWindow.classList.toggle("waypointMode", isWaypoint);
+    sectionWindow.classList.toggle("generalInfoMode", isGeneralInfo);
+    if (isGeneralInfo){
+      sectionApplyBtn.textContent = "OK";
+      sectionDeleteBtn.textContent = "Cancel";
+    } else {
+      sectionApplyBtn.textContent = "Aplicar bloco";
+      sectionDeleteBtn.textContent = "Excluir bloco";
+    }
   }
 
   function openSectionEditor(kind){
@@ -1499,6 +1811,21 @@
     state.sectionSelectedId = null;
     sectionKindSelect.value = kind;
     sectionAddBtn.textContent = kind === "group" ? "Editar" : "Adicionar bloco";
+
+    if (kind === "general_information" && !state.sectionBlocks.some(s => s.kind === "general_information")){
+      const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
+      state.sectionBlocks.push({
+        id: nextId,
+        kind: "general_information",
+        label: "",
+        start: Number.MAX_SAFE_INTEGER - nextId,
+        end: Number.MAX_SAFE_INTEGER - nextId,
+        beginLine: "begin general_information",
+        lines: [],
+        kv: {},
+      });
+    }
+
     updateSectionEditorMode();
     sectionOverlay.classList.add("open");
     renderSectionList();
@@ -1665,6 +1992,7 @@
     }
     sectionMeta.textContent = `${sec.beginLine}`;
     sectionText.value = sec.lines.join('\n');
+    if (state.sectionKind === "general_information") fillGeneralInfoEditor(sec);
   }
 
   function parseBlockLinesToKV(lines){
@@ -1717,6 +2045,16 @@
       return;
     }
 
+    if (state.sectionKind === 'general_information'){
+      const sec = state.sectionBlocks.find(s => s.id === state.sectionSelectedId);
+      if (!sec) return;
+      applyGeneralInfoSection(sec);
+      renderSectionList();
+      refreshLiveMisWindow();
+      closeSectionEditor();
+      return;
+    }
+
     const sec = state.sectionBlocks.find(s => s.id === state.sectionSelectedId);
     if (!sec) return;
     sec.lines = sectionText.value.replace(/\r\n/g,'\n').split('\n');
@@ -1736,6 +2074,10 @@
   }
 
   function deleteSectionBlock(){
+    if (state.sectionKind === "general_information"){
+      closeSectionEditor();
+      return;
+    }
     const idx = state.sectionBlocks.findIndex(s => s.id === state.sectionSelectedId);
     if (idx === -1) return;
     const sec = state.sectionBlocks[idx];
@@ -2298,6 +2640,9 @@
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
   sectionAddBtn.addEventListener("click", addSectionBlock);
+  [giWaterEnabled, giFogDistEnabled, giFogColorEnabled, giNvgAvailable].forEach(el => {
+    if (el) el.addEventListener("change", updateGeneralInfoEnables);
+  });
   wpSelectMarkersBtn.addEventListener("click", () => { statusEl.textContent = "Select Markers ainda não está implementado."; });
   wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
   wpOkBtn.addEventListener("click", () => { saveCurrentWaypoint(); closeSectionEditor(); });
