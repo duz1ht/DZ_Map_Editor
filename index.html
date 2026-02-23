@@ -882,11 +882,24 @@
     return state.items.find(x => x.id === state.selectedId) || null;
   }
 
+  function toDefIdFromMisTypeId(typeId){
+    const n = Number(typeId);
+    if (!Number.isFinite(n)) return "";
+    return String(Math.trunc(n) + 100000);
+  }
+
+  function toMisTypeIdFromDefId(defId){
+    const n = Number(defId);
+    if (!Number.isFinite(n)) return "";
+    return String(Math.trunc(n) - 100000);
+  }
+
   function getDefForItem(it){
     if (!it) return null;
     const tid = kvHas(it, "type_id") ? String(it.kv.type_id) : "";
     if (!tid) return null;
-    return state.defsById.get(tid) || null;
+    const mappedDefId = toDefIdFromMisTypeId(tid);
+    return state.defsById.get(mappedDefId) || state.defsById.get(tid) || null;
   }
 
   // DEF parser (ITEMS.DEF)
@@ -1471,7 +1484,8 @@
     setEnabled(ui.subtype, canSubtype);
 
     if (canSubtype){
-      ui.subtype.value = String(it.kv.type_id || "");
+      const mappedDefId = toDefIdFromMisTypeId(String(it.kv.type_id || ""));
+      ui.subtype.value = mappedDefId || String(it.kv.type_id || "");
     } else {
       // fallback: mostra vazio
       if (!state.defLoaded) ui.subtype.innerHTML = `<option value="">(carregue o DEF)</option>`;
@@ -1580,11 +1594,12 @@
 
     // Sub-Type (DEF)
     if (state.defLoaded && kvHas(it, "type_id") && !ui.subtype.disabled){
-      const newTypeId = ui.subtype.value;
-      if (newTypeId){
-        it.kv.type_id = String(newTypeId);
+      const selectedDefId = ui.subtype.value;
+      if (selectedDefId){
+        const misTypeId = toMisTypeIdFromDefId(selectedDefId);
+        it.kv.type_id = String(misTypeId || selectedDefId);
         // Atualiza name para o nome do DEF (o editor oficial mostra isso)
-        const def = state.defsById.get(String(newTypeId));
+        const def = state.defsById.get(String(selectedDefId));
         if (def && kvHas(it, "name")) it.kv.name = `"${def.name}"`.replace(/^"|"$/g,"");
         if (def && kvHas(it, "iai_name")) it.kv.iai_name = `"${def.name}"`.replace(/^"|"$/g,"");
         // Se não tem name/iai_name, não inventa chave nova (mantém regra: só mexe se existir)
