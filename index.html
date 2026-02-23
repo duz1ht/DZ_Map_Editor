@@ -189,10 +189,17 @@
       width:100%;
       min-height:620px;
       max-height:760px;
+      overflow:auto;
+      border:1px solid #9f9f9f;
+      background:#fff;
+      padding:8px;
+      white-space:pre;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size:12px;
-      resize:vertical;
+      line-height:1.35;
     }
+    #liveMisText mark{ background:#ffe463; color:#111; }
+    #liveMisText mark.current{ background:#ff8a00; color:#111; }
     #modalWindow{
       width: min(980px, 100%);
       max-height: min(720px, 100%);
@@ -543,7 +550,7 @@
       <div id="liveMisOverlay" aria-hidden="true">
         <div id="liveMisWindow" role="dialog" aria-modal="true" aria-label="MIS Live Changes">
           <div class="windowTitle">MIS Live Changes <span class="spacer"></span><input id="liveMisSearch" placeholder="Pesquisar texto" /><button class="xbtn" id="liveMisCloseBtn">X</button></div>
-          <textarea id="liveMisText" readonly></textarea>
+          <pre id="liveMisText"></pre>
         </div>
       </div>
 
@@ -831,6 +838,7 @@
     liveMisOpen: false,
     liveMisSearchTerm: "",
     liveMisSearchIndex: -1,
+    liveMisRawText: "",
 
     contextMenuOpen: false,
     contextTargetId: null,
@@ -1497,20 +1505,47 @@
     sectionOverlay.classList.remove("open");
   }
 
+  function renderLiveMisHighlighted(){
+    const raw = state.liveMisRawText || "";
+    const term = (state.liveMisSearchTerm || "").toLowerCase();
+
+    if (!term){
+      liveMisText.textContent = raw;
+      return;
+    }
+
+    const lower = raw.toLowerCase();
+    let html = "";
+    let pos = 0;
+    while (pos < raw.length){
+      const idx = lower.indexOf(term, pos);
+      if (idx === -1){
+        html += escapeHtml(raw.slice(pos));
+        break;
+      }
+      html += escapeHtml(raw.slice(pos, idx));
+      const chunk = raw.slice(idx, idx + term.length);
+      if (idx === state.liveMisSearchIndex) html += `<mark class="current" id="liveMisCurrent">${escapeHtml(chunk)}</mark>`;
+      else html += `<mark>${escapeHtml(chunk)}</mark>`;
+      pos = idx + term.length;
+    }
+    liveMisText.innerHTML = html;
+  }
+
   function refreshLiveMisWindow(){
+    state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
     if (!state.liveMisOpen) return;
-    const out = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
-    liveMisText.value = out;
+    renderLiveMisHighlighted();
   }
 
   function openLiveMisWindow(){
-    const out = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
-    liveMisText.value = out;
+    state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
     state.liveMisSearchTerm = "";
     state.liveMisSearchIndex = -1;
     state.liveMisOpen = true;
     liveMisOverlay.classList.add("open");
     liveMisOverlay.setAttribute("aria-hidden", "false");
+    renderLiveMisHighlighted();
     liveMisSearch.focus();
   }
 
@@ -1525,10 +1560,11 @@
     if (!term){
       state.liveMisSearchTerm = "";
       state.liveMisSearchIndex = -1;
+      renderLiveMisHighlighted();
       return;
     }
 
-    const text = (liveMisText.value || "").toLowerCase();
+    const text = (state.liveMisRawText || "").toLowerCase();
     let start = 0;
     if (next && term === state.liveMisSearchTerm && state.liveMisSearchIndex >= 0){
       start = state.liveMisSearchIndex + 1;
@@ -1540,10 +1576,17 @@
 
     state.liveMisSearchTerm = term;
     state.liveMisSearchIndex = idx;
-    if (focusResult) liveMisText.focus();
-    liveMisText.setSelectionRange(idx, idx + term.length);
-    const lineTopRatio = idx / Math.max(1, liveMisText.value.length);
-    liveMisText.scrollTop = lineTopRatio * liveMisText.scrollHeight;
+    renderLiveMisHighlighted();
+
+    const cur = document.getElementById("liveMisCurrent");
+    if (cur){
+      const cRect = liveMisText.getBoundingClientRect();
+      const mRect = cur.getBoundingClientRect();
+      const currentMid = mRect.top + (mRect.height / 2);
+      const containerMid = cRect.top + (cRect.height / 2);
+      liveMisText.scrollTop += currentMid - containerMid;
+      if (focusResult) liveMisText.focus();
+    }
   }
 
   function renderSectionList(){
