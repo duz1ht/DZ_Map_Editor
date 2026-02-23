@@ -1497,6 +1497,12 @@
     sectionOverlay.classList.remove("open");
   }
 
+  function refreshLiveMisWindow(){
+    if (!state.liveMisOpen) return;
+    const out = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
+    liveMisText.value = out;
+  }
+
   function openLiveMisWindow(){
     const out = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
     liveMisText.value = out;
@@ -1505,6 +1511,7 @@
     state.liveMisOpen = true;
     liveMisOverlay.classList.add("open");
     liveMisOverlay.setAttribute("aria-hidden", "false");
+    liveMisSearch.focus();
   }
 
   function closeLiveMisWindow(){
@@ -1513,7 +1520,7 @@
     liveMisOverlay.setAttribute("aria-hidden", "true");
   }
 
-  function findInLiveMis(next=false){
+  function findInLiveMis(next=false, focusResult=false){
     const term = (liveMisSearch.value || "").toLowerCase();
     if (!term){
       state.liveMisSearchTerm = "";
@@ -1533,7 +1540,7 @@
 
     state.liveMisSearchTerm = term;
     state.liveMisSearchIndex = idx;
-    liveMisText.focus();
+    if (focusResult) liveMisText.focus();
     liveMisText.setSelectionRange(idx, idx + term.length);
     const lineTopRatio = idx / Math.max(1, liveMisText.value.length);
     liveMisText.scrollTop = lineTopRatio * liveMisText.scrollHeight;
@@ -1694,6 +1701,7 @@
     buildGroupOptions();
     renderList();
     draw();
+    refreshLiveMisWindow();
   }
 
   function addSectionBlock(){
@@ -2104,6 +2112,8 @@
 
     updateAttribFromCoreControls(it);
 
+    refreshLiveMisWindow();
+
     const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
     if (sec) sec.kv = { ...it.kv };
 
@@ -2234,8 +2244,8 @@
   sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
   liveMisCloseBtn.addEventListener("click", closeLiveMisWindow);
   liveMisOverlay.addEventListener("mousedown", (e) => { if (e.target === liveMisOverlay) closeLiveMisWindow(); });
-  liveMisSearch.addEventListener("input", () => findInLiveMis(false));
-  liveMisSearch.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); findInLiveMis(true); } });
+  liveMisSearch.addEventListener("input", () => findInLiveMis(false, false));
+  liveMisSearch.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); findInLiveMis(true, true); } });
   sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; sectionAddBtn.textContent = state.sectionKind === "group" ? "Editar" : "Adicionar bloco"; updateSectionEditorMode(); renderSectionList(); });
   sectionSearch.addEventListener("input", renderSectionList);
   sectionApplyBtn.addEventListener("click", applySectionBlock);
@@ -2532,6 +2542,7 @@
     fitView();
     renderList();
     draw();
+    refreshLiveMisWindow();
   });
   // Canvas
   const cv = document.getElementById("cv");
