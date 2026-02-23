@@ -316,6 +316,16 @@
       font-size:12px;
     }
     .menuItemBtn:hover{ background:#eef2ff; }
+    .menuItemBtn:disabled{
+      color:#8d8d8d;
+      background:transparent;
+      cursor:not-allowed;
+    }
+    .menuSep{
+      height:1px;
+      background:#d8d8d8;
+      margin:4px 0;
+    }
 
     #sectionOverlay{
       position:absolute;
@@ -356,29 +366,7 @@
 
 <body>
   <div id="sidebar">
-    <div class="menuBar" id="menuBar">
-      <div class="menuRoot" data-menu="file">
-        <button class="menuRootBtn" id="fileMenuBtn">File</button>
-        <div class="menuDropdown">
-          <button class="menuItemBtn" id="menuLoadMisBtn">Load map .mis</button>
-        </div>
-      </div>
-
-      <div class="menuRoot" data-menu="edit">
-        <button class="menuRootBtn" id="editMenuBtn">Edit</button>
-        <div class="menuDropdown">
-          <button class="menuItemBtn" id="openGeneralBtn">General Information</button>
-          <button class="menuItemBtn" id="openBriefingBtn">Briefing</button>
-          <button class="menuItemBtn" id="openGroupsBtn">Groups</button>
-          <button class="menuItemBtn" id="openAreasBtn">Area Triggers</button>
-          <button class="menuItemBtn" id="openWaypointsBtn">Waypoints</button>
-          <button class="menuItemBtn" id="openEventsBtn">Events</button>
-          <button class="menuItemBtn" id="openLayersBtn">Layer Names</button>
-          <button class="menuItemBtn" id="openWeaponsBtn">Weapon Loadouts</button>
-          <button class="menuItemBtn" id="openGlobalReplaceBtn">Global Replace</button>
-        </div>
-      </div>
-    </div>
+    <div class="menuBar" id="menuBar"></div>
 
     <input id="fileMis" type="file" accept=".mis,.txt" style="display:none;" />
 
@@ -1754,18 +1742,164 @@
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
   sectionAddBtn.addEventListener("click", addSectionBlock);
 
-  document.getElementById("openGeneralBtn").addEventListener("click", () => openSectionEditor("general_information"));
-  document.getElementById("openBriefingBtn").addEventListener("click", () => openSectionEditor("briefing"));
-  document.getElementById("openGroupsBtn").addEventListener("click", () => openSectionEditor("group"));
-  document.getElementById("openAreasBtn").addEventListener("click", () => openSectionEditor("areatrig"));
-  document.getElementById("openWaypointsBtn").addEventListener("click", () => openSectionEditor("waypoint"));
-  document.getElementById("openEventsBtn").addEventListener("click", () => openSectionEditor("event"));
-  document.getElementById("openLayersBtn").addEventListener("click", () => openSectionEditor("layer"));
-  document.getElementById("openWeaponsBtn").addEventListener("click", () => openSectionEditor("weapon_availability"));
-  document.getElementById("openGlobalReplaceBtn").addEventListener("click", runGlobalReplace);
-
-
   const menuBar = document.getElementById("menuBar");
+
+  function showNotImplemented(label){
+    statusEl.textContent = `Comando '${label}' ainda não está implementado no editor web.`;
+  }
+
+  const menuHandlers = {
+    "file.clear": () => {
+      state.rawText = "";
+      state.items = [];
+      state.sectionBlocks = [];
+      state.selectedId = null;
+      state.filename = "";
+      exportBtn.disabled = true;
+      renderList();
+      draw();
+      statusEl.textContent = "Mapa limpo.";
+    },
+    "file.open": () => fileMisEl.click(),
+    "file.saveAs": () => {
+      if (!state.rawText) return showNotImplemented("Save As");
+      const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
+      downloadText(state.filename || "edited.mis", out);
+      statusEl.textContent = "Arquivo salvo.";
+    },
+    "edit.briefing": () => openSectionEditor("briefing"),
+    "edit.generalInfo": () => openSectionEditor("general_information"),
+    "edit.groups": () => openSectionEditor("group"),
+    "edit.areaTriggers": () => openSectionEditor("areatrig"),
+    "edit.waypoints": () => openSectionEditor("waypoint"),
+    "edit.events": () => openSectionEditor("event"),
+    "edit.layerNames": () => openSectionEditor("layer"),
+    "edit.globalReplace": runGlobalReplace,
+    "edit.weaponLoadouts": () => openSectionEditor("weapon_availability")
+  };
+
+  const menuTree = [
+    {
+      label: "File",
+      children: [
+        { label: "Clear", command: "file.clear" },
+        { label: "Open", command: "file.open" },
+        { label: "Save As", command: "file.saveAs" },
+        { label: "Export Binary Mission", command: "file.exportBinaryMission" },
+        { label: "Save and Export", command: "file.saveAndExport" },
+        { label: "Save and Export w/Stats", command: "file.saveAndExportWithStats" },
+        { separator: true },
+        { label: "Exit", command: "app.exit" }
+      ]
+    },
+    {
+      label: "Edit",
+      children: [
+        { label: "Redo", command: "edit.redo" },
+        { label: "Undo", command: "edit.undo" },
+        { separator: true },
+        { label: "Cut", command: "edit.cut" },
+        { label: "Copy", command: "edit.copy" },
+        { label: "Paste", command: "edit.paste" },
+        { label: "Delete", command: "edit.delete" },
+        { separator: true },
+        { label: "Insert Mode", command: "edit.insertMode" },
+        { separator: true },
+        { label: "Briefing", command: "edit.briefing" },
+        { label: "General Information", command: "edit.generalInfo" },
+        { label: "Groups", command: "edit.groups" },
+        { label: "Area Triggers", command: "edit.areaTriggers" },
+        { label: "Waypoints", command: "edit.waypoints" },
+        { label: "Player Waypoint Names", command: "edit.playerWaypointNames" },
+        { label: "Events", command: "edit.events" },
+        { label: "Layer Names", command: "edit.layerNames" },
+        { label: "Global Replace", command: "edit.globalReplace" },
+        { label: "Weapon Loadouts", command: "edit.weaponLoadouts" }
+      ]
+    },
+    {
+      label: "View",
+      children: [
+        { label: "View by Layer", command: "view.byLayer" },
+        { label: "View by Type", command: "view.byType" },
+        { label: "View by Side", command: "view.bySide" },
+        { separator: true },
+        { label: "Select Blink Group", command: "view.selectBlinkGroup" },
+        { label: "Select by SSN", command: "view.selectBySSN" }
+      ]
+    },
+    {
+      label: "Tools",
+      children: [
+        { label: "Tile Tool", command: "tools.tileTool" },
+        { label: "Run Text Tool", command: "tools.textTool" },
+        { separator: true },
+        { label: "Integrity Check", command: "tools.integrityCheck" },
+        { label: "Wrap Objects", command: "tools.wrapObjects" },
+        { label: "Cleanup SSNs", command: "tools.cleanupSSNs" }
+      ]
+    },
+    {
+      label: "Page",
+      children: [
+        { label: "Page 1", command: "page.one" },
+        { label: "Page 2", command: "page.two" }
+      ]
+    },
+    {
+      label: "Info",
+      children: [
+        { label: "About", command: "info.about" }
+      ]
+    },
+    {
+      label: "Character Map",
+      children: [
+        { label: "Save", command: "characterMap.save" }
+      ]
+    }
+  ];
+
+  function renderMenuBar(){
+    menuBar.innerHTML = "";
+    for (const rootDef of menuTree){
+      const root = document.createElement("div");
+      root.className = "menuRoot";
+      root.dataset.menu = rootDef.label.toLowerCase();
+
+      const btn = document.createElement("button");
+      btn.className = "menuRootBtn";
+      btn.textContent = rootDef.label;
+      root.appendChild(btn);
+
+      const dropdown = document.createElement("div");
+      dropdown.className = "menuDropdown";
+
+      for (const child of rootDef.children){
+        if (child.separator){
+          const sep = document.createElement("div");
+          sep.className = "menuSep";
+          dropdown.appendChild(sep);
+          continue;
+        }
+        const itemBtn = document.createElement("button");
+        itemBtn.className = "menuItemBtn";
+        itemBtn.textContent = child.label;
+        const handler = menuHandlers[child.command];
+        itemBtn.addEventListener("click", () => {
+          closeMenus();
+          if (handler) handler();
+          else showNotImplemented(child.label);
+        });
+        dropdown.appendChild(itemBtn);
+      }
+
+      root.appendChild(dropdown);
+      menuBar.appendChild(root);
+    }
+  }
+
+  renderMenuBar();
   const menuRoots = Array.from(menuBar.querySelectorAll(".menuRoot"));
 
   function closeMenus(){
@@ -1784,11 +1918,6 @@
 
   document.addEventListener("click", (e) => {
     if (!menuBar.contains(e.target)) closeMenus();
-  });
-
-  document.getElementById("menuLoadMisBtn").addEventListener("click", () => {
-    closeMenus();
-    fileMisEl.click();
   });
 
   // File inputs
