@@ -173,18 +173,22 @@
     }
     #liveMisOverlay.open{ display:flex; }
     #liveMisWindow{
-      width:min(980px,100%);
-      max-height:min(760px,100%);
+      width:min(1120px,100%);
+      max-height:min(820px,100%);
       background:#e5e5e5;
       border:1px solid #999;
       padding:10px;
       display:grid;
       gap:8px;
     }
+    #liveMisSearch{
+      min-width:280px;
+      max-width:360px;
+    }
     #liveMisText{
       width:100%;
-      min-height:520px;
-      max-height:620px;
+      min-height:620px;
+      max-height:760px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size:12px;
       resize:vertical;
@@ -538,7 +542,7 @@
 
       <div id="liveMisOverlay" aria-hidden="true">
         <div id="liveMisWindow" role="dialog" aria-modal="true" aria-label="MIS Live Changes">
-          <div class="windowTitle">MIS Live Changes <span class="spacer"></span><button class="xbtn" id="liveMisCloseBtn">X</button></div>
+          <div class="windowTitle">MIS Live Changes <span class="spacer"></span><input id="liveMisSearch" placeholder="Pesquisar texto" /><button class="xbtn" id="liveMisCloseBtn">X</button></div>
           <textarea id="liveMisText" readonly></textarea>
         </div>
       </div>
@@ -825,6 +829,8 @@
     groupSelectedNumber: 1,
     waypointSelectedNumber: 1,
     liveMisOpen: false,
+    liveMisSearchTerm: "",
+    liveMisSearchIndex: -1,
 
     contextMenuOpen: false,
     contextTargetId: null,
@@ -853,6 +859,7 @@
   const liveMisOverlay = document.getElementById("liveMisOverlay");
   const liveMisCloseBtn = document.getElementById("liveMisCloseBtn");
   const liveMisText = document.getElementById("liveMisText");
+  const liveMisSearch = document.getElementById("liveMisSearch");
   const wpSelectMarkersBtn = document.getElementById("wpSelectMarkersBtn");
   const wpSaveAsBtn = document.getElementById("wpSaveAsBtn");
   const wpOkBtn = document.getElementById("wpOkBtn");
@@ -1493,6 +1500,8 @@
   function openLiveMisWindow(){
     const out = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
     liveMisText.value = out;
+    state.liveMisSearchTerm = "";
+    state.liveMisSearchIndex = -1;
     state.liveMisOpen = true;
     liveMisOverlay.classList.add("open");
     liveMisOverlay.setAttribute("aria-hidden", "false");
@@ -1502,6 +1511,32 @@
     state.liveMisOpen = false;
     liveMisOverlay.classList.remove("open");
     liveMisOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  function findInLiveMis(next=false){
+    const term = (liveMisSearch.value || "").toLowerCase();
+    if (!term){
+      state.liveMisSearchTerm = "";
+      state.liveMisSearchIndex = -1;
+      return;
+    }
+
+    const text = (liveMisText.value || "").toLowerCase();
+    let start = 0;
+    if (next && term === state.liveMisSearchTerm && state.liveMisSearchIndex >= 0){
+      start = state.liveMisSearchIndex + 1;
+    }
+
+    let idx = text.indexOf(term, start);
+    if (idx === -1 && next) idx = text.indexOf(term, 0);
+    if (idx === -1) return;
+
+    state.liveMisSearchTerm = term;
+    state.liveMisSearchIndex = idx;
+    liveMisText.focus();
+    liveMisText.setSelectionRange(idx, idx + term.length);
+    const lineTopRatio = idx / Math.max(1, liveMisText.value.length);
+    liveMisText.scrollTop = lineTopRatio * liveMisText.scrollHeight;
   }
 
   function renderSectionList(){
@@ -2199,6 +2234,8 @@
   sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
   liveMisCloseBtn.addEventListener("click", closeLiveMisWindow);
   liveMisOverlay.addEventListener("mousedown", (e) => { if (e.target === liveMisOverlay) closeLiveMisWindow(); });
+  liveMisSearch.addEventListener("input", () => findInLiveMis(false));
+  liveMisSearch.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); findInLiveMis(true); } });
   sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; sectionAddBtn.textContent = state.sectionKind === "group" ? "Editar" : "Adicionar bloco"; updateSectionEditorMode(); renderSectionList(); });
   sectionSearch.addEventListener("input", renderSectionList);
   sectionApplyBtn.addEventListener("click", applySectionBlock);
