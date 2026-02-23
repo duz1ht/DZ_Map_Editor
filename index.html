@@ -498,9 +498,15 @@
     </div>
 
 <div class="hint" id="defStatus" style="margin-top:6px;">Catálogo de itens carregado (ITEMS.DEF embutido).</div>
+<div class="hint" id="stringsStatus" style="margin-top:4px;">Game strings: aguardando carregamento.</div>
+
+    <div class="row" style="margin-top:8px;">
+      <button id="loadStringsBtn">Carregar game_strings</button>
+      <input id="fileGameStrings" type="file" multiple style="display:none" />
+    </div>
 
     <div class="row" style="margin-top:10px;">
-      <input id="search" placeholder="Buscar por type_id, type, name" />
+      <input id="search" placeholder="Buscar por type_id, type, name, textkey/text" />
     </div>
 
     <div class="row">
@@ -908,6 +914,8 @@
     defsById: new Map(),     // type_id -> def
     defsSorted: [],          // array defs
     defTypes: new Set(),     // marker/object/vehicle/building/decoration etc
+    gameStrings: new Map(),
+    gameStringsLoaded: false,
 
     sectionBlocks: [],
     sectionEditorOpen: false,
@@ -927,11 +935,14 @@
   // UI refs
   const fileMisEl = document.getElementById("fileMis");
   const defStatusEl = document.getElementById("defStatus");
+  const stringsStatusEl = document.getElementById("stringsStatus");
   const searchEl = document.getElementById("search");
   const typeFilterEl = document.getElementById("typeFilter");
   const listEl = document.getElementById("list");
   const exportBtn = document.getElementById("exportBtn");
   const statusEl = document.getElementById("status");
+  const loadStringsBtn = document.getElementById("loadStringsBtn");
+  const fileGameStringsEl = document.getElementById("fileGameStrings");
 
   const sectionOverlay = document.getElementById("sectionOverlay");
   const sectionWindow = document.getElementById("sectionWindow");
@@ -1114,6 +1125,56 @@
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
   }
 
+  function normalizeKey(s){
+    return String(s || "").trim().toLowerCase();
+  }
+
+  function stripQuotedValue(raw){
+    const t = String(raw || "").trim();
+    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) return t.slice(1, -1);
+    return t;
+  }
+
+  function parseGameStringsText(rawText){
+    const map = new Map();
+    const lines = String(rawText || "").replace(/\r\n/g, "\n").split("\n");
+
+    for (const line of lines){
+      const t = line.trim();
+      if (!t || t.startsWith("#") || t.startsWith("//") || t.startsWith(";")) continue;
+      const match = t.match(/^([^=:\t\s]+)\s*(?:=|:|\t|\s)\s*(.+)$/);
+      if (!match) continue;
+      const key = normalizeKey(match[1]);
+      const value = stripQuotedValue(match[2]);
+      if (!key || !value) continue;
+      map.set(key, value);
+    }
+
+    return map;
+  }
+
+  function mergeGameStrings(entries){
+    let added = 0;
+    for (const [k, v] of entries){
+      if (!state.gameStrings.has(k)) added++;
+      state.gameStrings.set(k, v);
+    }
+    state.gameStringsLoaded = state.gameStrings.size > 0;
+    stringsStatusEl.textContent = state.gameStringsLoaded
+      ? `Game strings carregadas: ${state.gameStrings.size} chaves.`
+      : "Game strings: nenhum texto encontrado.";
+    return added;
+  }
+
+  function resolveGameString(...keys){
+    for (const key of keys){
+      const nk = normalizeKey(key);
+      if (!nk) continue;
+      if (state.gameStrings.has(nk)) return state.gameStrings.get(nk);
+    }
+    return "";
+  }
+
   function kvHas(it, key){
     return it && it.kv && Object.prototype.hasOwnProperty.call(it.kv, key);
   }
@@ -1186,6 +1247,27 @@
     if (!tid) return null;
     const mappedDefId = toDefIdFromMisTypeId(tid);
     return state.defsById.get(mappedDefId) || state.defsById.get(tid) || null;
+  }
+
+  function getItemDisplayName(it, def){
+    const rawName = (it?.kv?.name || it?.kv?.iai_name || it?.kv?.model || "").toString();
+    const resolved = resolveGameString(it?.kv?.gen_string, it?.kv?.textid, def?.kv?.textid);
+    return resolved || def?.name || rawName;
+  }
+
+  function getItemSearchText(it, def){
+    return [
+      (it?.kv?.type_id || "").toString(),
+      (it?.kv?.name || "").toString(),
+      (it?.kv?.iai_name || "").toString(),
+      (it?.kv?.gen_string || "").toString(),
+      (it?.kv?.textid || "").toString(),
+      def?.name ? String(def.name) : "",
+      def?.type ? String(def.type) : "",
+      def?.graphic ? String(def.graphic) : "",
+      def?.kv?.textid ? String(def.kv.textid) : "",
+      getItemDisplayName(it, def)
+    ].join(" ").toLowerCase();
   }
 
   // DEF parser (ITEMS.DEF)
@@ -2223,9 +2305,9 @@
       const def = getDefForItem(it);
       const defType = def?.type ? String(def.type).toLowerCase() : "";
       const tid = (it.kv.type_id || "").toString();
-      const name = (it.kv.name || it.kv.iai_name || "").toString();
       const defName = def?.name ? String(def.name) : "";
       const graphic = def?.graphic ? String(def.graphic) : "";
+      const searchable = getItemSearchText(it, def);
 
       if (tf){
         if (state.defLoaded){
@@ -2238,10 +2320,10 @@
       if (!q) return true;
       return (
         tid.toLowerCase().includes(q) ||
-        name.toLowerCase().includes(q) ||
         defName.toLowerCase().includes(q) ||
         defType.toLowerCase().includes(q) ||
-        graphic.toLowerCase().includes(q)
+        graphic.toLowerCase().includes(q) ||
+        searchable.includes(q)
       );
     });
   }
@@ -2252,7 +2334,8 @@
       const active = it.id === state.selectedId ? "active" : "";
       const tid = (it.kv.type_id || "").toString();
       const def = getDefForItem(it);
-      const label = def?.name ? def.name : (it.kv.name || it.kv.iai_name || it.kv.model || "").toString();
+      const label = getItemDisplayName(it, def);
+      const textKey = it.kv.gen_string || it.kv.textid || def?.kv?.textid || "";
       const typeText = def?.type ? def.type : (tid ? `type_id ${tid}` : "(sem type_id)");
       const graphic = def?.graphic ? def.graphic : "";
       const gTag = graphic ? `<span class="tag">${escapeHtml(graphic)}</span>` : "";
@@ -2261,7 +2344,7 @@
         <div class="itemCard ${active}" data-id="${it.id}">
           <div><b>#${it.id}</b> ${escapeHtml(typeText)} ${gTag}</div>
           <div class="meta">${escapeHtml(label || "")}</div>
-          <div class="meta">type_id=${escapeHtml(tid)} pos=${it.x.toFixed(0)} ${it.y.toFixed(0)} ${it.z.toFixed(0)}</div>
+          <div class="meta">type_id=${escapeHtml(tid)} ${textKey ? `textkey=${escapeHtml(String(textKey))} ` : ""}pos=${it.x.toFixed(0)} ${it.y.toFixed(0)} ${it.z.toFixed(0)}</div>
         </div>
       `;
     }).join("");
@@ -2329,7 +2412,7 @@
     const typeText = def?.type ? def.type : (kvHas(it, "type_id") ? `type_id ${it.kv.type_id}` : "");
     setValueIf(ui.type, typeText);
 
-    const title = def?.name ? def.name : (kvHas(it, "name") ? it.kv.name : (kvHas(it, "iai_name") ? it.kv.iai_name : "(sem name)"));
+    const title = getItemDisplayName(it, def) || "(sem name)";
     ui.itemTitle.textContent = title;
     ui.presenceHint.textContent = state.defLoaded
       ? "Campos cinza: a chave não existe no item do .mis. Type/Graphic/Sub-Type vêm do DEF via type_id."
@@ -2783,6 +2866,7 @@
     "edit.layerNames": () => openSectionEditor("layer"),
     "edit.globalReplace": runGlobalReplace,
     "edit.weaponLoadouts": () => openSectionEditor("weapon_availability"),
+    "tools.textTool": () => loadStringsBtn.click(),
     "mis.liveChanges": openLiveMisWindow
   };
 
@@ -2935,6 +3019,75 @@
   document.addEventListener("click", (e) => {
     if (!menuBar.contains(e.target)) closeMenus();
     if (!itemContextMenu.contains(e.target)) closeItemContextMenu();
+  });
+
+  async function loadGameStringsFromResources(){
+    const fromResources = new Map();
+    const candidates = [
+      "resources/game_strings/index.txt",
+      "resources/game_strings/strings_index.txt",
+      "resources/game_strings/manifest.txt"
+    ];
+
+    let listedFiles = [];
+    for (const indexPath of candidates){
+      try {
+        const resp = await fetch(indexPath, { cache: "no-store" });
+        if (!resp.ok) continue;
+        const idxText = await resp.text();
+        listedFiles = idxText
+          .replace(/\r\n/g, "\n")
+          .split("\n")
+          .map(x => x.trim())
+          .filter(x => x && !x.startsWith("#") && !x.startsWith("//") && !x.startsWith(";"));
+        if (listedFiles.length) break;
+      } catch (_) {
+        // silent: fallback para arquivos padrão
+      }
+    }
+
+    if (!listedFiles.length) listedFiles = ["strings.txt", "all_strings.txt", "game_strings.txt"];
+
+    for (const rel of listedFiles){
+      const safeRel = rel.replace(/^\/+/, "");
+      const path = safeRel.startsWith("resources/") ? safeRel : `resources/game_strings/${safeRel}`;
+      try {
+        const resp = await fetch(path, { cache: "no-store" });
+        if (!resp.ok) continue;
+        const txt = await resp.text();
+        const parsed = parseGameStringsText(txt);
+        for (const [k, v] of parsed) fromResources.set(k, v);
+      } catch (_) {
+        // ignora arquivo faltante
+      }
+    }
+
+    const added = mergeGameStrings(fromResources);
+    if (added > 0){
+      statusEl.textContent = `Game strings carregadas automaticamente: +${added} chaves.`;
+      renderList();
+      if (state.modalOpen) renderItemWindow();
+    }
+  }
+
+  async function loadGameStringsFromFiles(files){
+    const merged = new Map();
+    for (const f of Array.from(files || [])){
+      const txt = await f.text();
+      const parsed = parseGameStringsText(txt);
+      for (const [k, v] of parsed) merged.set(k, v);
+    }
+    const added = mergeGameStrings(merged);
+    statusEl.textContent = `Game strings carregadas de arquivos: +${added} chaves.`;
+    renderList();
+    if (state.modalOpen) renderItemWindow();
+  }
+
+  loadStringsBtn.addEventListener("click", () => fileGameStringsEl.click());
+  fileGameStringsEl.addEventListener("change", async (e) => {
+    if (!e.target.files?.length) return;
+    await loadGameStringsFromFiles(e.target.files);
+    fileGameStringsEl.value = "";
   });
 
   // File inputs
@@ -3176,6 +3329,11 @@
     console.error(err);
     defStatusEl.textContent = "Erro ao carregar catálogo embutido (ver console).";
   }
+
+  loadGameStringsFromResources().catch((err) => {
+    console.warn("Não foi possível carregar resources/game_strings automaticamente.", err);
+    stringsStatusEl.textContent = "Game strings: carregue manualmente (resources/game_strings).";
+  });
 
 </script>
 </body>

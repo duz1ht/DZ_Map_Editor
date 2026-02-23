@@ -1,0 +1,4 @@
+# Liste aqui os arquivos de strings para autocarregamento.
+# Exemplo:
+# weapons.txt
+# objects.txt
