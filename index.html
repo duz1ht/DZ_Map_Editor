@@ -889,7 +889,7 @@
   </div>
   </div>
 
-<script src="itemsDef.js"></script>
+<script src="resources/itemsDef.js"></script>
 
 <script>
   const state = {
@@ -922,6 +922,9 @@
 
     contextMenuOpen: false,
     contextTargetId: null,
+
+    gameStrings: new Map(),
+    weaponDefs: new Map(),
   };
 
   // UI refs
@@ -1108,6 +1111,134 @@
   function parseFloatSafe(v){
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
+  }
+
+  function stripOuterQuotes(v){
+    const s = String(v || "").trim();
+    if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
+    return s;
+  }
+
+  function unescapeMisString(v){
+    return String(v || "")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+  }
+
+  function parseStringTableLikeFile(raw){
+    const out = new Map();
+    const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    for (const line of lines){
+      const t = line.trim();
+      if (!t || t.startsWith("//") || t.startsWith("'") || t.startsWith("[")) continue;
+      const m = t.match(/^([^=]+?)\s*=\s*(.+?);?$/);
+      if (!m) continue;
+      const key = m[1].trim();
+      const value = unescapeMisString(stripOuterQuotes(m[2].trim()));
+      if (key) out.set(key, value);
+    }
+    return out;
+  }
+
+  function parseWeaponDefCatalog(raw){
+    const out = new Map();
+    const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    let cur = null;
+
+    for (const line of lines){
+      const t = line.trim();
+      if (!t || t.startsWith("//") || t.startsWith(";")) continue;
+
+      const mBegin = t.match(/^weapon\s+"([^"]+)"/i);
+      if (mBegin){
+        cur = { id: mBegin[1], menuTextKey: "", weaponClass: "" };
+        continue;
+      }
+
+      if (/^end\b/i.test(t)){
+        if (cur && cur.id) out.set(cur.id, cur);
+        cur = null;
+        continue;
+      }
+
+      if (!cur) continue;
+
+      const mKV = t.match(/^([A-Za-z0-9_]+)\s+(.+)$/);
+      if (!mKV) continue;
+      const key = mKV[1].toLowerCase();
+      const value = stripOuterQuotes(mKV[2].trim());
+      if (key === "loadout_menu_textid") cur.menuTextKey = value;
+      if (key === "weapon_class") cur.weaponClass = value;
+    }
+
+    return out;
+  }
+
+  function resolveStringKey(key){
+    const k = String(key || "").trim();
+    if (!k) return "";
+    return state.gameStrings.get(k) || "";
+  }
+
+  function getWeaponDisplayName(weaponId){
+    const id = String(weaponId || "").trim();
+    if (!id) return "";
+    const def = state.weaponDefs.get(id);
+    if (!def) return id;
+    const fromKey = resolveStringKey(def.menuTextKey);
+    return fromKey || def.menuTextKey || id;
+  }
+
+  function formatWeaponLoadoutSummary(sec){
+    const primary = sec?.kv?.default_primary || "";
+    const secondary = sec?.kv?.default_secondary || "";
+    const accessory = sec?.kv?.default_accessory || "";
+
+    if (!primary && !secondary && !accessory) return "";
+
+    const p = primary ? getWeaponDisplayName(primary) : "(none)";
+    const s = secondary ? getWeaponDisplayName(secondary) : "(none)";
+    const a = accessory ? getWeaponDisplayName(accessory) : "(none)";
+    return `${p} | ${s} | ${a}`;
+  }
+
+  async function loadGameStrings(){
+    const files = [
+      "resources/game_strings/game.bin",
+      "resources/game_strings/gameerr.bin",
+      "resources/game_strings/keyhelp.bin",
+      "resources/game_strings/meditens.bin",
+      "resources/game_strings/medmssn.bin",
+      "resources/game_strings/medtext.bin",
+      "resources/game_strings/menutxt.bin",
+      "resources/game_strings/gametext.bin",
+      "resources/game_strings/known_stringkeys_to_text_1.txt",
+    ];
+
+    const merged = new Map();
+    for (const path of files){
+      try{
+        const res = await fetch(path);
+        if (!res.ok) continue;
+        const text = await res.text();
+        const parsed = parseStringTableLikeFile(text);
+        for (const [k,v] of parsed) if (!merged.has(k)) merged.set(k, v);
+      } catch (_err) {
+        // fetch can fail in some file:// contexts; keep graceful fallback
+      }
+    }
+    state.gameStrings = merged;
+  }
+
+  async function loadWeaponDefs(){
+    try{
+      const res = await fetch("resources/weapon.def");
+      if (!res.ok) return;
+      const text = await res.text();
+      state.weaponDefs = parseWeaponDefCatalog(text);
+    } catch (_err) {
+      // optional dataset; keep editor usable without weapon.def
+    }
   }
 
   function escapeHtml(s){
@@ -1810,6 +1941,10 @@
       const desc = getWaypointDescription(sec);
       return `${n} - ${desc || ""}`;
     }
+    if (sec.kind === "weapon_availability"){
+      const summary = formatWeaponLoadoutSummary(sec);
+      return summary ? `weapon_availability - ${summary}` : "weapon_availability";
+    }
     const id = sec.label || sec.kv.id || sec.kv.name || sec.kv.description || sec.kv.title || sec.id;
     return `${sec.kind} ${id}`;
   }
@@ -2153,11 +2288,9 @@
   }
 
   function syncWeaponLoadoutsFromGeneral(sec){
-    const primary = sec.kv.default_primary || '';
-    const secondary = sec.kv.default_secondary || '';
-    const accessory = sec.kv.default_accessory || '';
-    if (!primary && !secondary && !accessory) return;
-    statusEl.textContent = `Loadout padrão: ${primary} | ${secondary} | ${accessory}`;
+    const summary = formatWeaponLoadoutSummary(sec);
+    if (!summary) return;
+    statusEl.textContent = `Loadout padrão: ${summary}`;
   }
 
 
@@ -3162,20 +3295,34 @@
 
     draw();
   }, { passive:false });
-  // Boot: load embedded ITEMS.DEF (works with file:// too)
-  try{
-    const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
-    const defs = parseItemsDef(defText);
-    if (defs && defs.length){
-      applyDefs(defs);
-      defStatusEl.textContent = `Catálogo de itens carregado (defs: ${defs.length}).`;
-    } else {
-      defStatusEl.textContent = "Aviso: catálogo embutido vazio (ITEMS.DEF).";
+  // Boot: load embedded ITEMS.DEF + optional resources (weapon.def + game strings).
+  (async function boot(){
+    try{
+      const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
+      const defs = parseItemsDef(defText);
+      if (defs && defs.length){
+        applyDefs(defs);
+      } else {
+        defStatusEl.textContent = "Aviso: catálogo embutido vazio (ITEMS.DEF).";
+      }
+    } catch (err){
+      console.error(err);
+      defStatusEl.textContent = "Erro ao carregar catálogo embutido (ver console).";
     }
-  } catch (err){
-    console.error(err);
-    defStatusEl.textContent = "Erro ao carregar catálogo embutido (ver console).";
-  }
+
+    await Promise.all([loadGameStrings(), loadWeaponDefs()]);
+
+    const stringInfo = state.gameStrings.size
+      ? `strings: ${state.gameStrings.size}`
+      : "strings: indisponível";
+    const weaponInfo = state.weaponDefs.size
+      ? `weapons: ${state.weaponDefs.size}`
+      : "weapons: indisponível";
+    const defInfo = state.defsSorted.length
+      ? `defs: ${state.defsSorted.length}`
+      : "defs: 0";
+    defStatusEl.textContent = `Catálogos carregados (${defInfo}, ${weaponInfo}, ${stringInfo}).`;
+  })();
 
 </script>
 </body>
