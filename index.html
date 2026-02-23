@@ -541,7 +541,7 @@
     </div>
 
     <div id="misRealtimePanel">
-      <div id="misRealtimeTitle">MIS Realtime Console (live)</div>
+      <div id="misRealtimeTitle">MIS Realtime Changes</div>
       <pre id="misRealtimeConsole">// Open a .mis file to track live code changes here.</pre>
     </div>
   </div>
@@ -660,8 +660,8 @@
       </div>
 
       <div id="liveMisOverlay" aria-hidden="true">
-        <div id="liveMisWindow" role="dialog" aria-modal="true" aria-label="MIS Live Changes">
-          <div class="windowTitle">MIS Live Changes <span class="spacer"></span><input id="liveMisSearch" placeholder="Pesquisar texto" /><button class="xbtn" id="liveMisCloseBtn">X</button></div>
+        <div id="liveMisWindow" role="dialog" aria-modal="true" aria-label="MIS Code">
+          <div class="windowTitle">MIS Code <span class="spacer"></span><input id="liveMisSearch" placeholder="Pesquisar texto" /><button class="xbtn" id="liveMisCloseBtn">X</button></div>
           <pre id="liveMisText"></pre>
         </div>
       </div>
@@ -951,6 +951,8 @@
     liveMisSearchTerm: "",
     liveMisSearchIndex: -1,
     liveMisRawText: "",
+    realtimePrevMisText: "",
+    realtimeLog: [],
 
     contextMenuOpen: false,
     contextTargetId: null,
@@ -2060,13 +2062,54 @@
     liveMisText.innerHTML = html;
   }
 
-  function refreshLiveMisWindow(){
+  function refreshLiveMisWindow(resetBaseline=false){
     state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
     if (misRealtimeConsoleEl){
-      misRealtimeConsoleEl.textContent = state.liveMisRawText || "// No MIS content available yet.";
+      updateRealtimeChangesConsole(state.liveMisRawText, resetBaseline);
     }
     if (!state.liveMisOpen) return;
     renderLiveMisHighlighted();
+  }
+
+  function updateRealtimeChangesConsole(newMisText, resetBaseline=false){
+    const nextText = String(newMisText || "");
+
+    if (resetBaseline || !state.realtimePrevMisText){
+      state.realtimePrevMisText = nextText;
+      state.realtimeLog = [];
+      misRealtimeConsoleEl.textContent = "// Baseline loaded. Make changes to see live MIS diffs.";
+      return;
+    }
+
+    if (nextText === state.realtimePrevMisText){
+      if (!state.realtimeLog.length){
+        misRealtimeConsoleEl.textContent = "// No changes detected yet.";
+      }
+      return;
+    }
+
+    const prevLines = state.realtimePrevMisText.split("\n");
+    const nextLines = nextText.split("\n");
+    const maxLen = Math.max(prevLines.length, nextLines.length);
+    const changed = [];
+
+    for (let i = 0; i < maxLen; i++){
+      const a = prevLines[i] ?? "";
+      const b = nextLines[i] ?? "";
+      if (a === b) continue;
+      if (a !== "") changed.push(`- L${i+1}: ${a}`);
+      if (b !== "") changed.push(`+ L${i+1}: ${b}`);
+      if (changed.length >= 24) break;
+    }
+
+    const stamp = new Date().toLocaleTimeString();
+    const entry = [`[${stamp}]`, ...changed].join("\n");
+    state.realtimeLog.unshift(entry);
+    if (state.realtimeLog.length > 20) state.realtimeLog.length = 20;
+
+    misRealtimeConsoleEl.textContent = state.realtimeLog.join("\n\n");
+    state.realtimePrevMisText = nextText;
+    misRealtimeConsoleEl.scrollTop = 0;
   }
 
   function openLiveMisWindow(){
@@ -3038,7 +3081,7 @@
       ]
     },
     {
-      label: "MIS Live Changes",
+      label: "MIS Code",
       directCommand: "mis.liveChanges"
     }
   ];
@@ -3139,7 +3182,7 @@
     fitView();
     renderList();
     draw();
-    refreshLiveMisWindow();
+    refreshLiveMisWindow(true);
   });
   // Canvas
   const cv = document.getElementById("cv");
