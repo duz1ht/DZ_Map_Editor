@@ -1070,6 +1070,23 @@
     { id:"giMapAttackDefend", bit:256 },
   ];
 
+  const GENERAL_ATTRIB_BITS = {
+    rotate180: 512,
+    nvgAvailable: 1024,
+    nvgStartOn: 2048,
+    waterOverride: 4096,
+    fogDistanceOverride: 8192,
+    fogColorOverride: 16384,
+  };
+
+  const GENERAL_KNOWN_ATTRIB_MASK = GENERAL_MAP_TYPE_BITS.reduce((m, f) => (m | f.bit), 0)
+    | GENERAL_ATTRIB_BITS.rotate180
+    | GENERAL_ATTRIB_BITS.nvgAvailable
+    | GENERAL_ATTRIB_BITS.nvgStartOn
+    | GENERAL_ATTRIB_BITS.waterOverride
+    | GENERAL_ATTRIB_BITS.fogDistanceOverride
+    | GENERAL_ATTRIB_BITS.fogColorOverride;
+
   const GENERAL_TERRAINS = ["dvd1","dvd2","dvd3","jungle1","arctic1","desert1"];
   const GENERAL_TILES = ["trntile11","trntile12","trntile13","trntile21","trntile31"];
   const GENERAL_PLAYERS = ["Delta Force","SEALs","SAS","Spetsnaz","GIGN"];
@@ -1083,11 +1100,10 @@
     { value:6, label:"Extract team" },
   ];
   const GENERAL_ENV_FILES = [
-    { token:"day1", label:"Daytime 1" }, { token:"day2", label:"Daytime 2" },
-    { token:"dawn1", label:"Dawn 1" }, { token:"dusk1", label:"Dusk 1" },
-    { token:"overcst1", label:"Overcast 1" },
+    { value:"day1", label:"Daytime 1" }, { value:"day2", label:"Daytime 2" },
+    { value:"dawn1", label:"Dawn 1" }, { value:"dusk1", label:"Dusk 1" },
+    { value:"overcst1", label:"Overcast 1" },
   ];
-  const GENERAL_TERRAIN_TYPES = ["Desert","Jungle","Arctic","Temperate"];
 
   function parseFloatSafe(v){
     const n = Number(v);
@@ -1381,10 +1397,17 @@
     ensureSelectOptions(giTiles, GENERAL_TILES.map(v=>({ value:v, label:v })), kv.terrain_tile_tga || "trntile11");
     ensureSelectOptions(giPlayerType, GENERAL_PLAYERS.map((label, idx)=>({ value:String(idx), label })), kv.player_type || "0");
     ensureSelectOptions(giEnvironment, GENERAL_ENV_FILES, kv.sunset || "day1");
-    ensureSelectOptions(giTerrainType, GENERAL_TERRAIN_TYPES.map(v=>({ value:v, label:v })), kv.terrain_type || "Desert");
 
-    giMissionName.value = kv.name || "";
-    giDesigner.value = kv.designer || "";
+    const terrainColorRaw = String(kv.terrain_color ?? "");
+    ensureSelectOptions(
+      giTerrainType,
+      [{ value: terrainColorRaw || "", label: terrainColorRaw ? `Preserve (${terrainColorRaw})` : "Preserve (unknown)" }],
+      terrainColorRaw
+    );
+    giTerrainType.disabled = true;
+
+    giMissionName.value = String(kv.name || "").replace(/^"|"$/g, "");
+    giDesigner.value = String(kv.designer || "").replace(/^"|"$/g, "");
     giMapZoom.value = String(Number(kv.map_zoom || 0));
     giBonusExpiration.value = kv.bonus_expiration || "0";
     giMaxSaves.value = kv.max_saves || "0";
@@ -1412,13 +1435,13 @@
     }
 
     const waterRaw = Number(kv.water_level || 0);
-    giWaterEnabled.checked = Object.prototype.hasOwnProperty.call(kv, "water_level");
+    giWaterEnabled.checked = ((attrib & GENERAL_ATTRIB_BITS.waterOverride) !== 0) || Object.prototype.hasOwnProperty.call(kv, "water_level");
     giWaterLevel.value = Number.isFinite(waterRaw) ? String(waterRaw * 0.5) : "0";
 
-    giFogDistEnabled.checked = Object.prototype.hasOwnProperty.call(kv, "fog_level");
+    giFogDistEnabled.checked = ((attrib & GENERAL_ATTRIB_BITS.fogDistanceOverride) !== 0) || Object.prototype.hasOwnProperty.call(kv, "fog_level");
     giFogLevel.value = kv.fog_level || "0";
 
-    giFogColorEnabled.checked = Object.prototype.hasOwnProperty.call(kv, "fog_color");
+    giFogColorEnabled.checked = ((attrib & GENERAL_ATTRIB_BITS.fogColorOverride) !== 0) || Object.prototype.hasOwnProperty.call(kv, "fog_color");
     const rgb = decodeFogColor(kv.fog_color || 0);
     giFogR.value = String(rgb.r); giFogG.value = String(rgb.g); giFogB.value = String(rgb.b);
 
@@ -1426,9 +1449,9 @@
     giWindSpeed.value = String(wind[0]);
     giWindDirection.value = String(wind[1]);
 
-    giNvgAvailable.checked = Number(kv.nvg_available || 0) > 0;
-    giNvgStartOn.checked = Number(kv.nvg_start_on || 0) > 0;
-    giRotate180.checked = Number(kv.rotate_map_180 || 0) > 0;
+    giNvgAvailable.checked = (attrib & GENERAL_ATTRIB_BITS.nvgAvailable) !== 0;
+    giNvgStartOn.checked = (attrib & GENERAL_ATTRIB_BITS.nvgStartOn) !== 0;
+    giRotate180.checked = (attrib & GENERAL_ATTRIB_BITS.rotate180) !== 0;
 
     updateGeneralInfoEnables();
   }
@@ -1445,11 +1468,19 @@
     kv.terrain_tile_tga = giTiles.value || "trntile11";
     kv.player_type = String(Math.max(0, Math.trunc(Number(giPlayerType.value || 0))));
 
-    let attrib = 0;
+    let attrib = Number(kv.attrib || 0);
+    attrib = (Number.isFinite(attrib) ? Math.trunc(attrib) : 0) & ~GENERAL_KNOWN_ATTRIB_MASK;
+
     for (const f of GENERAL_MAP_TYPE_BITS){
       const el = document.getElementById(f.id);
       if (el && el.checked) attrib |= f.bit;
     }
+    if (giRotate180.checked) attrib |= GENERAL_ATTRIB_BITS.rotate180;
+    if (giNvgAvailable.checked) attrib |= GENERAL_ATTRIB_BITS.nvgAvailable;
+    if (giNvgStartOn.checked) attrib |= GENERAL_ATTRIB_BITS.nvgStartOn;
+    if (giWaterEnabled.checked) attrib |= GENERAL_ATTRIB_BITS.waterOverride;
+    if (giFogDistEnabled.checked) attrib |= GENERAL_ATTRIB_BITS.fogDistanceOverride;
+    if (giFogColorEnabled.checked) attrib |= GENERAL_ATTRIB_BITS.fogColorOverride;
     kv.attrib = String(attrib);
 
     kv.map_zoom = String(Number(giMapZoom.value || 0).toFixed(2));
@@ -1463,21 +1494,18 @@
     kv.subgoals_lose = lose.goals.join(" ");
     kv.lose_scores = lose.scores.join(" ");
 
-    if (giWaterEnabled.checked) kv.water_level = String(Math.max(0, Math.round(Number(giWaterLevel.value || 0) / 0.5)));
-    else delete kv.water_level;
-
-    if (giFogDistEnabled.checked) kv.fog_level = String(Math.max(0, Math.trunc(Number(giFogLevel.value || 0))));
-    else delete kv.fog_level;
-
-    if (giFogColorEnabled.checked) kv.fog_color = String(encodeFogColor(giFogR.value, giFogG.value, giFogB.value));
-    else delete kv.fog_color;
+    kv.water_level = String(Math.max(0, Math.round(Number(giWaterLevel.value || 0) / 0.5)));
+    kv.fog_level = String(Math.max(0, Math.trunc(Number(giFogLevel.value || 0))));
+    kv.fog_color = String(encodeFogColor(giFogR.value, giFogG.value, giFogB.value));
 
     kv.wind = `${Math.max(0, Math.trunc(Number(giWindSpeed.value || 0)))} ${Math.max(0, Math.trunc(Number(giWindDirection.value || 0)))}`;
     kv.sunset = giEnvironment.value || "day1";
-    kv.terrain_type = giTerrainType.value || "Desert";
-    kv.nvg_available = giNvgAvailable.checked ? "1" : "0";
-    kv.nvg_start_on = giNvgStartOn.checked ? "1" : "0";
-    kv.rotate_map_180 = giRotate180.checked ? "1" : "0";
+
+    // Legacy keys from previous implementation are no longer written by this dialog.
+    delete kv.terrain_type;
+    delete kv.nvg_available;
+    delete kv.nvg_start_on;
+    delete kv.rotate_map_180;
 
     sec.kv = kv;
     sec.lines = Object.entries(kv).map(([k,v]) => `  ${k} ${v}`);
