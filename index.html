@@ -2453,20 +2453,27 @@
   }
 
   function selectWaypointMarkers(){
-    const markers = state.items.filter(isWaypointMarkerItem);
+    const waypointNumber = Math.max(1, Math.min(127, Number(state.waypointSelectedNumber) || 1));
+    const markers = state.items.filter(it => {
+      if (!isWaypointMarkerItem(it)) return false;
+      const wpn = Number(it?.kv?.wpnumber ?? "");
+      if (Number.isFinite(wpn) && Math.trunc(wpn) === waypointNumber) return true;
+      const wpId = Number(it?.kv?.waypoint_id ?? "");
+      return Number.isFinite(wpId) && Math.trunc(wpId) === waypointNumber;
+    });
     state.selectedWaypointMarkerIds = new Set(markers.map(m => m.id));
 
     if (!markers.length){
       state.selectedId = null;
       draw();
-      statusEl.textContent = "Select Markers: no waypoint markers found in this map.";
+      statusEl.textContent = `Select Markers: no marker found for waypoint ${waypointNumber}.`;
       return;
     }
 
     state.selectedId = markers[0].id;
     renderList();
     draw();
-    statusEl.textContent = `Select Markers: selected ${markers.length} waypoint marker(s).`;
+    statusEl.textContent = `Select Markers: selected ${markers.length} marker(s) for waypoint ${waypointNumber}.`;
   }
 
   function getFilteredItems(){
