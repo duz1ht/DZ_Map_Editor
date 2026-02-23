@@ -287,6 +287,22 @@
       color:var(--muted);
       margin-bottom:4px;
     }
+    .kvRow{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      align-items:center;
+      gap:8px;
+    }
+    .stackRows{
+      display:grid;
+      gap:6px;
+    }
+    .compactInput{
+      width:70%;
+      min-width:50px;
+      max-width:98px;
+      justify-self:end;
+    }
     .tinyInput{ width:44px; }
     .narrowInput{ max-width:72px; }
     .midInput{ max-width:140px; }
@@ -499,22 +515,19 @@
               <fieldset>
                 <legend>Position</legend>
                 <div class="section">
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">X:</div>
-                      <input id="ui_posx" class="midInput" />
+                  <div class="stackRows">
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">X:</div>
+                      <input id="ui_posx" class="compactInput" />
                     </div>
-                    <div>
-                      <div class="inlineLabel">Y:</div>
-                      <input id="ui_posy" class="midInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Y:</div>
+                      <input id="ui_posy" class="compactInput" />
                     </div>
-                  </div>
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Z:</div>
-                      <input id="ui_posz" class="midInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Z:</div>
+                      <input id="ui_posz" class="compactInput" />
                     </div>
-                    <div></div>
                   </div>
                   <div class="row" style="margin:2px 0 0 0;">
                     <label class="checkRow" style="margin:0;">
@@ -531,16 +544,14 @@
 
               <fieldset>
                 <legend>Facing</legend>
-                <div class="section">
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Heading (0 = North)</div>
-                      <input id="ui_heading" class="narrowInput" />
-                    </div>
-                    <div>
-                      <div class="inlineLabel">Pitch (90 = up)</div>
-                      <input id="ui_pitch" class="narrowInput" />
-                    </div>
+                <div class="section stackRows">
+                  <div class="kvRow">
+                    <div class="inlineLabel" style="margin:0;">Heading (0 = North)</div>
+                    <input id="ui_heading" class="compactInput" />
+                  </div>
+                  <div class="kvRow">
+                    <div class="inlineLabel" style="margin:0;">Pitch (90 = up)</div>
+                    <input id="ui_pitch" class="compactInput" />
                   </div>
                 </div>
               </fieldset>
@@ -585,12 +596,9 @@
               <fieldset>
                 <legend>AI Variables</legend>
                 <div class="section">
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Active Area</div>
-                      <input id="ui_activeArea" class="narrowInput" />
-                    </div>
-                    <div></div>
+                  <div class="kvRow">
+                    <div class="inlineLabel" style="margin:0;">Active Area</div>
+                    <input id="ui_activeArea" class="compactInput" />
                   </div>
 
                   <div class="miniGrid">
@@ -620,40 +628,34 @@
                     </div>
                   </div>
 
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Weapon Accuracy 1</div>
-                      <input id="ui_wacc1" class="narrowInput" />
+                  <div class="stackRows">
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Weapon Accuracy 1</div>
+                      <input id="ui_wacc1" class="compactInput" />
                     </div>
-                    <div>
-                      <div class="inlineLabel">Weapon Accuracy 2</div>
-                      <input id="ui_wacc2" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Weapon Accuracy 2</div>
+                      <input id="ui_wacc2" class="compactInput" />
                     </div>
-                  </div>
-
-                  <div class="miniGrid">
-                    <div>
-                      <div class="inlineLabel">Fire Timer</div>
-                      <input id="ui_fireTimer" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Fire Timer</div>
+                      <input id="ui_fireTimer" class="compactInput" />
                     </div>
-                    <div>
-                      <div class="inlineLabel">Spawns (WP pause)</div>
-                      <input id="ui_wpPause" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Spawns (WP pause)</div>
+                      <input id="ui_wpPause" class="compactInput" />
                     </div>
-                  </div>
-
-                  <div class="miniGrid3">
-                    <div>
-                      <div class="inlineLabel">Max Attack Distance</div>
-                      <input id="ui_maxAttack" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Max Attack Distance</div>
+                      <input id="ui_maxAttack" class="compactInput" />
                     </div>
-                    <div>
-                      <div class="inlineLabel">Max Engagement Distance</div>
-                      <input id="ui_maxEngage" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Max Engagement Distance</div>
+                      <input id="ui_maxEngage" class="compactInput" />
                     </div>
-                    <div>
-                      <div class="inlineLabel">Min Engagement Distance</div>
-                      <input id="ui_minEngage" class="narrowInput" />
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">Min Engagement Distance</div>
+                      <input id="ui_minEngage" class="compactInput" />
                     </div>
                   </div>
 
