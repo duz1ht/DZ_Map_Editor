@@ -278,15 +278,44 @@
     .tinyInput{ width:44px; }
     .narrowInput{ max-width:72px; }
     .midInput{ max-width:140px; }
-    #missionTools{
-      margin-top:12px;
-      border-top:1px solid var(--line);
-      padding-top:10px;
-      display:grid;
+    .menuBar{
+      display:flex;
       gap:8px;
+      margin-bottom:10px;
+      position:relative;
+      z-index:5;
     }
-    #missionTools h3{ margin:0; font-size:14px; }
-    #missionTools button{ width:100%; text-align:left; }
+    .menuRoot{ position:relative; }
+    .menuRootBtn{
+      border:1px solid #9b9b9b;
+      border-radius:0;
+      padding:4px 10px;
+      min-width:72px;
+      text-align:left;
+      background:#f8f8f8;
+    }
+    .menuDropdown{
+      position:absolute;
+      top:100%;
+      left:0;
+      min-width:210px;
+      background:#fff;
+      border:1px solid #9b9b9b;
+      box-shadow:0 2px 10px rgba(0,0,0,.12);
+      display:none;
+      padding:4px 0;
+    }
+    .menuRoot.open .menuDropdown{ display:block; }
+    .menuItemBtn{
+      width:100%;
+      border:0;
+      border-radius:0;
+      background:transparent;
+      text-align:left;
+      padding:6px 10px;
+      font-size:12px;
+    }
+    .menuItemBtn:hover{ background:#eef2ff; }
 
     #sectionOverlay{
       position:absolute;
@@ -327,14 +356,37 @@
 
 <body>
   <div id="sidebar">
+    <div class="menuBar" id="menuBar">
+      <div class="menuRoot" data-menu="file">
+        <button class="menuRootBtn" id="fileMenuBtn">File</button>
+        <div class="menuDropdown">
+          <button class="menuItemBtn" id="menuLoadMisBtn">Load map .mis</button>
+        </div>
+      </div>
+
+      <div class="menuRoot" data-menu="edit">
+        <button class="menuRootBtn" id="editMenuBtn">Edit</button>
+        <div class="menuDropdown">
+          <button class="menuItemBtn" id="openGeneralBtn">General Information</button>
+          <button class="menuItemBtn" id="openBriefingBtn">Briefing</button>
+          <button class="menuItemBtn" id="openGroupsBtn">Groups</button>
+          <button class="menuItemBtn" id="openAreasBtn">Area Triggers</button>
+          <button class="menuItemBtn" id="openWaypointsBtn">Waypoints</button>
+          <button class="menuItemBtn" id="openEventsBtn">Events</button>
+          <button class="menuItemBtn" id="openLayersBtn">Layer Names</button>
+          <button class="menuItemBtn" id="openWeaponsBtn">Weapon Loadouts</button>
+          <button class="menuItemBtn" id="openGlobalReplaceBtn">Global Replace</button>
+        </div>
+      </div>
+    </div>
+
+    <input id="fileMis" type="file" accept=".mis,.txt" style="display:none;" />
+
     <div class="hint">
       Controles: Zoom <span class="kbd">roda</span> Pan <span class="kbd">arrastar</span> Selecionar <span class="kbd">clique</span> Mover item <span class="kbd">Shift</span> + arrastar
       <br>Duplo clique no item para abrir Item Attributes.
     </div>
 
-    <div class="row" style="margin-top:10px;">
-      <input id="fileMis" type="file" accept=".mis,.txt" />
-    </div>
 <div class="hint" id="defStatus" style="margin-top:6px;">Catálogo de itens carregado (ITEMS.DEF embutido).</div>
 
     <div class="row" style="margin-top:10px;">
@@ -350,21 +402,6 @@
 
     <h3 style="margin:12px 0 6px 0; font-size:14px;">Itens</h3>
     <div id="list"></div>
-
-    <div id="missionTools">
-      <h3>Mission Tools</h3>
-      <button id="openGeneralBtn">General Information</button>
-      <button id="openBriefingBtn">Briefing</button>
-      <button id="openGroupsBtn">Groups</button>
-      <button id="openAreasBtn">Area Triggers</button>
-      <button id="openWaypointsBtn">Waypoints</button>
-      <button id="openEventsBtn">Events</button>
-      <button id="openLayersBtn">Layer Names</button>
-      <button id="openWeaponsBtn">Weapon Loadouts</button>
-      <button id="openGlobalReplaceBtn">Global Replace</button>
-      <input id="pffFiles" type="file" accept=".pff" multiple />
-      <div class="hint" id="pffStatus">PFF: nenhum arquivo carregado.</div>
-    </div>
   </div>
 
   <div id="main">
@@ -696,8 +733,6 @@
     sectionEditorOpen: false,
     sectionKind: "general_information",
     sectionSelectedId: null,
-    pffFiles: [],
-    pffTileNames: [],
   };
 
   // UI refs
@@ -708,9 +743,6 @@
   const listEl = document.getElementById("list");
   const exportBtn = document.getElementById("exportBtn");
   const statusEl = document.getElementById("status");
-
-  const pffFilesEl = document.getElementById("pffFiles");
-  const pffStatusEl = document.getElementById("pffStatus");
 
   const sectionOverlay = document.getElementById("sectionOverlay");
   const sectionCloseBtn = document.getElementById("sectionCloseBtn");
@@ -1276,16 +1308,6 @@
     renderItemWindow();
     renderList();
   }
-
-  function parsePffForTileNames(bytes){
-    const text = new TextDecoder('latin1').decode(bytes);
-    const re = /[A-Za-z0-9_\/.-]*trntile[0-9A-Za-z_\-]*\.tga/gi;
-    const names = new Set();
-    let m;
-    while ((m = re.exec(text))) names.add(m[0]);
-    return Array.from(names).sort();
-  }
-
   function downloadText(name, text){
     const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
     const a = document.createElement("a");
@@ -1742,16 +1764,31 @@
   document.getElementById("openWeaponsBtn").addEventListener("click", () => openSectionEditor("weapon_availability"));
   document.getElementById("openGlobalReplaceBtn").addEventListener("click", runGlobalReplace);
 
-  pffFilesEl.addEventListener("change", async (e) => {
-    const files = Array.from(e.target.files || []);
-    state.pffFiles = files.map(f => f.name);
-    const allTiles = new Set();
-    for (const f of files){
-      const buf = await f.arrayBuffer();
-      for (const n of parsePffForTileNames(new Uint8Array(buf))) allTiles.add(n);
-    }
-    state.pffTileNames = Array.from(allTiles).sort();
-    pffStatusEl.textContent = `PFF: ${files.length} arquivo(s). Tiles detectados: ${state.pffTileNames.length}`;
+
+  const menuBar = document.getElementById("menuBar");
+  const menuRoots = Array.from(menuBar.querySelectorAll(".menuRoot"));
+
+  function closeMenus(){
+    menuRoots.forEach(m => m.classList.remove("open"));
+  }
+
+  menuRoots.forEach(root => {
+    const btn = root.querySelector(".menuRootBtn");
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const willOpen = !root.classList.contains("open");
+      closeMenus();
+      if (willOpen) root.classList.add("open");
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!menuBar.contains(e.target)) closeMenus();
+  });
+
+  document.getElementById("menuLoadMisBtn").addEventListener("click", () => {
+    closeMenus();
+    fileMisEl.click();
   });
 
   // File inputs
