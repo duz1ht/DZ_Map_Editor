@@ -161,6 +161,34 @@
       padding: 18px;
     }
     #modalOverlay.open{ display:flex; }
+    #liveMisOverlay{
+      position:absolute;
+      inset:0;
+      background:var(--overlay);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:55;
+      padding:18px;
+    }
+    #liveMisOverlay.open{ display:flex; }
+    #liveMisWindow{
+      width:min(980px,100%);
+      max-height:min(760px,100%);
+      background:#e5e5e5;
+      border:1px solid #999;
+      padding:10px;
+      display:grid;
+      gap:8px;
+    }
+    #liveMisText{
+      width:100%;
+      min-height:520px;
+      max-height:620px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px;
+      resize:vertical;
+    }
     #modalWindow{
       width: min(980px, 100%);
       max-height: min(720px, 100%);
@@ -508,6 +536,13 @@
         </div>
       </div>
 
+      <div id="liveMisOverlay" aria-hidden="true">
+        <div id="liveMisWindow" role="dialog" aria-modal="true" aria-label="MIS Live Changes">
+          <div class="windowTitle">MIS Live Changes <span class="spacer"></span><button class="xbtn" id="liveMisCloseBtn">X</button></div>
+          <textarea id="liveMisText" readonly></textarea>
+        </div>
+      </div>
+
       <div class="contextMenu" id="itemContextMenu" aria-hidden="true"></div>
 
       <div id="modalOverlay" aria-hidden="true">
@@ -789,6 +824,7 @@
     sectionSelectedId: null,
     groupSelectedNumber: 1,
     waypointSelectedNumber: 1,
+    liveMisOpen: false,
 
     contextMenuOpen: false,
     contextTargetId: null,
@@ -814,6 +850,9 @@
   const sectionApplyBtn = document.getElementById("sectionApplyBtn");
   const sectionDeleteBtn = document.getElementById("sectionDeleteBtn");
   const sectionAddBtn = document.getElementById("sectionAddBtn");
+  const liveMisOverlay = document.getElementById("liveMisOverlay");
+  const liveMisCloseBtn = document.getElementById("liveMisCloseBtn");
+  const liveMisText = document.getElementById("liveMisText");
   const wpSelectMarkersBtn = document.getElementById("wpSelectMarkersBtn");
   const wpSaveAsBtn = document.getElementById("wpSaveAsBtn");
   const wpOkBtn = document.getElementById("wpOkBtn");
@@ -1449,6 +1488,20 @@
   function closeSectionEditor(){
     state.sectionEditorOpen = false;
     sectionOverlay.classList.remove("open");
+  }
+
+  function openLiveMisWindow(){
+    const out = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
+    liveMisText.value = out;
+    state.liveMisOpen = true;
+    liveMisOverlay.classList.add("open");
+    liveMisOverlay.setAttribute("aria-hidden", "false");
+  }
+
+  function closeLiveMisWindow(){
+    state.liveMisOpen = false;
+    liveMisOverlay.classList.remove("open");
+    liveMisOverlay.setAttribute("aria-hidden", "true");
   }
 
   function renderSectionList(){
@@ -2091,6 +2144,7 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && state.modalOpen) closeModalCancel();
     if (e.key === "Escape" && state.sectionEditorOpen) closeSectionEditor();
+    if (e.key === "Escape" && state.liveMisOpen) closeLiveMisWindow();
   });
 
   ui.dupBtn.addEventListener("click", () => {
@@ -2143,6 +2197,8 @@
 
   sectionCloseBtn.addEventListener("click", closeSectionEditor);
   sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
+  liveMisCloseBtn.addEventListener("click", closeLiveMisWindow);
+  liveMisOverlay.addEventListener("mousedown", (e) => { if (e.target === liveMisOverlay) closeLiveMisWindow(); });
   sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; sectionAddBtn.textContent = state.sectionKind === "group" ? "Editar" : "Adicionar bloco"; updateSectionEditorMode(); renderSectionList(); });
   sectionSearch.addEventListener("input", renderSectionList);
   sectionApplyBtn.addEventListener("click", applySectionBlock);
@@ -2259,7 +2315,8 @@
     "edit.events": () => openSectionEditor("event"),
     "edit.layerNames": () => openSectionEditor("layer"),
     "edit.globalReplace": runGlobalReplace,
-    "edit.weaponLoadouts": () => openSectionEditor("weapon_availability")
+    "edit.weaponLoadouts": () => openSectionEditor("weapon_availability"),
+    "mis.liveChanges": openLiveMisWindow
   };
 
   const menuTree = [
@@ -2337,10 +2394,8 @@
       ]
     },
     {
-      label: "Character Map",
-      children: [
-        { label: "Save", command: "characterMap.save" }
-      ]
+      label: "MIS Live Changes",
+      directCommand: "mis.liveChanges"
     }
   ];
 
@@ -2355,6 +2410,16 @@
       btn.className = "menuRootBtn";
       btn.textContent = rootDef.label;
       root.appendChild(btn);
+
+      if (rootDef.directCommand){
+        btn.addEventListener("click", () => {
+          const handler = menuHandlers[rootDef.directCommand];
+          if (handler) handler();
+          else showNotImplemented(rootDef.label);
+        });
+        menuBar.appendChild(root);
+        continue;
+      }
 
       const dropdown = document.createElement("div");
       dropdown.className = "menuDropdown";
