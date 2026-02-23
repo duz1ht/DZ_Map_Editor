@@ -390,9 +390,10 @@
       display:grid;
       grid-template-columns: 290px 1fr;
       gap:10px;
-      min-height:520px;
+      height:520px;
+      min-height:0;
     }
-    #sectionList{ overflow:auto; border:1px solid #aaa; background:#fff; padding:6px; }
+    #sectionList{ overflow:auto; border:1px solid #aaa; background:#fff; padding:6px; min-height:0; max-height:100%; }
     .secCard{ border:1px solid #ccc; padding:6px; margin-bottom:5px; cursor:pointer; font-size:12px; background:#fff; }
     .secCard.active{ border-color:#5865f2; box-shadow:0 0 0 1px rgba(88,101,242,.25); }
     #sectionEditor{ display:grid; grid-template-rows:auto auto 1fr auto; gap:6px; }
@@ -1656,7 +1657,7 @@
     setValueIf(ui.aiTextfile, kvHas(it, "ai_textfile") ? it.kv.ai_textfile : "");
 
     buildGroupOptions();
-    setEnabled(ui.group, kvHas(it, "group_id"));
+    setEnabled(ui.group, ui.group.options.length > 1);
     setValueIf(ui.group, kvHas(it, "group_id") ? it.kv.group_id : "");
 
     setEnabled(ui.team, kvHas(it, "team"));
@@ -1761,7 +1762,10 @@
     const activeAreaKey = kvFindKey(it, ["active_area", "attention"]);
     if (activeAreaKey) it.kv[activeAreaKey] = String(parseFloatSafe(ui.activeArea.value));
     if (kvHas(it, "ai_textfile")) it.kv.ai_textfile = ui.aiTextfile.value;
-    if (kvHas(it, "group_id")) it.kv.group_id = ui.group.value;
+    if (!ui.group.disabled){
+      if (ui.group.value) it.kv.group_id = ui.group.value;
+      else if (kvHas(it, "group_id")) it.kv.group_id = "";
+    }
     if (kvHas(it, "team")) it.kv.team = ui.team.value;
 
     if (kvHas(it, "waccuracy1")) it.kv.waccuracy1 = String(parseFloatSafe(ui.wacc1.value));
