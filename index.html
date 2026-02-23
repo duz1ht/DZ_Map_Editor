@@ -484,6 +484,12 @@
     #sectionWindow.waypointMode #waypointEditor{ display:grid; }
     #waypointEditor{ display:none; gap:8px; }
     #waypointEditor .checkRow{ margin:0; }
+    #wpMarkerCount{
+      justify-self:end;
+      font-size:12px;
+      color:#333;
+      margin-top:2px;
+    }
     #waypointTopActions{ display:none; gap:8px; }
     #sectionWindow.waypointMode #waypointTopActions{ display:flex; }
     #sectionWindow.waypointMode #sectionAddBtn{ display:none; }
@@ -652,6 +658,7 @@
                 <label class="checkRow"><input type="checkbox" id="wpNoLoop" /><span>Waypoint does NOT loop</span></label>
                 <label class="checkRow"><input type="checkbox" id="wpBlueTeam" /><span>Blue Team Waypoint</span></label>
                 <label class="checkRow"><input type="checkbox" id="wpRedTeam" /><span>Red Team Waypoint</span></label>
+                <div id="wpMarkerCount">Markers selected: 0</div>
               </div>
               <div class="btnRow" id="sectionActions"><button id="sectionDeleteBtn">Excluir bloco</button><button id="sectionApplyBtn">Aplicar bloco</button></div>
             </div>
@@ -995,6 +1002,7 @@
   const wpNoLoop = document.getElementById("wpNoLoop");
   const wpBlueTeam = document.getElementById("wpBlueTeam");
   const wpRedTeam = document.getElementById("wpRedTeam");
+  const wpMarkerCount = document.getElementById("wpMarkerCount");
 
   const giMissionName = document.getElementById("giMissionName");
   const giDesigner = document.getElementById("giDesigner");
@@ -2232,6 +2240,8 @@
       sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===state.waypointSelectedNumber));
       const sec = getWaypointSectionByNumber(state.waypointSelectedNumber);
       sectionMeta.textContent = `begin waypoint ${state.waypointSelectedNumber}`;
+      state.selectedWaypointMarkerIds.clear();
+      updateWaypointMarkerCount(0);
       fillWaypointEditor(sec);
       return;
     }
@@ -2438,8 +2448,22 @@
   function selectById(id){
     state.selectedId = id;
     state.selectedWaypointMarkerIds.clear();
+    updateWaypointMarkerCount(0);
     renderList();
     draw();
+  }
+
+  function updateWaypointMarkerCount(count){
+    if (!wpMarkerCount) return;
+    const n = Math.max(0, Math.trunc(Number(count) || 0));
+    wpMarkerCount.textContent = `Markers selected: ${n}`;
+  }
+
+  function getItemWaypointId(it){
+    const n = Number(it?.kv?.waypoint_id ?? "");
+    if (!Number.isFinite(n)) return null;
+    const v = Math.trunc(n);
+    return v > 0 ? v : null;
   }
 
   function isWaypointMarkerItem(it){
@@ -2454,14 +2478,9 @@
 
   function selectWaypointMarkers(){
     const waypointNumber = Math.max(1, Math.min(127, Number(state.waypointSelectedNumber) || 1));
-    const markers = state.items.filter(it => {
-      if (!isWaypointMarkerItem(it)) return false;
-      const wpn = Number(it?.kv?.wpnumber ?? "");
-      if (Number.isFinite(wpn) && Math.trunc(wpn) === waypointNumber) return true;
-      const wpId = Number(it?.kv?.waypoint_id ?? "");
-      return Number.isFinite(wpId) && Math.trunc(wpId) === waypointNumber;
-    });
+    const markers = state.items.filter(it => getItemWaypointId(it) === waypointNumber);
     state.selectedWaypointMarkerIds = new Set(markers.map(m => m.id));
+    updateWaypointMarkerCount(markers.length);
 
     if (!markers.length){
       state.selectedId = null;
@@ -3216,6 +3235,8 @@
     state.items = parsed.items;
     state.sectionBlocks = parsed.sectionBlocks;
     state.selectedId = null;
+    state.selectedWaypointMarkerIds.clear();
+    updateWaypointMarkerCount(0);
 
     exportBtn.disabled = state.items.length === 0;
 
