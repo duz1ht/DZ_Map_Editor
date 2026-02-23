@@ -953,6 +953,7 @@
     liveMisRawText: "",
     realtimePrevMisText: "",
     realtimeLog: [],
+    selectedWaypointMarkerIds: new Set(),
 
     contextMenuOpen: false,
     contextTargetId: null,
@@ -2436,8 +2437,36 @@
 
   function selectById(id){
     state.selectedId = id;
+    state.selectedWaypointMarkerIds.clear();
     renderList();
     draw();
+  }
+
+  function isWaypointMarkerItem(it){
+    const def = getDefForItem(it);
+    const defType = def?.type ? String(def.type).toLowerCase() : "";
+    const typeId = String(it?.kv?.type_id || "");
+    const name = String(it?.kv?.name || it?.kv?.iai_name || "").toLowerCase();
+    const graphic = String(def?.graphic || it?.kv?.graphic || "").toLowerCase();
+    return (defType === "marker" || typeId === "9")
+      && (name.includes("waypoint") || graphic.includes("waypoint") || kvHas(it, "wpnumber"));
+  }
+
+  function selectWaypointMarkers(){
+    const markers = state.items.filter(isWaypointMarkerItem);
+    state.selectedWaypointMarkerIds = new Set(markers.map(m => m.id));
+
+    if (!markers.length){
+      state.selectedId = null;
+      draw();
+      statusEl.textContent = "Select Markers: no waypoint markers found in this map.";
+      return;
+    }
+
+    state.selectedId = markers[0].id;
+    renderList();
+    draw();
+    statusEl.textContent = `Select Markers: selected ${markers.length} waypoint marker(s).`;
   }
 
   function getFilteredItems(){
@@ -2710,11 +2739,9 @@
     if (kvHas(it, "absolute_height")) it.kv.absolute_height = ui.absHeight.checked ? "1" : "0";
 
     if (kvHas(it, "facing")){
-      const parts = String(it.kv.facing).split(/\s+/).map(Number);
-      const b = (parts.length >= 2 && Number.isFinite(parts[1])) ? parts[1] : (it.pitch ?? 0);
       it.heading = parseFloatSafe(ui.heading.value);
       it.pitch = parseFloatSafe(ui.pitch.value);
-      it.kv.facing = `${it.heading} ${b}`;
+      it.kv.facing = `${it.heading} ${it.pitch}`;
     } else if (kvHas(it, "rot")){
       it.heading = parseFloatSafe(ui.heading.value);
       it.kv.rot = String(it.heading);
@@ -2903,7 +2930,7 @@
   [giWaterEnabled, giFogDistEnabled, giFogColorEnabled, giNvgAvailable].forEach(el => {
     if (el) el.addEventListener("change", updateGeneralInfoEnables);
   });
-  wpSelectMarkersBtn.addEventListener("click", () => { statusEl.textContent = "Select Markers ainda não está implementado."; });
+  wpSelectMarkersBtn.addEventListener("click", selectWaypointMarkers);
   wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
   wpOkBtn.addEventListener("click", () => { saveCurrentWaypoint(); closeSectionEditor(); });
 
@@ -3269,11 +3296,20 @@
     for (const it of items){
       const p = worldToScreen(it.x,it.y);
       const isSel = it.id === state.selectedId;
-      ctx.fillStyle = isSel ? "#5865f2" : "#e0e3ff";
-      const r = isSel ? 5 : 3;
+      const isWpMarked = state.selectedWaypointMarkerIds.has(it.id);
+      ctx.fillStyle = isSel ? "#5865f2" : (isWpMarked ? "#ffcc33" : "#e0e3ff");
+      const r = isSel ? 5 : (isWpMarked ? 4 : 3);
       ctx.beginPath();
       ctx.arc(p.sx,p.sy,r,0,Math.PI*2);
       ctx.fill();
+
+      if (isWpMarked && !isSel){
+        ctx.strokeStyle = "#ff8a00";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(p.sx,p.sy,r + 1.5,0,Math.PI*2);
+        ctx.stroke();
+      }
     }
   }
 
