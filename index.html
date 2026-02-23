@@ -326,6 +326,17 @@
       background:#d8d8d8;
       margin:4px 0;
     }
+    .contextMenu{
+      position:absolute;
+      min-width:220px;
+      background:#fff;
+      border:1px solid #9b9b9b;
+      box-shadow:0 2px 12px rgba(0,0,0,.18);
+      padding:4px 0;
+      z-index:70;
+      display:none;
+    }
+    .contextMenu.open{ display:block; }
 
     #sectionOverlay{
       position:absolute;
@@ -431,6 +442,8 @@
           </div>
         </div>
       </div>
+
+      <div class="contextMenu" id="itemContextMenu" aria-hidden="true"></div>
 
       <div id="modalOverlay" aria-hidden="true">
         <div id="modalWindow" role="dialog" aria-modal="true" aria-label="Item Attributes">
@@ -721,6 +734,9 @@
     sectionEditorOpen: false,
     sectionKind: "general_information",
     sectionSelectedId: null,
+
+    contextMenuOpen: false,
+    contextTargetId: null,
   };
 
   // UI refs
@@ -747,6 +763,7 @@
   const modalCloseBtn = document.getElementById("modalCloseBtn");
   const okBtn = document.getElementById("okBtn");
   const cancelBtn = document.getElementById("cancelBtn");
+  const itemContextMenu = document.getElementById("itemContextMenu");
 
   const ui = {
     ssn: document.getElementById("ui_ssn"),
@@ -1714,17 +1731,20 @@
     statusEl.textContent = `Duplicado: #${it.id} -> #${copy.id}`;
   });
 
-  ui.delBtn.addEventListener("click", () => {
+  function deleteSelectedItem(){
     const it = getSelected();
     if (!it) return;
     state.items = state.items.filter(x => x.id !== it.id);
     state.sectionBlocks = state.sectionBlocks.filter(s => !(s.kind === "item" && s.start === it.start));
     state.selectedId = null;
-    closeModalOk();
+    closeItemContextMenu();
+    if (state.modalOpen) closeModalOk();
     renderList();
     draw();
     statusEl.textContent = `Apagado: #${it.id}`;
-  });
+  }
+
+  ui.delBtn.addEventListener("click", deleteSelectedItem);
 
   exportBtn.addEventListener("click", () => {
     const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
@@ -1741,6 +1761,80 @@
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
   sectionAddBtn.addEventListener("click", addSectionBlock);
+
+  function closeItemContextMenu(){
+    state.contextMenuOpen = false;
+    state.contextTargetId = null;
+    itemContextMenu.classList.remove("open");
+    itemContextMenu.setAttribute("aria-hidden", "true");
+  }
+
+  function showItemContextMenu(clientX, clientY){
+    const selected = getSelected();
+    if (!selected) return;
+    state.contextMenuOpen = true;
+    state.contextTargetId = selected.id;
+
+    const menuItems = [
+      { label: "Edit Item Attributes", action: () => openModal() },
+      { separator: true },
+      { label: "Cut", action: () => showNotImplemented("Cut") },
+      { label: "Copy", action: () => showNotImplemented("Copy") },
+      { label: "Paste", action: () => showNotImplemented("Paste") },
+      { separator: true },
+      { label: "Move", action: () => statusEl.textContent = "Use Shift + arrastar para mover o item selecionado." },
+      { label: "Numeric Move", action: () => showNotImplemented("Numeric Move") },
+      { label: "Group Rotate", action: () => showNotImplemented("Group Rotate") },
+      { label: "Snap to Grid", action: () => showNotImplemented("Snap to Grid") },
+      { separator: true },
+      { label: "Hide Selected", action: () => showNotImplemented("Hide Selected") },
+      { label: "Hide Unselected", action: () => showNotImplemented("Hide Unselected") },
+      { label: "Unhide All", action: () => showNotImplemented("Unhide All") },
+      { separator: true },
+      { label: "Select This Type", action: () => showNotImplemented("Select This Type") },
+      { label: "Select This Group", action: () => showNotImplemented("Select This Group") },
+      { label: "Select This BGRP", action: () => showNotImplemented("Select This BGRP") },
+      { label: "Select This WPLIST", action: () => showNotImplemented("Select This WPLIST") },
+      { separator: true },
+      { label: "Deselect This Type", action: () => showNotImplemented("Deselect This Type") },
+      { separator: true },
+      { label: "Snap to Terrain", action: () => showNotImplemented("Snap to Terrain") },
+      { separator: true },
+      { label: "Delete", action: () => deleteSelectedItem() }
+    ];
+
+    itemContextMenu.innerHTML = "";
+    for (const entry of menuItems){
+      if (entry.separator){
+        const sep = document.createElement("div");
+        sep.className = "menuSep";
+        itemContextMenu.appendChild(sep);
+        continue;
+      }
+      const btn = document.createElement("button");
+      btn.className = "menuItemBtn";
+      btn.textContent = entry.label;
+      btn.addEventListener("click", () => {
+        closeItemContextMenu();
+        entry.action();
+      });
+      itemContextMenu.appendChild(btn);
+    }
+
+    const host = cv.parentElement.getBoundingClientRect();
+    itemContextMenu.style.left = `${Math.max(4, clientX - host.left)}px`;
+    itemContextMenu.style.top = `${Math.max(4, clientY - host.top)}px`;
+    itemContextMenu.classList.add("open");
+    itemContextMenu.setAttribute("aria-hidden", "false");
+
+    const menuRect = itemContextMenu.getBoundingClientRect();
+    let x = clientX - host.left;
+    let y = clientY - host.top;
+    if (menuRect.right > host.right - 4) x -= (menuRect.right - host.right + 4);
+    if (menuRect.bottom > host.bottom - 4) y -= (menuRect.bottom - host.bottom + 4);
+    itemContextMenu.style.left = `${Math.max(4, x)}px`;
+    itemContextMenu.style.top = `${Math.max(4, y)}px`;
+  }
 
   const menuBar = document.getElementById("menuBar");
 
@@ -1918,6 +2012,7 @@
 
   document.addEventListener("click", (e) => {
     if (!menuBar.contains(e.target)) closeMenus();
+    if (!itemContextMenu.contains(e.target)) closeItemContextMenu();
   });
 
   // File inputs
@@ -2042,6 +2137,8 @@
 
   cv.addEventListener("mousedown", (e) => {
     if (state.modalOpen) return;
+    closeItemContextMenu();
+    if (e.button !== 0) return;
 
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
@@ -2056,6 +2153,24 @@
     }
     state.draggingPan = !state.draggingItem;
     state.lastMouse = { sx, sy };
+  });
+
+  cv.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (state.modalOpen) return;
+
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const picked = pickItemAt(sx, sy);
+
+    if (!picked){
+      closeItemContextMenu();
+      return;
+    }
+
+    if (state.selectedId !== picked.id) selectById(picked.id);
+    showItemContextMenu(e.clientX, e.clientY);
   });
 
   cv.addEventListener("dblclick", (e) => {
