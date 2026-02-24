@@ -166,6 +166,9 @@
       border-radius:6px;
       padding:8px;
     }
+    #misRealtimeConsole .diffAdded{ color:#7ee787; }
+    #misRealtimeConsole .diffRemoved{ color:#ff7b72; }
+    #misRealtimeConsole .diffStamp{ color:#79c0ff; }
     .itemCard{
       padding:8px;
       border:1px solid var(--line);
@@ -2268,13 +2271,13 @@
     if (resetBaseline || !state.realtimePrevMisText){
       state.realtimePrevMisText = nextText;
       state.realtimeLog = [];
-      misRealtimeConsoleEl.textContent = "// Baseline loaded. Make changes to see live MIS diffs.";
+      renderRealtimeConsole(["// Baseline loaded. Make changes to see live MIS diffs."]);
       return;
     }
 
     if (nextText === state.realtimePrevMisText){
       if (!state.realtimeLog.length){
-        misRealtimeConsoleEl.textContent = "// No changes detected yet.";
+        renderRealtimeConsole(["// No changes detected yet."]);
       }
       return;
     }
@@ -2298,9 +2301,21 @@
     state.realtimeLog.unshift(entry);
     if (state.realtimeLog.length > 20) state.realtimeLog.length = 20;
 
-    misRealtimeConsoleEl.textContent = state.realtimeLog.join("\n\n");
+    renderRealtimeConsole(state.realtimeLog);
     state.realtimePrevMisText = nextText;
     misRealtimeConsoleEl.scrollTop = 0;
+  }
+
+  function renderRealtimeConsole(entries){
+    const raw = Array.isArray(entries) ? entries.join("\n\n") : String(entries || "");
+    const lines = raw.split("\n");
+    const html = lines.map((line) => {
+      if (line.startsWith("+ ")) return `<span class="diffAdded">${escapeHtml(line)}</span>`;
+      if (line.startsWith("- ")) return `<span class="diffRemoved">${escapeHtml(line)}</span>`;
+      if (line.startsWith("[")) return `<span class="diffStamp">${escapeHtml(line)}</span>`;
+      return escapeHtml(line);
+    }).join("\n");
+    misRealtimeConsoleEl.innerHTML = html;
   }
 
   function openLiveMisWindow(){
