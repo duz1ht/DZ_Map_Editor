@@ -974,6 +974,7 @@
   </div>
 
 <script src="resources/itemsDef.js"></script>
+<script src="resources/embeddedResources.js"></script>
 
 <script>
   const state = {
@@ -1269,15 +1270,16 @@
 
     for (const line of lines){
       const t = line.trim();
-      if (!t || t.startsWith("//") || t.startsWith("'")) continue;
-      const sec = t.match(/^\[(.+)\]$/);
+      if (!t || t.startsWith("//")) continue;
+      const clean = t.startsWith("'") && t.endsWith("'") ? t.slice(1, -1).trim() : t;
+      const sec = clean.match(/^\[(.+)\]$/);
       if (sec){
         inSection = sec[1].trim().toLowerCase() === "wpnames";
         continue;
       }
       if (!inSection) continue;
 
-      const m = t.match(/^(STRWPNAME)(\d{3})\s*=\s*(.+?);?$/i);
+      const m = clean.match(/^(STRWPNAME)(\d{3})\s*=\s*(.+?);?$/i);
       if (!m) continue;
       const idx = Number(m[2]);
       if (!Number.isFinite(idx) || idx < 0) continue;
@@ -1286,6 +1288,29 @@
 
     if (indexed.length && !indexed[0]) indexed[0] = "Null";
     return indexed;
+  }
+
+  async function loadTextResource(path){
+    try{
+      const res = await fetch(path);
+      if (res.ok){
+        const text = await res.text();
+        addLog(`Loaded resource via fetch: ${path}`);
+        return text;
+      }
+      addLog(`ERROR loading resource via fetch: ${path} (HTTP ${res.status})`);
+    } catch (err) {
+      addLog(`ERROR loading resource via fetch: ${path} (${err?.message || "fetch failed"})`);
+    }
+
+    const embedded = window.BHD_EMBEDDED_RESOURCES || {};
+    if (Object.prototype.hasOwnProperty.call(embedded, path)){
+      addLog(`Loaded resource via embedded fallback: ${path}`);
+      return String(embedded[path] || "");
+    }
+
+    addLog(`ERROR resource unavailable (fetch + embedded fallback): ${path}`);
+    return null;
   }
 
   function buildWpNameOptions(){
@@ -1377,55 +1402,35 @@
 
     const merged = new Map();
     for (const path of files){
-      try{
-        const res = await fetch(path);
-        if (!res.ok){
-          addLog(`ERROR loading game strings file: ${path} (HTTP ${res.status})`);
-          continue;
-        }
-        const text = await res.text();
-        const parsed = parseStringTableLikeFile(text);
-        for (const [k,v] of parsed) if (!merged.has(k)) merged.set(k, v);
-        addLog(`Loaded game strings file: ${path} (${parsed.size} keys)`);
-      } catch (_err) {
-        addLog(`ERROR loading game strings file: ${path} (fetch failed)`);
-      }
+      const text = await loadTextResource(path);
+      if (text === null) continue;
+      const parsed = parseStringTableLikeFile(text);
+      for (const [k,v] of parsed) if (!merged.has(k)) merged.set(k, v);
+      addLog(`Parsed game strings file: ${path} (${parsed.size} keys)`);
     }
     state.gameStrings = merged;
     addLog(`Game strings merged total: ${state.gameStrings.size}`);
   }
 
   async function loadWpNames(){
-    try{
-      const res = await fetch("resources/game_strings/medmssn.bin");
-      if (!res.ok){
-        addLog(`ERROR loading WPNames source: resources/game_strings/medmssn.bin (HTTP ${res.status})`);
-        return;
-      }
-      const text = await res.text();
-      const parsed = parseWpNamesFromMedmssn(text);
-      if (parsed.length) state.wpNames = parsed;
+    const path = "resources/game_strings/medmssn.bin";
+    const text = await loadTextResource(path);
+    if (text === null){
       buildWpNameOptions();
-      addLog(`Loaded WPNames from medmssn.bin (${state.wpNames.length} entries)`);
-    } catch (_err) {
-      addLog("ERROR loading WPNames source: resources/game_strings/medmssn.bin (fetch failed)");
-      buildWpNameOptions();
+      return;
     }
+    const parsed = parseWpNamesFromMedmssn(text);
+    if (parsed.length) state.wpNames = parsed;
+    buildWpNameOptions();
+    addLog(`Loaded WPNames from medmssn.bin (${state.wpNames.length} entries)`);
   }
 
   async function loadWeaponDefs(){
-    try{
-      const res = await fetch("resources/weapon.def");
-      if (!res.ok){
-        addLog(`ERROR loading weapon.def (HTTP ${res.status})`);
-        return;
-      }
-      const text = await res.text();
-      state.weaponDefs = parseWeaponDefCatalog(text);
-      addLog(`Loaded weapon.def (${state.weaponDefs.size} weapons)`);
-    } catch (_err) {
-      addLog("ERROR loading weapon.def (fetch failed)");
-    }
+    const path = "resources/weapon.def";
+    const text = await loadTextResource(path);
+    if (text === null) return;
+    state.weaponDefs = parseWeaponDefCatalog(text);
+    addLog(`Loaded weapon.def (${state.weaponDefs.size} weapons)`);
   }
 
   function escapeHtml(s){
