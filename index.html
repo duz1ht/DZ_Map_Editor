@@ -1214,7 +1214,12 @@
 
   const GENERAL_TERRAINS = ["dvd1","dvd2","dvd3","jungle1","arctic1","desert1"];
   const GENERAL_TILES = ["trntile11","trntile12","trntile13","trntile21","trntile31"];
-  const GENERAL_PLAYERS = ["Delta Force","SEALs","SAS","Spetsnaz","GIGN"];
+  const GENERAL_PLAYERS = [
+    { value: "3", label: "10th Mountain" },
+    { value: "1", label: "Delta Force" },
+    { value: "2", label: "Ranger" },
+    { value: "4", label: "SAS" },
+  ];
   const GENERAL_SUBGOALS = [
     { value:0, label:"null" },
     { value:1, label:"Reach Final Waypoint" },
@@ -1759,7 +1764,12 @@
     const kv = sec?.kv || {};
     ensureSelectOptions(giTerrain, GENERAL_TERRAINS.map(v=>({ value:v, label:v })), kv.terrain || "dvd1");
     ensureSelectOptions(giTiles, GENERAL_TILES.map(v=>({ value:v, label:v })), kv.terrain_tile_tga || "trntile11");
-    ensureSelectOptions(giPlayerType, GENERAL_PLAYERS.map((label, idx)=>({ value:String(idx), label })), kv.player_type || "0");
+    const playerTypeRaw = String(kv.player_type ?? "1");
+    ensureSelectOptions(
+      giPlayerType,
+      GENERAL_PLAYERS,
+      GENERAL_PLAYERS.some(p => p.value === playerTypeRaw) ? playerTypeRaw : "1"
+    );
     ensureSelectOptions(giEnvironment, GENERAL_ENV_FILES, kv.sunset || "day1");
 
     const terrainColorRaw = String(kv.terrain_color ?? "0");
