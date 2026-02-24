@@ -892,7 +892,7 @@
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">Name</div>
-                      <input id="ui_wpName" class="midInput" />
+                      <select id="ui_wpName" class="midInput"></select>
                     </div>
                     <div>
                       <div class="inlineLabel">Distance</div>
@@ -967,6 +967,7 @@
 
     gameStrings: new Map(),
     weaponDefs: new Map(),
+    wpNames: [],
   };
 
   // UI refs
@@ -1157,6 +1158,7 @@
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
   }
+  buildWpNameOptions();
 
   function stripOuterQuotes(v){
     const s = String(v || "").trim();
@@ -1183,6 +1185,44 @@
       if (key) out.set(key, value);
     }
     return out;
+  }
+
+  function parseWpNamesFromMedmssn(raw){
+    const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    const indexed = [];
+    let inSection = false;
+
+    for (const line of lines){
+      const t = line.trim();
+      if (!t || t.startsWith("//") || t.startsWith("'")) continue;
+      const sec = t.match(/^\[(.+)\]$/);
+      if (sec){
+        inSection = sec[1].trim().toLowerCase() === "wpnames";
+        continue;
+      }
+      if (!inSection) continue;
+
+      const m = t.match(/^(STRWPNAME)(\d{3})\s*=\s*(.+?);?$/i);
+      if (!m) continue;
+      const idx = Number(m[2]);
+      if (!Number.isFinite(idx) || idx < 0) continue;
+      indexed[idx] = unescapeMisString(stripOuterQuotes(m[3].trim()));
+    }
+
+    if (indexed.length && !indexed[0]) indexed[0] = "Null";
+    return indexed;
+  }
+
+  function buildWpNameOptions(){
+    const names = state.wpNames || [];
+    if (!names.length){
+      ui.wpName.innerHTML = `<option value="">(no WP names)</option>`;
+      return;
+    }
+    ui.wpName.innerHTML = names.map((name, idx) => {
+      const label = `${idx} - ${name || `Name ${idx}`}`;
+      return `<option value="${idx}">${escapeHtml(label)}</option>`;
+    }).join("");
   }
 
   function parseWeaponDefCatalog(raw){
@@ -1273,6 +1313,19 @@
       }
     }
     state.gameStrings = merged;
+  }
+
+  async function loadWpNames(){
+    try{
+      const res = await fetch("resources/game_strings/medmssn.bin");
+      if (!res.ok) return;
+      const text = await res.text();
+      const parsed = parseWpNamesFromMedmssn(text);
+      if (parsed.length) state.wpNames = parsed;
+      buildWpNameOptions();
+    } catch (_err) {
+      buildWpNameOptions();
+    }
   }
 
   async function loadWeaponDefs(){
@@ -2712,19 +2765,21 @@
     // Waypoints
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
-    const wpEnabled = kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "wpname") || !!wpAdvKey || kvHas(it, "nav_wp") || !!wpDistanceKey;
+    const wpEnabled = kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "ttoolindex") || !!wpAdvKey || kvHas(it, "nav_wp") || !!wpDistanceKey;
     const hasWaypointChoices = state.sectionBlocks.some(s => s.kind === "waypoint");
     setEnabled(ui.wpList, hasWaypointChoices || (wpEnabled && kvHas(it, "waypoint_id")));
     setEnabled(ui.wpNumber, hasWaypointChoices || wpEnabled || kvHas(it, "wpnumber"));
     setEnabled(ui.wpDistance, wpEnabled && !!wpDistanceKey);
-    setEnabled(ui.wpName, wpEnabled && kvHas(it, "wpname"));
+    setEnabled(ui.wpName, (state.wpNames.length > 0) && (wpEnabled || kvHas(it, "ttoolindex")));
     setEnabled(ui.advEvent, wpEnabled && !!wpAdvKey);
     setEnabled(ui.navWp, wpEnabled && (kvHas(it, "nav_wp") || kvHas(it, "attrib")));
 
     setValueIf(ui.wpList, kvHas(it, "waypoint_id") ? it.kv.waypoint_id : "");
     setValueIf(ui.wpNumber, kvHas(it, "wpnumber") ? it.kv.wpnumber : "");
     setValueIf(ui.wpDistance, wpDistanceKey ? it.kv[wpDistanceKey] : "");
-    setValueIf(ui.wpName, kvHas(it, "wpname") ? it.kv.wpname : "");
+    const tt = Number(it?.kv?.ttoolindex ?? "");
+    const ttIdx = Number.isFinite(tt) && tt >= 0 ? Math.trunc(tt) : 0;
+    setValueIf(ui.wpName, String(Math.min(ttIdx, Math.max(0, state.wpNames.length - 1))));
     setValueIf(ui.advEvent, wpAdvKey ? it.kv[wpAdvKey] : "");
     const navFromAttrib = (attribValue & 4194304) !== 0;
     setValueIf(ui.navWp, kvHas(it, "nav_wp") ? String(it.kv.nav_wp) === "1" : navFromAttrib);
@@ -2807,7 +2862,10 @@
     else delete it.kv.wpnumber;
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
-    if (kvHas(it, "wpname")) it.kv.wpname = ui.wpName.value;
+    if (state.wpNames.length){
+      const idx = Math.trunc(Number(ui.wpName.value));
+      if (Number.isFinite(idx) && idx >= 0) it.kv.ttoolindex = String(idx);
+    }
     const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
     if (wpAdvKey) it.kv[wpAdvKey] = ui.advEvent.value;
     if (kvHas(it, "nav_wp")) it.kv.nav_wp = ui.navWp.checked ? "1" : "0";
@@ -3478,7 +3536,7 @@
       defStatusEl.textContent = "Erro ao carregar catálogo embutido (ver console).";
     }
 
-    await Promise.all([loadGameStrings(), loadWeaponDefs()]);
+    await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames()]);
 
     const stringInfo = state.gameStrings.size
       ? `strings: ${state.gameStrings.size}`
