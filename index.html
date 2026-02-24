@@ -1495,19 +1495,16 @@
 
   function buildWaypointList(){
     const candidates = [];
-    for (const it of state.items){
-      const def = getDefForItem(it);
-      const defType = def?.type ? String(def.type).toLowerCase() : "";
-      const typeId = (it.kv.type_id || "").toString();
-      const name = (it.kv.name || it.kv.iai_name || "").toString();
-      const isMarkerLike = defType === "marker" || typeId === "9";
-      if (isMarkerLike && name.toLowerCase().includes("waypoint")){
-        candidates.push({ id: it.kv.id ?? "", label: name });
-      }
+    for (const sec of state.sectionBlocks){
+      if (sec.kind !== "waypoint") continue;
+      const n = parseWaypointNumber(sec);
+      if (!Number.isInteger(n) || n < 1 || n > 127) continue;
+      const desc = getWaypointDescription(sec);
+      candidates.push({ id: String(n), label: `${n} - ${desc || `Waypoint ${n}`}` });
     }
+    candidates.sort((a,b) => Number(a.id) - Number(b.id));
     ui.wpList.innerHTML = `<option value="">None</option>` + candidates.map(c => {
-      const v = String(c.id);
-      return `<option value="${escapeHtml(v)}">${escapeHtml(c.label)}</option>`;
+      return `<option value="${escapeHtml(c.id)}">${escapeHtml(c.label)}</option>`;
     }).join("");
   }
 
@@ -1812,6 +1809,7 @@
     if (colorVal > 0){ sec.kv.color = String(colorVal); lines.push(`  color ${colorVal}`); }
     if (attribVal > 0){ sec.kv.attrib = String(attribVal); lines.push(`  attrib ${attribVal}`); }
     sec.lines = lines;
+    buildWaypointList();
     refreshLiveMisWindow();
   }
 
@@ -2715,7 +2713,8 @@
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
     const wpEnabled = kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "wpname") || !!wpAdvKey || kvHas(it, "nav_wp") || !!wpDistanceKey;
-    setEnabled(ui.wpList, wpEnabled && kvHas(it, "waypoint_id"));
+    const hasWaypointChoices = state.sectionBlocks.some(s => s.kind === "waypoint");
+    setEnabled(ui.wpList, hasWaypointChoices || (wpEnabled && kvHas(it, "waypoint_id")));
     setEnabled(ui.wpNumber, wpEnabled && kvHas(it, "wpnumber"));
     setEnabled(ui.wpDistance, wpEnabled && !!wpDistanceKey);
     setEnabled(ui.wpName, wpEnabled && kvHas(it, "wpname"));
@@ -2799,7 +2798,8 @@
 
     if (kvHas(it, "mission_critical")) it.kv.mission_critical = ui.missionCritical.checked ? "1" : "0";
 
-    if (kvHas(it, "waypoint_id")) it.kv.waypoint_id = ui.wpList.value;
+    if (ui.wpList.value) it.kv.waypoint_id = ui.wpList.value;
+    else delete it.kv.waypoint_id;
     if (kvHas(it, "wpnumber")) it.kv.wpnumber = ui.wpNumber.value;
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
