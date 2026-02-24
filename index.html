@@ -1785,14 +1785,18 @@
   function readGeneralConditionRows(prefix){
     const goals = [];
     const scores = [];
+    let criticalMask = 0;
     for (let i=0; i<8; i++){
       const enabled = document.getElementById(`${prefix}Enabled${i}`).checked;
       const goal = Number(document.getElementById(`${prefix}Goal${i}`).value || 0);
       const score = Number(document.getElementById(`${prefix}Score${i}`).value || 0);
-      goals.push(enabled ? Math.max(0, Math.trunc(goal)) : 0);
-      scores.push(enabled ? Math.max(0, Math.trunc(score)) : 0);
+      const goalVal = Math.max(0, Math.trunc(goal));
+      const scoreVal = Math.max(0, Math.trunc(score));
+      goals.push(goalVal);
+      scores.push(scoreVal);
+      if (enabled) criticalMask |= (1 << i);
     }
-    return { goals, scores };
+    return { goals, scores, criticalMask };
   }
 
   function fillGeneralInfoEditor(sec){
@@ -1835,13 +1839,15 @@
     const winScores = parseIntList(kv.win_scores, 8);
     const loseGoals = parseIntList(kv.subgoals_lose, 8);
     const loseScores = parseIntList(kv.lose_scores, 8);
+    const hardWin = Math.max(0, Math.trunc(Number(kv.hardwin || 0)));
+    const hardLose = Math.max(0, Math.trunc(Number(kv.hardlose || 0)));
     for (let i=0; i<8; i++){
-      const wEnabled = winGoals[i] > 0 || winScores[i] > 0;
+      const wEnabled = (hardWin & (1 << i)) !== 0;
       document.getElementById(`giWinEnabled${i}`).checked = wEnabled;
       document.getElementById(`giWinGoal${i}`).value = String(winGoals[i]);
       document.getElementById(`giWinScore${i}`).value = String(winScores[i]);
 
-      const lEnabled = loseGoals[i] > 0 || loseScores[i] > 0;
+      const lEnabled = (hardLose & (1 << i)) !== 0;
       document.getElementById(`giLoseEnabled${i}`).checked = lEnabled;
       document.getElementById(`giLoseGoal${i}`).value = String(loseGoals[i]);
       document.getElementById(`giLoseScore${i}`).value = String(loseScores[i]);
@@ -1906,6 +1912,8 @@
     kv.win_scores = win.scores.join(" ");
     kv.subgoals_lose = lose.goals.join(" ");
     kv.lose_scores = lose.scores.join(" ");
+    kv.hardwin = String(win.criticalMask);
+    kv.hardlose = String(lose.criticalMask);
 
     kv.water_level = String(Math.max(0, Math.round(Number(giWaterLevel.value || 0) / 0.5)));
     kv.fog_level = String(Math.max(0, Math.trunc(Number(giFogLevel.value || 0))));
