@@ -1711,6 +1711,15 @@
       vals.push({ value:String(currentValue), label:String(currentValue) });
     }
     selectEl.innerHTML = vals.map(o => `<option value="${escapeHtml(String(o.value))}">${escapeHtml(String(o.label))}</option>`).join("");
+
+    const desired = currentValue !== undefined && currentValue !== null && currentValue !== ""
+      ? String(currentValue)
+      : String(selectEl.value || "");
+    if (vals.some(o => String(o.value) === desired)){
+      selectEl.value = desired;
+    } else if (vals.length){
+      selectEl.value = String(vals[0].value);
+    }
   }
 
   function parseIntList(raw, count){
