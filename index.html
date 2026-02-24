@@ -454,6 +454,11 @@
       font-size:12px;
     }
     .menuItemBtn:hover{ background:#eef2ff; }
+    .menuItemBtn.attention{
+      background:#fff3bf;
+      font-weight:700;
+    }
+    .menuItemBtn.attention:hover{ background:#ffe066; }
     .menuItemBtn:disabled{
       color:#8d8d8d;
       background:transparent;
@@ -1015,6 +1020,8 @@
     gameStrings: new Map(),
     weaponDefs: new Map(),
     wpNames: [],
+    isLocalRuntime: window.location.protocol === "file:",
+    editorFolderHandle: null,
   };
 
   // UI refs
@@ -1289,7 +1296,29 @@
     return indexed;
   }
 
+  async function readTextFromEditorFolder(path){
+    if (!state.editorFolderHandle) return null;
+    try{
+      const parts = String(path || "").split("/").filter(Boolean);
+      let dir = state.editorFolderHandle;
+      for (let i = 0; i < parts.length - 1; i++){
+        dir = await dir.getDirectoryHandle(parts[i]);
+      }
+      const fileHandle = await dir.getFileHandle(parts[parts.length - 1]);
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      addLog(`Loaded resource via editor folder: ${path}`);
+      return text;
+    } catch (err){
+      addLog(`ERROR loading resource via editor folder: ${path} (${err?.message || "read failed"})`);
+      return null;
+    }
+  }
+
   async function loadTextResource(path){
+    if (state.isLocalRuntime){
+      return readTextFromEditorFolder(path);
+    }
     try{
       const res = await fetch(path);
       if (!res.ok){
@@ -1381,14 +1410,14 @@
 
   async function loadGameStrings(){
     const files = [
-      "resources/game_strings/game.js",
-      "resources/game_strings/gameerr.js",
-      "resources/game_strings/keyhelp.js",
-      "resources/game_strings/meditens.js",
-      "resources/game_strings/medmssn.js",
-      "resources/game_strings/medtext.js",
-      "resources/game_strings/menutxt.js",
-      "resources/game_strings/gametext.js",
+      "resources/game_strings/game.bin",
+      "resources/game_strings/gameerr.bin",
+      "resources/game_strings/keyhelp.bin",
+      "resources/game_strings/meditens.bin",
+      "resources/game_strings/medmssn.bin",
+      "resources/game_strings/medtext.bin",
+      "resources/game_strings/menutxt.bin",
+      "resources/game_strings/gametext.bin",
       "resources/game_strings/known_stringkeys_to_text_1.txt",
     ];
 
@@ -1405,7 +1434,7 @@
   }
 
   async function loadWpNames(){
-    const path = "resources/game_strings/medmssn.js";
+    const path = "resources/game_strings/medmssn.bin";
     const text = await loadTextResource(path);
     if (text === null){
       buildWpNameOptions();
@@ -1414,7 +1443,7 @@
     const parsed = parseWpNamesFromMedmssn(text);
     if (parsed.length) state.wpNames = parsed;
     buildWpNameOptions();
-    addLog(`Loaded WPNames from medmssn.js (${state.wpNames.length} entries)`);
+    addLog(`Loaded WPNames from medmssn.bin (${state.wpNames.length} entries)`);
   }
 
   async function loadWeaponDefs(){
@@ -3212,6 +3241,24 @@
       downloadText(state.filename || "edited.mis", out);
       statusEl.textContent = "Arquivo salvo.";
     },
+    "file.setEditorFolder": async () => {
+      if (!state.isLocalRuntime) return;
+      if (!window.showDirectoryPicker){
+        statusEl.textContent = "Seu navegador não suporta seleção de pasta (File System Access API).";
+        return;
+      }
+      try{
+        const handle = await window.showDirectoryPicker({ mode: "read" });
+        state.editorFolderHandle = handle;
+        statusEl.textContent = `Pasta do editor definida: ${handle.name}`;
+        await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames()]);
+        renderMenuBar();
+      } catch (err){
+        if (err?.name === "AbortError") return;
+        statusEl.textContent = "Falha ao definir pasta do editor (veja Logs).";
+        addLog(`ERROR selecting editor folder: ${err?.message || "unknown error"}`);
+      }
+    },
     "edit.briefing": () => openSectionEditor("briefing"),
     "edit.generalInfo": () => openSectionEditor("general_information"),
     "edit.groups": () => openSectionEditor("group"),
@@ -3225,85 +3272,98 @@
     "logs.open": openLogsWindow
   };
 
-  const menuTree = [
-    {
-      label: "File",
-      children: [
-        { label: "Clear", command: "file.clear" },
-        { label: "Open", command: "file.open" },
-        { label: "Save As", command: "file.saveAs" },
-        { label: "Export Binary Mission", command: "file.exportBinaryMission" },
-        { label: "Save and Export", command: "file.saveAndExport" },
-        { label: "Save and Export w/Stats", command: "file.saveAndExportWithStats" },
-        { separator: true },
-        { label: "Exit", command: "app.exit" }
-      ]
-    },
-    {
-      label: "Edit",
-      children: [
-        { label: "Redo", command: "edit.redo" },
-        { label: "Undo", command: "edit.undo" },
-        { separator: true },
-        { label: "Cut", command: "edit.cut" },
-        { label: "Copy", command: "edit.copy" },
-        { label: "Paste", command: "edit.paste" },
-        { label: "Delete", command: "edit.delete" },
-        { separator: true },
-        { label: "Insert Mode", command: "edit.insertMode" },
-        { separator: true },
-        { label: "Briefing", command: "edit.briefing" },
-        { label: "General Information", command: "edit.generalInfo" },
-        { label: "Groups", command: "edit.groups" },
-        { label: "Area Triggers", command: "edit.areaTriggers" },
-        { label: "Waypoints", command: "edit.waypoints" },
-        { label: "Player Waypoint Names", command: "edit.playerWaypointNames" },
-        { label: "Events", command: "edit.events" },
-        { label: "Layer Names", command: "edit.layerNames" },
-        { label: "Global Replace", command: "edit.globalReplace" },
-        { label: "Weapon Loadouts", command: "edit.weaponLoadouts" }
-      ]
-    },
-    {
-      label: "View",
-      children: [
-        { label: "View by Layer", command: "view.byLayer" },
-        { label: "View by Type", command: "view.byType" },
-        { label: "View by Side", command: "view.bySide" },
-        { separator: true },
-        { label: "Select Blink Group", command: "view.selectBlinkGroup" },
-        { label: "Select by SSN", command: "view.selectBySSN" }
-      ]
-    },
-    {
-      label: "Tools",
-      children: [
-        { label: "Tile Tool", command: "tools.tileTool" },
-        { label: "Run Text Tool", command: "tools.textTool" },
-        { separator: true },
-        { label: "Integrity Check", command: "tools.integrityCheck" },
-        { label: "Wrap Objects", command: "tools.wrapObjects" },
-        { label: "Cleanup SSNs", command: "tools.cleanupSSNs" }
-      ]
-    },
-    {
-      label: "Page",
-      children: [
-        { label: "Page 1", command: "page.one" },
-        { label: "Page 2", command: "page.two" }
-      ]
-    },
-    {
-      label: "Logs",
-      directCommand: "logs.open"
-    },
-    {
-      label: "MIS Code",
-      directCommand: "mis.liveChanges"
-    }
-  ];
+  function getMenuTree(){
+    const fileChildren = [
+      { label: "Clear", command: "file.clear" },
+      { label: "Open", command: "file.open" },
+      ...(state.isLocalRuntime ? [
+        { label: "Set Editor Folder", command: "file.setEditorFolder", attention: !state.editorFolderHandle },
+      ] : []),
+      { label: "Save As", command: "file.saveAs" },
+      { label: "Export Binary Mission", command: "file.exportBinaryMission" },
+      { label: "Save and Export", command: "file.saveAndExport" },
+      { label: "Save and Export w/Stats", command: "file.saveAndExportWithStats" },
+      { separator: true },
+      { label: "Exit", command: "app.exit" }
+    ];
+
+    return [
+      {
+        label: "File",
+        children: fileChildren
+      },
+      {
+        label: "Edit",
+        children: [
+          { label: "Redo", command: "edit.redo" },
+          { label: "Undo", command: "edit.undo" },
+          { separator: true },
+          { label: "Cut", command: "edit.cut" },
+          { label: "Copy", command: "edit.copy" },
+          { label: "Paste", command: "edit.paste" },
+          { label: "Delete", command: "edit.delete" },
+          { separator: true },
+          { label: "Insert Mode", command: "edit.insertMode" },
+          { separator: true },
+          { label: "Briefing", command: "edit.briefing" },
+          { label: "General Information", command: "edit.generalInfo" },
+          { label: "Groups", command: "edit.groups" },
+          { label: "Area Triggers", command: "edit.areaTriggers" },
+          { label: "Waypoints", command: "edit.waypoints" },
+          { label: "Player Waypoint Names", command: "edit.playerWaypointNames" },
+          { label: "Events", command: "edit.events" },
+          { label: "Layer Names", command: "edit.layerNames" },
+          { label: "Global Replace", command: "edit.globalReplace" },
+          { label: "Weapon Loadouts", command: "edit.weaponLoadouts" }
+        ]
+      },
+      {
+        label: "View",
+        children: [
+          { label: "View by Layer", command: "view.byLayer" },
+          { label: "View by Type", command: "view.byType" },
+          { label: "View by Side", command: "view.bySide" },
+          { separator: true },
+          { label: "Select Blink Group", command: "view.selectBlinkGroup" },
+          { label: "Select by SSN", command: "view.selectBySSN" }
+        ]
+      },
+      {
+        label: "Tools",
+        children: [
+          { label: "Tile Tool", command: "tools.tileTool" },
+          { label: "Run Text Tool", command: "tools.textTool" },
+          { separator: true },
+          { label: "Integrity Check", command: "tools.integrityCheck" },
+          { label: "Wrap Objects", command: "tools.wrapObjects" },
+          { label: "Cleanup SSNs", command: "tools.cleanupSSNs" }
+        ]
+      },
+      {
+        label: "Page",
+        children: [
+          { label: "Page 1", command: "page.one" },
+          { label: "Page 2", command: "page.two" }
+        ]
+      },
+      {
+        label: "Logs",
+        directCommand: "logs.open"
+      },
+      {
+        label: "MIS Code",
+        directCommand: "mis.liveChanges"
+      }
+    ];
+  }
+
+  function closeMenus(){
+    const menuRoots = Array.from(menuBar.querySelectorAll(".menuRoot"));
+    menuRoots.forEach(m => m.classList.remove("open"));
+  }
 
   function renderMenuBar(){
+    const menuTree = getMenuTree();
     menuBar.innerHTML = "";
     for (const rootDef of menuTree){
       const root = document.createElement("div");
@@ -3336,7 +3396,7 @@
           continue;
         }
         const itemBtn = document.createElement("button");
-        itemBtn.className = "menuItemBtn";
+        itemBtn.className = `menuItemBtn${child.attention ? " attention" : ""}`;
         itemBtn.textContent = child.label;
         const handler = menuHandlers[child.command];
         itemBtn.addEventListener("click", () => {
@@ -3350,24 +3410,20 @@
       root.appendChild(dropdown);
       menuBar.appendChild(root);
     }
+
+    const menuRoots = Array.from(menuBar.querySelectorAll(".menuRoot"));
+    menuRoots.forEach(root => {
+      const btn = root.querySelector(".menuRootBtn");
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const willOpen = !root.classList.contains("open");
+        closeMenus();
+        if (willOpen) root.classList.add("open");
+      });
+    });
   }
 
   renderMenuBar();
-  const menuRoots = Array.from(menuBar.querySelectorAll(".menuRoot"));
-
-  function closeMenus(){
-    menuRoots.forEach(m => m.classList.remove("open"));
-  }
-
-  menuRoots.forEach(root => {
-    const btn = root.querySelector(".menuRootBtn");
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const willOpen = !root.classList.contains("open");
-      closeMenus();
-      if (willOpen) root.classList.add("open");
-    });
-  });
 
   document.addEventListener("click", (e) => {
     if (!menuBar.contains(e.target)) closeMenus();
@@ -3629,7 +3685,13 @@
       addLog("ERROR: Failed to parse embedded ITEMS.DEF.");
     }
 
-    await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames()]);
+    if (state.isLocalRuntime){
+      addLog("Local runtime detected (file://). Waiting for 'Set Editor Folder'.");
+      statusEl.textContent = "Modo local detectado: abra File > Set Editor Folder para carregar os catálogos.";
+      defStatusEl.textContent = "Modo local: defina a pasta do editor em File > Set Editor Folder.";
+    } else {
+      await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames()]);
+    }
 
     const stringInfo = state.gameStrings.size
       ? `strings: ${state.gameStrings.size}`
@@ -3640,7 +3702,8 @@
     const defInfo = state.defsSorted.length
       ? `defs: ${state.defsSorted.length}`
       : "defs: 0";
-    defStatusEl.textContent = `Catálogos carregados (${defInfo}, ${weaponInfo}, ${stringInfo}).`;
+    if (!state.isLocalRuntime || state.editorFolderHandle)
+      defStatusEl.textContent = `Catálogos carregados (${defInfo}, ${weaponInfo}, ${stringInfo}).`;
     addLog(`Boot finished: ${defInfo}, ${weaponInfo}, ${stringInfo}, wpNames: ${state.wpNames.length}`);
   })();
 
