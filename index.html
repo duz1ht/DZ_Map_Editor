@@ -154,6 +154,17 @@
       font-weight:600;
       letter-spacing:.2px;
     }
+    #misRealtimeHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+    }
+    #misRealtimeClearBtn{
+      font-size:11px;
+      padding:2px 8px;
+      min-height:22px;
+    }
     #misRealtimeConsole{
       margin:0;
       overflow:auto;
@@ -592,7 +603,10 @@
     </div>
 
     <div id="misRealtimePanel">
-      <div id="misRealtimeTitle">MIS Realtime Changes</div>
+      <div id="misRealtimeHeader">
+        <div id="misRealtimeTitle">MIS Realtime Changes</div>
+        <button id="misRealtimeClearBtn" type="button">Clear</button>
+      </div>
       <pre id="misRealtimeConsole">// Open a .mis file to track live code changes here.</pre>
     </div>
   </div>
@@ -1034,6 +1048,7 @@
   const typeFilterEl = document.getElementById("typeFilter");
   const listEl = document.getElementById("list");
   const misRealtimeConsoleEl = document.getElementById("misRealtimeConsole");
+  const misRealtimeClearBtn = document.getElementById("misRealtimeClearBtn");
   const exportBtn = document.getElementById("exportBtn");
   const statusEl = document.getElementById("status");
 
@@ -2338,6 +2353,11 @@
   logsCloseBtn.addEventListener("click", closeLogsWindow);
   logsOverlay.addEventListener("mousedown", (e) => { if (e.target === logsOverlay) closeLogsWindow(); });
   logsClearBtn.addEventListener("click", () => { state.logs = []; renderLogsWindow(); addLog("Logs cleared by user."); });
+  misRealtimeClearBtn.addEventListener("click", () => {
+    state.realtimeLog = [];
+    state.realtimePrevMisText = state.liveMisRawText || state.realtimePrevMisText;
+    renderRealtimeConsole(["// Realtime changes cleared."]);
+  });
 
   function findInLiveMis(next=false, focusResult=false){
     const term = (liveMisSearch.value || "").toLowerCase();
