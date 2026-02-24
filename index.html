@@ -569,7 +569,9 @@
     .giRow input, .giRow select{ width:100%; }
     .giMapTypes label,.giFlags label{ display:block; margin:2px 0; }
     .giCondRow{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; margin-bottom:4px; align-items:center; }
-    .giCondHead{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; color:#333; margin-bottom:4px; }
+    .giCondHead{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; color:#333; margin-bottom:4px; align-items:center; }
+    .giCondHead span:first-child{ text-align:center; }
+    .giCondHead span:last-child{ text-align:center; }
     .giInline{ display:grid; grid-template-columns:1fr 90px; gap:6px; align-items:center; margin-bottom:6px; }
     .giInline3{ display:grid; grid-template-columns:1fr 56px 56px 56px; gap:6px; align-items:center; margin-bottom:6px; }
     .giActions{ display:flex; gap:6px; margin-top:8px; }
@@ -586,21 +588,21 @@
     <input id="fileMis" type="file" accept=".mis,.txt" style="display:none;" />
 
     <div class="hint">
-      Controles: Zoom <span class="kbd">roda</span> Pan <span class="kbd">arrastar</span> Selecionar <span class="kbd">clique</span> Mover item <span class="kbd">Shift</span> + arrastar
-      <br>Duplo clique no item para abrir Item Attributes.
+      Controls: Zoom <span class="kbd">wheel</span> Pan <span class="kbd">drag</span> Select <span class="kbd">click</span> Move item <span class="kbd">Shift</span> + drag
+      <br>Double-click an item to open Item Attributes.
     </div>
 
-<div class="hint" id="defStatus" style="margin-top:6px;">Catálogo de itens carregado (ITEMS.DEF embutido).</div>
+<div class="hint" id="defStatus" style="margin-top:6px;">Item catalog loaded (embedded ITEMS.DEF).</div>
 
     <div class="row" style="margin-top:10px;">
-      <input id="search" placeholder="Buscar por type_id, type, name" />
+      <input id="search" placeholder="Search by type_id, type, name" />
     </div>
 
     <div class="row">
       <select id="typeFilter">
-        <option value="">Todos os types</option>
+        <option value="">All types</option>
       </select>
-      <button id="exportBtn" disabled>Exportar .mis</button>
+      <button id="exportBtn" disabled>Export .mis</button>
     </div>
 
     <div id="misRealtimePanel">
@@ -615,17 +617,17 @@
   <div id="main">
     <div id="topbar">
       <div class="hint">
-        Duplo clique: abrir Item Attributes. Esc: fechar.
+        Double-click: open Item Attributes. Esc: close.
       </div>
-      <div id="status">Nenhum arquivo carregado.</div>
+      <div id="status">No file loaded.</div>
     </div>
 
     <div id="canvasWrap">
       <canvas id="cv"></canvas>
 
       <div id="sectionOverlay" aria-hidden="true">
-        <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="Mission Section Editor">
-          <div class="windowTitle">Mission Section Editor <span class="spacer"></span><button class="xbtn" id="sectionCloseBtn">X</button></div>
+        <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
+          <div class="windowTitle">General Information <span class="spacer"></span><button class="xbtn" id="sectionCloseBtn">X</button></div>
           <div id="sectionTopControls">
             <select id="sectionKindSelect">
               <option value="general_information">General Information</option>
@@ -637,8 +639,8 @@
               <option value="layer">Layer Names</option>
               <option value="weapon_availability">Weapon Loadouts</option>
             </select>
-            <input id="sectionSearch" placeholder="filtrar por id/texto" />
-            <button id="sectionAddBtn">Adicionar bloco</button>
+            <input id="sectionSearch" placeholder="filter by id/text" />
+            <button id="sectionAddBtn">Add block</button>
             <div id="waypointTopActions">
               <button id="wpSelectMarkersBtn">Select Markers</button>
               <button id="wpSaveAsBtn">Save As</button>
@@ -648,8 +650,8 @@
           <div id="sectionBody">
             <div id="sectionList"></div>
             <div id="sectionEditor">
-              <div id="sectionMeta">Selecione um bloco.</div>
-              <div class="hint" id="sectionHint">Edite o conteúdo interno do bloco (linhas entre begin/end). Uma linha por chave/valor.</div>
+              <div id="sectionMeta">Select a block.</div>
+              <div class="hint" id="sectionHint">Edit the block inner content (lines between begin/end). One line per key/value.</div>
               <textarea id="sectionText"></textarea>
               <div id="generalInfoEditor">
                 <div class="giLayout">
@@ -679,12 +681,12 @@
                   <div>
                     <div class="giBox">
                       <div><b>Win Conditions</b></div>
-                      <div class="giCondHead"><span></span><span>Critical</span><span>Score</span></div>
+                      <div class="giCondHead"><span>Critical</span><span></span><span>Score</span></div>
                       <div id="giWinRows"></div>
                     </div>
                     <div class="giBox" style="margin-top:8px;">
                       <div><b>Lose Conditions</b></div>
-                      <div class="giCondHead"><span></span><span>Critical</span><span>Score</span></div>
+                      <div class="giCondHead"><span>Critical</span><span></span><span>Score</span></div>
                       <div id="giLoseRows"></div>
                     </div>
                   </div>
@@ -721,7 +723,7 @@
                 <label class="checkRow"><input type="checkbox" id="wpRedTeam" /><span>Red Team Waypoint</span></label>
                 <div id="wpMarkerCount">Markers selected: 0</div>
               </div>
-              <div class="btnRow" id="sectionActions"><button id="sectionDeleteBtn">Excluir bloco</button><button id="sectionApplyBtn">Aplicar bloco</button></div>
+              <div class="btnRow" id="sectionActions"><button id="sectionDeleteBtn">Delete block</button><button id="sectionApplyBtn">Apply block</button></div>
             </div>
           </div>
         </div>
@@ -988,7 +990,7 @@
           </div>
 
           <div class="small" style="margin-top:8px;">
-            Campos cinza: a chave não existe nesse item no .mis (igual ao editor oficial). Quando o DEF está carregado, Type e Graphic vêm do catálogo pelo type_id.
+            Gray fields: the key does not exist in this .mis item (same behavior as the official editor). When DEF is loaded, Type and Graphic come from the catalog via type_id.
           </div>
         </div>
       </div>
@@ -1233,6 +1235,10 @@
     { value:5, label:"Protect target" },
     { value:6, label:"Extract team" },
   ];
+  const GENERAL_SUBGOALS_FALLBACK = {
+    win: [{ value: 0, label: "null" }],
+    lose: [{ value: 0, label: "null" }],
+  };
   const GENERAL_ENV_FILES = [
     { value:"day1", label:"Daytime 1" }, { value:"day2", label:"Daytime 2" },
     { value:"dawn1", label:"Dawn 1" }, { value:"dusk1", label:"Dusk 1" },
@@ -1458,6 +1464,7 @@
     }
     state.gameStrings = merged;
     addLog(`Game strings merged total: ${state.gameStrings.size}`);
+    refreshGeneralConditionSelectOptions();
   }
 
   async function loadWpNames(){
@@ -1636,7 +1643,7 @@
     }
     state.defsSorted = defs.slice().sort((a,b) => a.name.localeCompare(b.name));
 
-    defStatusEl.textContent = `ITEMS.DEF carregado. defs: ${state.defsSorted.length}`;
+    defStatusEl.textContent = `ITEMS.DEF loaded. defs: ${state.defsSorted.length}`;
     addLog(`Loaded embedded ITEMS.DEF (${state.defsSorted.length} defs)`);
     buildSubtypeOptionsFromDEF();
     buildTypeFilterOptions();
@@ -1646,7 +1653,7 @@
   }
 
   function buildSubtypeOptionsFromDEF(){
-    // Sub-Type agora vira "catálogo": value = type_id (DEF id)
+    // Sub-Type now becomes "catalog": value = type_id (DEF id)
     const groups = {};
     for (const d of state.defsSorted){
       const g = (d.type || "other").toLowerCase();
@@ -1705,6 +1712,20 @@
   }
 
 
+  function getGeneralConditionOptions(kind){
+    const isWin = kind === "win";
+    const keyRegex = isWin ? /^STRWINCOND(\d{3})$/ : /^STRLOSECOND(\d{3})$/;
+    const entries = [];
+    for (const [k, v] of state.gameStrings.entries()){
+      const m = String(k).match(keyRegex);
+      if (!m) continue;
+      entries.push({ value: Number(m[1]), label: String(v) });
+    }
+    if (!entries.length) return GENERAL_SUBGOALS_FALLBACK[kind] || GENERAL_SUBGOALS_FALLBACK.win;
+    entries.sort((a,b) => a.value - b.value);
+    return entries;
+  }
+
   function ensureSelectOptions(selectEl, options, currentValue){
     const vals = options.map(o => typeof o === "string" ? { value:o, label:o } : o);
     if (currentValue !== undefined && currentValue !== null && currentValue !== "" && !vals.some(o => String(o.value) === String(currentValue))){
@@ -1730,12 +1751,22 @@
   }
 
   function buildGeneralConditionRows(container, prefix){
-    const opts = GENERAL_SUBGOALS.map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`).join("");
+    const kind = prefix === "giLose" ? "lose" : "win";
+    const opts = getGeneralConditionOptions(kind).map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`).join("");
     let html = "";
     for (let i=0; i<8; i++){
       html += `<div class="giCondRow"><input type="checkbox" id="${prefix}Enabled${i}" /><select id="${prefix}Goal${i}">${opts}</select><input id="${prefix}Score${i}" type="number" /></div>`;
     }
     container.innerHTML = html;
+  }
+
+  function refreshGeneralConditionSelectOptions(){
+    for (let i=0; i<8; i++){
+      const winSel = document.getElementById(`giWinGoal${i}`);
+      if (winSel) ensureSelectOptions(winSel, getGeneralConditionOptions("win"), winSel.value);
+      const loseSel = document.getElementById(`giLoseGoal${i}`);
+      if (loseSel) ensureSelectOptions(loseSel, getGeneralConditionOptions("lose"), loseSel.value);
+    }
   }
 
   function decodeFogColor(n){
@@ -1763,14 +1794,18 @@
   function readGeneralConditionRows(prefix){
     const goals = [];
     const scores = [];
+    let criticalMask = 0;
     for (let i=0; i<8; i++){
       const enabled = document.getElementById(`${prefix}Enabled${i}`).checked;
       const goal = Number(document.getElementById(`${prefix}Goal${i}`).value || 0);
       const score = Number(document.getElementById(`${prefix}Score${i}`).value || 0);
-      goals.push(enabled ? Math.max(0, Math.trunc(goal)) : 0);
-      scores.push(enabled ? Math.max(0, Math.trunc(score)) : 0);
+      const goalVal = Math.max(0, Math.trunc(goal));
+      const scoreVal = Math.max(0, Math.trunc(score));
+      goals.push(goalVal);
+      scores.push(scoreVal);
+      if (enabled) criticalMask |= (1 << i);
     }
-    return { goals, scores };
+    return { goals, scores, criticalMask };
   }
 
   function fillGeneralInfoEditor(sec){
@@ -1813,13 +1848,15 @@
     const winScores = parseIntList(kv.win_scores, 8);
     const loseGoals = parseIntList(kv.subgoals_lose, 8);
     const loseScores = parseIntList(kv.lose_scores, 8);
+    const hardWin = Math.max(0, Math.trunc(Number(kv.hardwin || 0)));
+    const hardLose = Math.max(0, Math.trunc(Number(kv.hardlose || 0)));
     for (let i=0; i<8; i++){
-      const wEnabled = winGoals[i] > 0 || winScores[i] > 0;
+      const wEnabled = (hardWin & (1 << i)) !== 0;
       document.getElementById(`giWinEnabled${i}`).checked = wEnabled;
       document.getElementById(`giWinGoal${i}`).value = String(winGoals[i]);
       document.getElementById(`giWinScore${i}`).value = String(winScores[i]);
 
-      const lEnabled = loseGoals[i] > 0 || loseScores[i] > 0;
+      const lEnabled = (hardLose & (1 << i)) !== 0;
       document.getElementById(`giLoseEnabled${i}`).checked = lEnabled;
       document.getElementById(`giLoseGoal${i}`).value = String(loseGoals[i]);
       document.getElementById(`giLoseScore${i}`).value = String(loseScores[i]);
@@ -1884,6 +1921,8 @@
     kv.win_scores = win.scores.join(" ");
     kv.subgoals_lose = lose.goals.join(" ");
     kv.lose_scores = lose.scores.join(" ");
+    kv.hardwin = String(win.criticalMask);
+    kv.hardlose = String(lose.criticalMask);
 
     kv.water_level = String(Math.max(0, Math.round(Number(giWaterLevel.value || 0) / 0.5)));
     kv.fog_level = String(Math.max(0, Math.trunc(Number(giFogLevel.value || 0))));
@@ -2037,17 +2076,17 @@
 
   function buildTypeFilterOptions(){
     // Filtro "type" da esquerda:
-    // se DEF carregado: usa types do DEF (object/marker/vehicle...)
-    // senão: usa type_id distintos do mis
+    // if DEF is loaded: use DEF types (object/marker/vehicle...)
+    // otherwise: use distinct type_id values from mis
     if (state.defLoaded){
       const types = Array.from(state.defTypes).sort();
       typeFilterEl.innerHTML =
-        `<option value="">Todos os types</option>` +
+        `<option value="">All types</option>` +
         types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
     } else {
       const typeIds = Array.from(new Set(state.items.map(x => (x.kv.type_id || "").toString()).filter(Boolean))).sort((a,b)=>Number(a)-Number(b));
       typeFilterEl.innerHTML =
-        `<option value="">Todos os types</option>` +
+        `<option value="">All types</option>` +
         typeIds.map(t => `<option value="${escapeHtml(t)}">type_id ${escapeHtml(t)}</option>`).join("");
     }
   }
@@ -2231,8 +2270,8 @@
       sectionApplyBtn.textContent = "OK";
       sectionDeleteBtn.textContent = "Cancel";
     } else {
-      sectionApplyBtn.textContent = "Aplicar bloco";
-      sectionDeleteBtn.textContent = "Excluir bloco";
+      sectionApplyBtn.textContent = "Apply block";
+      sectionDeleteBtn.textContent = "Delete block";
     }
   }
 
@@ -2241,7 +2280,7 @@
     state.sectionKind = kind;
     state.sectionSelectedId = null;
     sectionKindSelect.value = kind;
-    sectionAddBtn.textContent = kind === "group" ? "Editar" : "Adicionar bloco";
+    sectionAddBtn.textContent = kind === "group" ? "Edit" : "Add block";
 
     if (kind === "general_information" && !state.sectionBlocks.some(s => s.kind === "general_information")){
       const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
@@ -2429,7 +2468,7 @@
         const label = `${n} - ${desc || ""}`;
         if (!q || label.toLowerCase().includes(q)) cards.push({ n, label });
       }
-      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.groupSelectedNumber===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("") || `<div class="hint">Nenhum grupo.</div>`;
+      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.groupSelectedNumber===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("") || `<div class="hint">No groups.</div>`;
       sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
       if (!state.groupSelectedNumber) state.groupSelectedNumber = 1;
       selectSectionBlock(state.groupSelectedNumber);
@@ -2445,7 +2484,7 @@
         const label = `${n} - ${desc || ""}`;
         if (!q || label.toLowerCase().includes(q)) cards.push({ n, label });
       }
-      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.waypointSelectedNumber===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("") || `<div class="hint">Nenhum waypoint.</div>`;
+      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.waypointSelectedNumber===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("") || `<div class="hint">No waypoints.</div>`;
       sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
       if (!state.waypointSelectedNumber) state.waypointSelectedNumber = 1;
       selectSectionBlock(state.waypointSelectedNumber);
@@ -2484,7 +2523,7 @@
     const sec = state.sectionBlocks.find(s => s.id === id);
     sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===id));
     if (!sec){
-      sectionMeta.textContent = 'Selecione um bloco.';
+      sectionMeta.textContent = 'Select a block.';
       sectionText.value = '';
       return;
     }
@@ -2614,7 +2653,7 @@
       start: Number.MAX_SAFE_INTEGER - nextId,
       end: Number.MAX_SAFE_INTEGER - nextId,
       beginLine: `begin ${kind}`,
-      lines: ['  // novo bloco'],
+        lines: ['  // new block'],
       kv: {},
     };
     if (kind === 'item') sec.beginLine = 'begin item';
@@ -2627,7 +2666,7 @@
   function syncWeaponLoadoutsFromGeneral(sec){
     const summary = formatWeaponLoadoutSummary(sec);
     if (!summary) return;
-    statusEl.textContent = `Loadout padrão: ${summary}`;
+    statusEl.textContent = `Default loadout: ${summary}`;
   }
 
 
@@ -2666,7 +2705,7 @@
       const sec = state.sectionBlocks.find(s => s.kind==='item' && s.start===it.start);
       if (sec) sec.kv = { ...it.kv };
     }
-    statusEl.textContent = `Global Replace alterou ${changed} campos.`;
+    statusEl.textContent = `Global Replace changed ${changed} fields.`;
     renderItemWindow();
     renderList();
   }
@@ -2827,7 +2866,7 @@
     ui.delBtn.disabled = !hasSelection;
 
     if (!it){
-      ui.itemTitle.textContent = "Nenhum item selecionado.";
+      ui.itemTitle.textContent = "No item selected.";
       ui.presenceHint.textContent = "";
       return;
     }
@@ -2847,14 +2886,14 @@
     const title = def?.name ? def.name : (kvHas(it, "name") ? it.kv.name : (kvHas(it, "iai_name") ? it.kv.iai_name : "(sem name)"));
     ui.itemTitle.textContent = title;
     ui.presenceHint.textContent = state.defLoaded
-      ? "Campos cinza: a chave não existe no item do .mis. Type/Graphic/Sub-Type vêm do DEF via type_id."
-      : "Campos cinza: a chave não existe no item do .mis. Carregue o ITEMS.DEF para preencher Type/Graphic/Sub-Type.";
+      ? "Gray fields: the key does not exist in this .mis item. Type/Graphic/Sub-Type come from DEF via type_id."
+      : "Gray fields: the key does not exist in this .mis item. Load ITEMS.DEF to populate Type/Graphic/Sub-Type.";
 
     setEnabled(ui.layer, kvHas(it, "layer"));
     if (kvHas(it, "layer")) ui.layer.value = String(it.kv.layer);
 
     // Sub-Type
-    // Se DEF carregado e item tem type_id, deixa escolher e muda type_id + name
+    // If DEF is loaded and item has type_id, allow selecting and update type_id + name
     const canSubtype = state.defLoaded && kvHas(it, "type_id");
     setEnabled(ui.subtype, canSubtype);
 
@@ -2985,7 +3024,7 @@
         const def = state.defsById.get(String(selectedDefId));
         if (def && kvHas(it, "name")) it.kv.name = `"${def.name}"`.replace(/^"|"$/g,"");
         if (def && kvHas(it, "iai_name")) it.kv.iai_name = `"${def.name}"`.replace(/^"|"$/g,"");
-        // Se não tem name/iai_name, não inventa chave nova (mantém regra: só mexe se existir)
+        // If name/iai_name doesn't exist, do not invent a new key (keep rule: only modify if key exists)
       }
     }
 
@@ -3193,7 +3232,7 @@
   liveMisOverlay.addEventListener("mousedown", (e) => { if (e.target === liveMisOverlay) closeLiveMisWindow(); });
   liveMisSearch.addEventListener("input", () => findInLiveMis(false, false));
   liveMisSearch.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); findInLiveMis(true, true); } });
-  sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; sectionAddBtn.textContent = state.sectionKind === "group" ? "Editar" : "Adicionar bloco"; updateSectionEditorMode(); renderSectionList(); });
+  sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; sectionAddBtn.textContent = state.sectionKind === "group" ? "Edit" : "Add block"; updateSectionEditorMode(); renderSectionList(); });
   sectionSearch.addEventListener("input", renderSectionList);
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
@@ -3284,7 +3323,7 @@
   const menuBar = document.getElementById("menuBar");
 
   function showNotImplemented(label){
-    statusEl.textContent = `Comando '${label}' ainda não está implementado no editor web.`;
+    statusEl.textContent = `Command '${label}' is not implemented in the web editor yet.`;
   }
 
   const menuHandlers = {
@@ -3297,30 +3336,30 @@
       exportBtn.disabled = true;
       renderList();
       draw();
-      statusEl.textContent = "Mapa limpo.";
+      statusEl.textContent = "Map cleared.";
     },
     "file.open": () => fileMisEl.click(),
     "file.saveAs": () => {
       if (!state.rawText) return showNotImplemented("Save As");
       const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
       downloadText(state.filename || "edited.mis", out);
-      statusEl.textContent = "Arquivo salvo.";
+      statusEl.textContent = "File saved.";
     },
     "file.setEditorFolder": async () => {
       if (!state.isLocalRuntime) return;
       if (!window.showDirectoryPicker){
-        statusEl.textContent = "Seu navegador não suporta seleção de pasta (File System Access API).";
+        statusEl.textContent = "Your browser does not support folder selection (File System Access API).";
         return;
       }
       try{
         const handle = await window.showDirectoryPicker({ mode: "read" });
         state.editorFolderHandle = handle;
-        statusEl.textContent = `Pasta do editor definida: ${handle.name}`;
+        statusEl.textContent = `Editor folder set: ${handle.name}`;
         await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames()]);
         renderMenuBar();
       } catch (err){
         if (err?.name === "AbortError") return;
-        statusEl.textContent = "Falha ao definir pasta do editor (veja Logs).";
+        statusEl.textContent = "Failed to set editor folder (see Logs).";
         addLog(`ERROR selecting editor folder: ${err?.message || "unknown error"}`);
       }
     },
@@ -3517,7 +3556,7 @@
     buildGroupOptions();
     buildTypeFilterOptions();
 
-    statusEl.textContent = `${f.name} carregado. items: ${state.items.length}`;
+    statusEl.textContent = `${f.name} loaded. items: ${state.items.length}`;
     fitView();
     renderList();
     draw();
@@ -3740,34 +3779,34 @@
       if (defs && defs.length){
         applyDefs(defs);
       } else {
-        defStatusEl.textContent = "Aviso: catálogo embutido vazio (ITEMS.DEF).";
+        defStatusEl.textContent = "Warning: embedded catalog is empty (ITEMS.DEF).";
         addLog("WARNING: Embedded ITEMS.DEF parsed with 0 defs.");
       }
     } catch (err){
       console.error(err);
-      defStatusEl.textContent = "Erro ao carregar catálogo embutido (ver console).";
+      defStatusEl.textContent = "Error loading embedded catalog (see console).";
       addLog("ERROR: Failed to parse embedded ITEMS.DEF.");
     }
 
     if (state.isLocalRuntime){
       addLog("Local runtime detected (file://). Waiting for 'Set Editor Folder'.");
-      statusEl.textContent = "Modo local detectado: abra File > Set Editor Folder para carregar os catálogos.";
-      defStatusEl.textContent = "Modo local: defina a pasta do editor em File > Set Editor Folder.";
+      statusEl.textContent = "Local mode detected: open File > Set Editor Folder to load catalogs.";
+      defStatusEl.textContent = "Local mode: set the editor folder in File > Set Editor Folder.";
     } else {
       await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames()]);
     }
 
     const stringInfo = state.gameStrings.size
       ? `strings: ${state.gameStrings.size}`
-      : "strings: indisponível";
+      : "strings: unavailable";
     const weaponInfo = state.weaponDefs.size
       ? `weapons: ${state.weaponDefs.size}`
-      : "weapons: indisponível";
+      : "weapons: unavailable";
     const defInfo = state.defsSorted.length
       ? `defs: ${state.defsSorted.length}`
       : "defs: 0";
     if (!state.isLocalRuntime || state.editorFolderHandle)
-      defStatusEl.textContent = `Catálogos carregados (${defInfo}, ${weaponInfo}, ${stringInfo}).`;
+      defStatusEl.textContent = `Catalogs loaded (${defInfo}, ${weaponInfo}, ${stringInfo}).`;
     addLog(`Boot finished: ${defInfo}, ${weaponInfo}, ${stringInfo}, wpNames: ${state.wpNames.length}`);
   })();
 
