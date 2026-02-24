@@ -974,7 +974,6 @@
   </div>
 
 <script src="resources/itemsDef.js"></script>
-<script src="resources/embeddedResources.js"></script>
 
 <script>
   const state = {
@@ -1293,24 +1292,17 @@
   async function loadTextResource(path){
     try{
       const res = await fetch(path);
-      if (res.ok){
-        const text = await res.text();
-        addLog(`Loaded resource via fetch: ${path}`);
-        return text;
+      if (!res.ok){
+        addLog(`ERROR loading resource via fetch: ${path} (HTTP ${res.status})`);
+        return null;
       }
-      addLog(`ERROR loading resource via fetch: ${path} (HTTP ${res.status})`);
+      const text = await res.text();
+      addLog(`Loaded resource via fetch: ${path}`);
+      return text;
     } catch (err) {
       addLog(`ERROR loading resource via fetch: ${path} (${err?.message || "fetch failed"})`);
+      return null;
     }
-
-    const embedded = window.BHD_EMBEDDED_RESOURCES || {};
-    if (Object.prototype.hasOwnProperty.call(embedded, path)){
-      addLog(`Loaded resource via embedded fallback: ${path}`);
-      return String(embedded[path] || "");
-    }
-
-    addLog(`ERROR resource unavailable (fetch + embedded fallback): ${path}`);
-    return null;
   }
 
   function buildWpNameOptions(){
@@ -1389,14 +1381,14 @@
 
   async function loadGameStrings(){
     const files = [
-      "resources/game_strings/game.bin",
-      "resources/game_strings/gameerr.bin",
-      "resources/game_strings/keyhelp.bin",
-      "resources/game_strings/meditens.bin",
-      "resources/game_strings/medmssn.bin",
-      "resources/game_strings/medtext.bin",
-      "resources/game_strings/menutxt.bin",
-      "resources/game_strings/gametext.bin",
+      "resources/game_strings/game.js",
+      "resources/game_strings/gameerr.js",
+      "resources/game_strings/keyhelp.js",
+      "resources/game_strings/meditens.js",
+      "resources/game_strings/medmssn.js",
+      "resources/game_strings/medtext.js",
+      "resources/game_strings/menutxt.js",
+      "resources/game_strings/gametext.js",
       "resources/game_strings/known_stringkeys_to_text_1.txt",
     ];
 
@@ -1413,7 +1405,7 @@
   }
 
   async function loadWpNames(){
-    const path = "resources/game_strings/medmssn.bin";
+    const path = "resources/game_strings/medmssn.js";
     const text = await loadTextResource(path);
     if (text === null){
       buildWpNameOptions();
@@ -1422,7 +1414,7 @@
     const parsed = parseWpNamesFromMedmssn(text);
     if (parsed.length) state.wpNames = parsed;
     buildWpNameOptions();
-    addLog(`Loaded WPNames from medmssn.bin (${state.wpNames.length} entries)`);
+    addLog(`Loaded WPNames from medmssn.js (${state.wpNames.length} entries)`);
   }
 
   async function loadWeaponDefs(){
