@@ -1226,6 +1226,15 @@
     { value: "2", label: "Ranger" },
     { value: "4", label: "SAS" },
   ];
+  const GENERAL_SUBGOALS = [
+    { value:0, label:"null" },
+    { value:1, label:"Reach Final Waypoint" },
+    { value:2, label:"Destroy Technicals" },
+    { value:3, label:"Player dies" },
+    { value:4, label:"Destroy target" },
+    { value:5, label:"Protect target" },
+    { value:6, label:"Extract team" },
+  ];
   const GENERAL_SUBGOALS_FALLBACK = {
     win: [{ value: 0, label: "null" }],
     lose: [{ value: 0, label: "null" }],
@@ -2484,7 +2493,7 @@
 
     sectionDeleteBtn.disabled = false;
     const secs = getSectionsByKind(kind).filter(s => kind === "general_information" || !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
-    sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">No ${escapeHtml(kind)} blocks.</div>`;
+    sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
     sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
     if (!state.sectionSelectedId && secs.length) selectSectionBlock(secs[0].id);
   }
