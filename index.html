@@ -234,6 +234,43 @@
     }
     #liveMisText mark{ background:#ffe463; color:#111; }
     #liveMisText mark.current{ background:#ff8a00; color:#111; }
+    #logsOverlay{
+      position:absolute;
+      inset:0;
+      background:var(--overlay);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:56;
+      padding:18px;
+    }
+    #logsOverlay.open{ display:flex; }
+    #logsWindow{
+      width:min(1120px,100%);
+      height:min(820px,100%);
+      background:#e5e5e5;
+      border:1px solid #999;
+      padding:10px;
+      display:grid;
+      grid-template-rows:auto 1fr auto;
+      gap:8px;
+      overflow:hidden;
+    }
+    #logsText{
+      width:100%;
+      height:100%;
+      min-height:0;
+      overflow:auto;
+      border:1px solid #9f9f9f;
+      background:#fff;
+      padding:8px;
+      white-space:pre;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px;
+      line-height:1.35;
+      box-sizing:border-box;
+      margin:0;
+    }
     #modalWindow{
       width: min(980px, 100%);
       max-height: min(720px, 100%);
@@ -673,6 +710,14 @@
         </div>
       </div>
 
+      <div id="logsOverlay" aria-hidden="true">
+        <div id="logsWindow" role="dialog" aria-modal="true" aria-label="Logs">
+          <div class="windowTitle">Logs <span class="spacer"></span><button class="xbtn" id="logsCloseBtn">X</button></div>
+          <pre id="logsText"></pre>
+          <div class="btnRow" style="justify-content:flex-end;"><button id="logsClearBtn">Clear Logs</button></div>
+        </div>
+      </div>
+
       <div class="contextMenu" id="itemContextMenu" aria-hidden="true"></div>
 
       <div id="modalOverlay" aria-hidden="true">
@@ -961,6 +1006,8 @@
     realtimePrevMisText: "",
     realtimeLog: [],
     selectedWaypointMarkerIds: new Set(),
+    logsOpen: false,
+    logs: [],
 
     contextMenuOpen: false,
     contextTargetId: null,
@@ -995,6 +1042,10 @@
   const liveMisCloseBtn = document.getElementById("liveMisCloseBtn");
   const liveMisText = document.getElementById("liveMisText");
   const liveMisSearch = document.getElementById("liveMisSearch");
+  const logsOverlay = document.getElementById("logsOverlay");
+  const logsCloseBtn = document.getElementById("logsCloseBtn");
+  const logsText = document.getElementById("logsText");
+  const logsClearBtn = document.getElementById("logsClearBtn");
   const wpSelectMarkersBtn = document.getElementById("wpSelectMarkersBtn");
   const wpSaveAsBtn = document.getElementById("wpSaveAsBtn");
   const wpOkBtn = document.getElementById("wpOkBtn");
@@ -1158,6 +1209,30 @@
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
   }
+
+  function addLog(msg){
+    const stamp = new Date().toLocaleTimeString();
+    state.logs.unshift(`[${stamp}] ${msg}`);
+    if (state.logs.length > 500) state.logs.length = 500;
+    if (state.logsOpen) renderLogsWindow();
+  }
+
+  function renderLogsWindow(){
+    logsText.textContent = state.logs.length ? state.logs.join("\n") : "// No logs yet.";
+  }
+
+  function openLogsWindow(){
+    state.logsOpen = true;
+    logsOverlay.classList.add("open");
+    logsOverlay.setAttribute("aria-hidden", "false");
+    renderLogsWindow();
+  }
+
+  function closeLogsWindow(){
+    state.logsOpen = false;
+    logsOverlay.classList.remove("open");
+    logsOverlay.setAttribute("aria-hidden", "true");
+  }
   buildWpNameOptions();
 
   function stripOuterQuotes(v){
@@ -1304,26 +1379,36 @@
     for (const path of files){
       try{
         const res = await fetch(path);
-        if (!res.ok) continue;
+        if (!res.ok){
+          addLog(`ERROR loading game strings file: ${path} (HTTP ${res.status})`);
+          continue;
+        }
         const text = await res.text();
         const parsed = parseStringTableLikeFile(text);
         for (const [k,v] of parsed) if (!merged.has(k)) merged.set(k, v);
+        addLog(`Loaded game strings file: ${path} (${parsed.size} keys)`);
       } catch (_err) {
-        // fetch can fail in some file:// contexts; keep graceful fallback
+        addLog(`ERROR loading game strings file: ${path} (fetch failed)`);
       }
     }
     state.gameStrings = merged;
+    addLog(`Game strings merged total: ${state.gameStrings.size}`);
   }
 
   async function loadWpNames(){
     try{
       const res = await fetch("resources/game_strings/medmssn.bin");
-      if (!res.ok) return;
+      if (!res.ok){
+        addLog(`ERROR loading WPNames source: resources/game_strings/medmssn.bin (HTTP ${res.status})`);
+        return;
+      }
       const text = await res.text();
       const parsed = parseWpNamesFromMedmssn(text);
       if (parsed.length) state.wpNames = parsed;
       buildWpNameOptions();
+      addLog(`Loaded WPNames from medmssn.bin (${state.wpNames.length} entries)`);
     } catch (_err) {
+      addLog("ERROR loading WPNames source: resources/game_strings/medmssn.bin (fetch failed)");
       buildWpNameOptions();
     }
   }
@@ -1331,11 +1416,15 @@
   async function loadWeaponDefs(){
     try{
       const res = await fetch("resources/weapon.def");
-      if (!res.ok) return;
+      if (!res.ok){
+        addLog(`ERROR loading weapon.def (HTTP ${res.status})`);
+        return;
+      }
       const text = await res.text();
       state.weaponDefs = parseWeaponDefCatalog(text);
+      addLog(`Loaded weapon.def (${state.weaponDefs.size} weapons)`);
     } catch (_err) {
-      // optional dataset; keep editor usable without weapon.def
+      addLog("ERROR loading weapon.def (fetch failed)");
     }
   }
 
@@ -1495,6 +1584,7 @@
     state.defsSorted = defs.slice().sort((a,b) => a.name.localeCompare(b.name));
 
     defStatusEl.textContent = `ITEMS.DEF carregado. defs: ${state.defsSorted.length}`;
+    addLog(`Loaded embedded ITEMS.DEF (${state.defsSorted.length} defs)`);
     buildSubtypeOptionsFromDEF();
     buildTypeFilterOptions();
     renderList();
@@ -2198,6 +2288,10 @@
     liveMisOverlay.classList.remove("open");
     liveMisOverlay.setAttribute("aria-hidden", "true");
   }
+
+  logsCloseBtn.addEventListener("click", closeLogsWindow);
+  logsOverlay.addEventListener("mousedown", (e) => { if (e.target === logsOverlay) closeLogsWindow(); });
+  logsClearBtn.addEventListener("click", () => { state.logs = []; renderLogsWindow(); addLog("Logs cleared by user."); });
 
   function findInLiveMis(next=false, focusResult=false){
     const term = (liveMisSearch.value || "").toLowerCase();
@@ -3130,7 +3224,8 @@
     "edit.layerNames": () => openSectionEditor("layer"),
     "edit.globalReplace": runGlobalReplace,
     "edit.weaponLoadouts": () => openSectionEditor("weapon_availability"),
-    "mis.liveChanges": openLiveMisWindow
+    "mis.liveChanges": openLiveMisWindow,
+    "logs.open": openLogsWindow
   };
 
   const menuTree = [
@@ -3202,10 +3297,8 @@
       ]
     },
     {
-      label: "Info",
-      children: [
-        { label: "About", command: "info.about" }
-      ]
+      label: "Logs",
+      directCommand: "logs.open"
     },
     {
       label: "MIS Code",
@@ -3523,6 +3616,7 @@
   }, { passive:false });
   // Boot: load embedded ITEMS.DEF + optional resources (weapon.def + game strings).
   (async function boot(){
+    addLog("Editor boot started.");
     try{
       const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
       const defs = parseItemsDef(defText);
@@ -3530,10 +3624,12 @@
         applyDefs(defs);
       } else {
         defStatusEl.textContent = "Aviso: catálogo embutido vazio (ITEMS.DEF).";
+        addLog("WARNING: Embedded ITEMS.DEF parsed with 0 defs.");
       }
     } catch (err){
       console.error(err);
       defStatusEl.textContent = "Erro ao carregar catálogo embutido (ver console).";
+      addLog("ERROR: Failed to parse embedded ITEMS.DEF.");
     }
 
     await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames()]);
@@ -3548,6 +3644,7 @@
       ? `defs: ${state.defsSorted.length}`
       : "defs: 0";
     defStatusEl.textContent = `Catálogos carregados (${defInfo}, ${weaponInfo}, ${stringInfo}).`;
+    addLog(`Boot finished: ${defInfo}, ${weaponInfo}, ${stringInfo}, wpNames: ${state.wpNames.length}`);
   })();
 
 </script>
