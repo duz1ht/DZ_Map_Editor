@@ -559,7 +559,7 @@
     #sectionWindow.generalInfoMode #sectionText{ display:none; }
     #sectionWindow.generalInfoMode #sectionBody{ grid-template-columns:1fr; height:auto; }
     #sectionWindow.generalInfoMode #sectionEditor{ grid-template-rows:1fr auto; }
-    #sectionWindow.generalInfoMode #sectionActions{ justify-content:flex-start; }
+    #sectionWindow.generalInfoMode #sectionActions{ display:none; }
     #generalInfoEditor{ display:none; font-size:12px; }
     #sectionWindow.generalInfoMode #generalInfoEditor{ display:block; }
     .giLayout{ display:grid; grid-template-columns: 1fr 1.55fr 1fr; gap:10px; }
@@ -572,6 +572,7 @@
     .giCondHead{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; color:#333; margin-bottom:4px; }
     .giInline{ display:grid; grid-template-columns:1fr 90px; gap:6px; align-items:center; margin-bottom:6px; }
     .giInline3{ display:grid; grid-template-columns:1fr 56px 56px 56px; gap:6px; align-items:center; margin-bottom:6px; }
+    .giActions{ display:flex; gap:6px; margin-top:8px; }
   </style>
 </head>
 
@@ -673,6 +674,7 @@
                     <div class="giRow" style="margin-top:6px;"><label>Starting Spin-map Zoom</label><input id="giMapZoom" type="range" min="0" max="1" step="0.01" /></div>
                     <div class="giInline"><label>Bonus Expiration</label><input id="giBonusExpiration" type="number" /></div>
                     <div class="giInline"><label>Max Saved Games</label><input id="giMaxSaves" type="number" /></div>
+                    <div class="giActions"><button id="giCancelBtn" type="button">Cancel</button><button id="giOkBtn" type="button">OK</button></div>
                   </div>
                   <div>
                     <div class="giBox">
@@ -1089,6 +1091,8 @@
   const giMapZoom = document.getElementById("giMapZoom");
   const giBonusExpiration = document.getElementById("giBonusExpiration");
   const giMaxSaves = document.getElementById("giMaxSaves");
+  const giCancelBtn = document.getElementById("giCancelBtn");
+  const giOkBtn = document.getElementById("giOkBtn");
   const giWinRows = document.getElementById("giWinRows");
   const giLoseRows = document.getElementById("giLoseRows");
   const giWaterEnabled = document.getElementById("giWaterEnabled");
@@ -2440,7 +2444,7 @@
     }
 
     sectionDeleteBtn.disabled = false;
-    const secs = getSectionsByKind(kind).filter(s => !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
+    const secs = getSectionsByKind(kind).filter(s => kind === "general_information" || !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
     sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
     sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
     if (!state.sectionSelectedId && secs.length) selectSectionBlock(secs[0].id);
@@ -3184,6 +3188,8 @@
   sectionSearch.addEventListener("input", renderSectionList);
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
+  giOkBtn.addEventListener("click", applySectionBlock);
+  giCancelBtn.addEventListener("click", deleteSectionBlock);
   sectionAddBtn.addEventListener("click", addSectionBlock);
   [giWaterEnabled, giFogDistEnabled, giFogColorEnabled, giNvgAvailable].forEach(el => {
     if (el) el.addEventListener("change", updateGeneralInfoEnables);
