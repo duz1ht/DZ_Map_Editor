@@ -136,6 +136,36 @@
       display:grid;
       gap:6px;
     }
+    #misRealtimePanel{
+      margin-top:12px;
+      border:1px solid var(--line);
+      background:#0f1117;
+      color:#d7deff;
+      border-radius:8px;
+      padding:8px;
+      min-height:360px;
+      display:grid;
+      grid-template-rows:auto 1fr;
+      gap:8px;
+    }
+    #misRealtimeTitle{
+      font-size:12px;
+      color:#c7ceeb;
+      font-weight:600;
+      letter-spacing:.2px;
+    }
+    #misRealtimeConsole{
+      margin:0;
+      overflow:auto;
+      white-space:pre;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:11px;
+      line-height:1.35;
+      background:#0b0d12;
+      border:1px solid #2a2f3d;
+      border-radius:6px;
+      padding:8px;
+    }
     .itemCard{
       padding:8px;
       border:1px solid var(--line);
@@ -204,6 +234,43 @@
     }
     #liveMisText mark{ background:#ffe463; color:#111; }
     #liveMisText mark.current{ background:#ff8a00; color:#111; }
+    #logsOverlay{
+      position:absolute;
+      inset:0;
+      background:var(--overlay);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:56;
+      padding:18px;
+    }
+    #logsOverlay.open{ display:flex; }
+    #logsWindow{
+      width:min(1120px,100%);
+      height:min(820px,100%);
+      background:#e5e5e5;
+      border:1px solid #999;
+      padding:10px;
+      display:grid;
+      grid-template-rows:auto 1fr auto;
+      gap:8px;
+      overflow:hidden;
+    }
+    #logsText{
+      width:100%;
+      height:100%;
+      min-height:0;
+      overflow:auto;
+      border:1px solid #9f9f9f;
+      background:#fff;
+      padding:8px;
+      white-space:pre;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px;
+      line-height:1.35;
+      box-sizing:border-box;
+      margin:0;
+    }
     #modalWindow{
       width: min(980px, 100%);
       max-height: min(720px, 100%);
@@ -454,6 +521,12 @@
     #sectionWindow.waypointMode #waypointEditor{ display:grid; }
     #waypointEditor{ display:none; gap:8px; }
     #waypointEditor .checkRow{ margin:0; }
+    #wpMarkerCount{
+      justify-self:end;
+      font-size:12px;
+      color:#333;
+      margin-top:2px;
+    }
     #waypointTopActions{ display:none; gap:8px; }
     #sectionWindow.waypointMode #waypointTopActions{ display:flex; }
     #sectionWindow.waypointMode #sectionAddBtn{ display:none; }
@@ -510,8 +583,10 @@
       <button id="exportBtn" disabled>Exportar .mis</button>
     </div>
 
-    <h3 style="margin:12px 0 6px 0; font-size:14px;">Itens</h3>
-    <div id="list"></div>
+    <div id="misRealtimePanel">
+      <div id="misRealtimeTitle">MIS Realtime Changes</div>
+      <pre id="misRealtimeConsole">// Open a .mis file to track live code changes here.</pre>
+    </div>
   </div>
 
   <div id="main">
@@ -620,6 +695,7 @@
                 <label class="checkRow"><input type="checkbox" id="wpNoLoop" /><span>Waypoint does NOT loop</span></label>
                 <label class="checkRow"><input type="checkbox" id="wpBlueTeam" /><span>Blue Team Waypoint</span></label>
                 <label class="checkRow"><input type="checkbox" id="wpRedTeam" /><span>Red Team Waypoint</span></label>
+                <div id="wpMarkerCount">Markers selected: 0</div>
               </div>
               <div class="btnRow" id="sectionActions"><button id="sectionDeleteBtn">Excluir bloco</button><button id="sectionApplyBtn">Aplicar bloco</button></div>
             </div>
@@ -628,9 +704,17 @@
       </div>
 
       <div id="liveMisOverlay" aria-hidden="true">
-        <div id="liveMisWindow" role="dialog" aria-modal="true" aria-label="MIS Live Changes">
-          <div class="windowTitle">MIS Live Changes <span class="spacer"></span><input id="liveMisSearch" placeholder="Pesquisar texto" /><button class="xbtn" id="liveMisCloseBtn">X</button></div>
+        <div id="liveMisWindow" role="dialog" aria-modal="true" aria-label="MIS Code">
+          <div class="windowTitle">MIS Code <span class="spacer"></span><input id="liveMisSearch" placeholder="Pesquisar texto" /><button class="xbtn" id="liveMisCloseBtn">X</button></div>
           <pre id="liveMisText"></pre>
+        </div>
+      </div>
+
+      <div id="logsOverlay" aria-hidden="true">
+        <div id="logsWindow" role="dialog" aria-modal="true" aria-label="Logs">
+          <div class="windowTitle">Logs <span class="spacer"></span><button class="xbtn" id="logsCloseBtn">X</button></div>
+          <pre id="logsText"></pre>
+          <div class="btnRow" style="justify-content:flex-end;"><button id="logsClearBtn">Clear Logs</button></div>
         </div>
       </div>
 
@@ -853,7 +937,7 @@
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">Name</div>
-                      <input id="ui_wpName" class="midInput" />
+                      <select id="ui_wpName" class="midInput"></select>
                     </div>
                     <div>
                       <div class="inlineLabel">Distance</div>
@@ -889,7 +973,7 @@
   </div>
   </div>
 
-<script src="itemsDef.js"></script>
+<script src="resources/itemsDef.js"></script>
 
 <script>
   const state = {
@@ -919,9 +1003,18 @@
     liveMisSearchTerm: "",
     liveMisSearchIndex: -1,
     liveMisRawText: "",
+    realtimePrevMisText: "",
+    realtimeLog: [],
+    selectedWaypointMarkerIds: new Set(),
+    logsOpen: false,
+    logs: [],
 
     contextMenuOpen: false,
     contextTargetId: null,
+
+    gameStrings: new Map(),
+    weaponDefs: new Map(),
+    wpNames: [],
   };
 
   // UI refs
@@ -930,6 +1023,7 @@
   const searchEl = document.getElementById("search");
   const typeFilterEl = document.getElementById("typeFilter");
   const listEl = document.getElementById("list");
+  const misRealtimeConsoleEl = document.getElementById("misRealtimeConsole");
   const exportBtn = document.getElementById("exportBtn");
   const statusEl = document.getElementById("status");
 
@@ -948,6 +1042,10 @@
   const liveMisCloseBtn = document.getElementById("liveMisCloseBtn");
   const liveMisText = document.getElementById("liveMisText");
   const liveMisSearch = document.getElementById("liveMisSearch");
+  const logsOverlay = document.getElementById("logsOverlay");
+  const logsCloseBtn = document.getElementById("logsCloseBtn");
+  const logsText = document.getElementById("logsText");
+  const logsClearBtn = document.getElementById("logsClearBtn");
   const wpSelectMarkersBtn = document.getElementById("wpSelectMarkersBtn");
   const wpSaveAsBtn = document.getElementById("wpSaveAsBtn");
   const wpOkBtn = document.getElementById("wpOkBtn");
@@ -956,6 +1054,7 @@
   const wpNoLoop = document.getElementById("wpNoLoop");
   const wpBlueTeam = document.getElementById("wpBlueTeam");
   const wpRedTeam = document.getElementById("wpRedTeam");
+  const wpMarkerCount = document.getElementById("wpMarkerCount");
 
   const giMissionName = document.getElementById("giMissionName");
   const giDesigner = document.getElementById("giDesigner");
@@ -1059,24 +1158,25 @@
   ];
 
   const GENERAL_MAP_TYPE_BITS = [
-    { id:"giMapCoop", bit:1 },
-    { id:"giMapDeathmatch", bit:2 },
-    { id:"giMapTeamDeathmatch", bit:4 },
-    { id:"giMapKoth", bit:8 },
-    { id:"giMapTeamKoth", bit:16 },
-    { id:"giMapCtf", bit:32 },
-    { id:"giMapFlagball", bit:64 },
-    { id:"giMapSearchDestroy", bit:128 },
-    { id:"giMapAttackDefend", bit:256 },
+    { id:"giMapCoop", bit:16777216 },
+    { id:"giMapDeathmatch", bit:33554432 },
+    { id:"giMapTeamDeathmatch", bit:536870912 },
+    { id:"giMapKoth", bit:67108864 },
+    { id:"giMapTeamKoth", bit:1073741824 },
+    { id:"giMapCtf", bit:268435456 },
+    { id:"giMapFlagball", bit:134217728 },
+    { id:"giMapSearchDestroy", bit:2147483648 },
+    { id:"giMapAttackDefend", bit:8388608 },
   ];
 
   const GENERAL_ATTRIB_BITS = {
-    rotate180: 512,
-    nvgAvailable: 1024,
-    nvgStartOn: 2048,
-    waterOverride: 4096,
-    fogDistanceOverride: 8192,
-    fogColorOverride: 16384,
+    rotate180: 32,
+    nvgAvailable: 1048576,
+    nvgStartOn: 4194304,
+    waterOverride: 1,
+    fogDistanceOverride: 2,
+    fogColorOverride: 4,
+    weatherOverride: 8,
   };
 
   const GENERAL_KNOWN_ATTRIB_MASK = GENERAL_MAP_TYPE_BITS.reduce((m, f) => (m | f.bit), 0)
@@ -1110,6 +1210,221 @@
     return Number.isFinite(n) ? n : 0;
   }
 
+  function addLog(msg){
+    const stamp = new Date().toLocaleTimeString();
+    state.logs.unshift(`[${stamp}] ${msg}`);
+    if (state.logs.length > 500) state.logs.length = 500;
+    if (state.logsOpen) renderLogsWindow();
+  }
+
+  function renderLogsWindow(){
+    logsText.textContent = state.logs.length ? state.logs.join("\n") : "// No logs yet.";
+  }
+
+  function openLogsWindow(){
+    state.logsOpen = true;
+    logsOverlay.classList.add("open");
+    logsOverlay.setAttribute("aria-hidden", "false");
+    renderLogsWindow();
+  }
+
+  function closeLogsWindow(){
+    state.logsOpen = false;
+    logsOverlay.classList.remove("open");
+    logsOverlay.setAttribute("aria-hidden", "true");
+  }
+  buildWpNameOptions();
+
+  function stripOuterQuotes(v){
+    const s = String(v || "").trim();
+    if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
+    return s;
+  }
+
+  function unescapeMisString(v){
+    return String(v || "")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+  }
+
+  function parseStringTableLikeFile(raw){
+    const out = new Map();
+    const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    for (const line of lines){
+      const t = line.trim();
+      if (!t || t.startsWith("//") || t.startsWith("'") || t.startsWith("[")) continue;
+      const m = t.match(/^([^=]+?)\s*=\s*(.+?);?$/);
+      if (!m) continue;
+      const key = m[1].trim();
+      const value = unescapeMisString(stripOuterQuotes(m[2].trim()));
+      if (key) out.set(key, value);
+    }
+    return out;
+  }
+
+  function parseWpNamesFromMedmssn(raw){
+    const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    const indexed = [];
+    let inSection = false;
+
+    for (const line of lines){
+      const t = line.trim();
+      if (!t || t.startsWith("//")) continue;
+      const clean = t.startsWith("'") && t.endsWith("'") ? t.slice(1, -1).trim() : t;
+      const sec = clean.match(/^\[(.+)\]$/);
+      if (sec){
+        inSection = sec[1].trim().toLowerCase() === "wpnames";
+        continue;
+      }
+      if (!inSection) continue;
+
+      const m = clean.match(/^(STRWPNAME)(\d{3})\s*=\s*(.+?);?$/i);
+      if (!m) continue;
+      const idx = Number(m[2]);
+      if (!Number.isFinite(idx) || idx < 0) continue;
+      indexed[idx] = unescapeMisString(stripOuterQuotes(m[3].trim()));
+    }
+
+    if (indexed.length && !indexed[0]) indexed[0] = "Null";
+    return indexed;
+  }
+
+  async function loadTextResource(path){
+    try{
+      const res = await fetch(path);
+      if (!res.ok){
+        addLog(`ERROR loading resource via fetch: ${path} (HTTP ${res.status})`);
+        return null;
+      }
+      const text = await res.text();
+      addLog(`Loaded resource via fetch: ${path}`);
+      return text;
+    } catch (err) {
+      addLog(`ERROR loading resource via fetch: ${path} (${err?.message || "fetch failed"})`);
+      return null;
+    }
+  }
+
+  function buildWpNameOptions(){
+    const names = state.wpNames || [];
+    if (!names.length){
+      ui.wpName.innerHTML = `<option value="">(no WP names)</option>`;
+      return;
+    }
+    ui.wpName.innerHTML = names.map((name, idx) => {
+      const label = `${idx} - ${name || `Name ${idx}`}`;
+      return `<option value="${idx}">${escapeHtml(label)}</option>`;
+    }).join("");
+  }
+
+  function parseWeaponDefCatalog(raw){
+    const out = new Map();
+    const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    let cur = null;
+
+    for (const line of lines){
+      const t = line.trim();
+      if (!t || t.startsWith("//") || t.startsWith(";")) continue;
+
+      const mBegin = t.match(/^weapon\s+"([^"]+)"/i);
+      if (mBegin){
+        cur = { id: mBegin[1], menuTextKey: "", weaponClass: "" };
+        continue;
+      }
+
+      if (/^end\b/i.test(t)){
+        if (cur && cur.id) out.set(cur.id, cur);
+        cur = null;
+        continue;
+      }
+
+      if (!cur) continue;
+
+      const mKV = t.match(/^([A-Za-z0-9_]+)\s+(.+)$/);
+      if (!mKV) continue;
+      const key = mKV[1].toLowerCase();
+      const value = stripOuterQuotes(mKV[2].trim());
+      if (key === "loadout_menu_textid") cur.menuTextKey = value;
+      if (key === "weapon_class") cur.weaponClass = value;
+    }
+
+    return out;
+  }
+
+  function resolveStringKey(key){
+    const k = String(key || "").trim();
+    if (!k) return "";
+    return state.gameStrings.get(k) || "";
+  }
+
+  function getWeaponDisplayName(weaponId){
+    const id = String(weaponId || "").trim();
+    if (!id) return "";
+    const def = state.weaponDefs.get(id);
+    if (!def) return id;
+    const fromKey = resolveStringKey(def.menuTextKey);
+    return fromKey || def.menuTextKey || id;
+  }
+
+  function formatWeaponLoadoutSummary(sec){
+    const primary = sec?.kv?.default_primary || "";
+    const secondary = sec?.kv?.default_secondary || "";
+    const accessory = sec?.kv?.default_accessory || "";
+
+    if (!primary && !secondary && !accessory) return "";
+
+    const p = primary ? getWeaponDisplayName(primary) : "(none)";
+    const s = secondary ? getWeaponDisplayName(secondary) : "(none)";
+    const a = accessory ? getWeaponDisplayName(accessory) : "(none)";
+    return `${p} | ${s} | ${a}`;
+  }
+
+  async function loadGameStrings(){
+    const files = [
+      "resources/game_strings/game.js",
+      "resources/game_strings/gameerr.js",
+      "resources/game_strings/keyhelp.js",
+      "resources/game_strings/meditens.js",
+      "resources/game_strings/medmssn.js",
+      "resources/game_strings/medtext.js",
+      "resources/game_strings/menutxt.js",
+      "resources/game_strings/gametext.js",
+      "resources/game_strings/known_stringkeys_to_text_1.txt",
+    ];
+
+    const merged = new Map();
+    for (const path of files){
+      const text = await loadTextResource(path);
+      if (text === null) continue;
+      const parsed = parseStringTableLikeFile(text);
+      for (const [k,v] of parsed) if (!merged.has(k)) merged.set(k, v);
+      addLog(`Parsed game strings file: ${path} (${parsed.size} keys)`);
+    }
+    state.gameStrings = merged;
+    addLog(`Game strings merged total: ${state.gameStrings.size}`);
+  }
+
+  async function loadWpNames(){
+    const path = "resources/game_strings/medmssn.js";
+    const text = await loadTextResource(path);
+    if (text === null){
+      buildWpNameOptions();
+      return;
+    }
+    const parsed = parseWpNamesFromMedmssn(text);
+    if (parsed.length) state.wpNames = parsed;
+    buildWpNameOptions();
+    addLog(`Loaded WPNames from medmssn.js (${state.wpNames.length} entries)`);
+  }
+
+  async function loadWeaponDefs(){
+    const path = "resources/weapon.def";
+    const text = await loadTextResource(path);
+    if (text === null) return;
+    state.weaponDefs = parseWeaponDefCatalog(text);
+    addLog(`Loaded weapon.def (${state.weaponDefs.size} weapons)`);
+  }
+
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
   }
@@ -1123,14 +1438,18 @@
   }
 
   function getItemAttribValue(it){
-    const n = Number(it?.kv?.attrib || 0);
+    const n = Number(it?.kv?.bmsi_attributes ?? it?.kv?.attrib ?? 0);
     return Number.isFinite(n) ? Math.trunc(n) : 0;
   }
 
   function setItemAttribValue(it, value){
     const v = Math.max(0, Math.trunc(Number(value) || 0));
-    if (v > 0) it.kv.attrib = String(v);
-    else delete it.kv.attrib;
+    const key = kvHas(it, "bmsi_attributes") ? "bmsi_attributes" : (kvHas(it, "attrib") ? "attrib" : "bmsi_attributes");
+    if (v > 0) it.kv[key] = String(v);
+    else {
+      delete it.kv.bmsi_attributes;
+      delete it.kv.attrib;
+    }
   }
 
   function setAttribBit(it, bit, enabled){
@@ -1262,6 +1581,7 @@
     state.defsSorted = defs.slice().sort((a,b) => a.name.localeCompare(b.name));
 
     defStatusEl.textContent = `ITEMS.DEF carregado. defs: ${state.defsSorted.length}`;
+    addLog(`Loaded embedded ITEMS.DEF (${state.defsSorted.length} defs)`);
     buildSubtypeOptionsFromDEF();
     buildTypeFilterOptions();
     renderList();
@@ -1315,19 +1635,16 @@
 
   function buildWaypointList(){
     const candidates = [];
-    for (const it of state.items){
-      const def = getDefForItem(it);
-      const defType = def?.type ? String(def.type).toLowerCase() : "";
-      const typeId = (it.kv.type_id || "").toString();
-      const name = (it.kv.name || it.kv.iai_name || "").toString();
-      const isMarkerLike = defType === "marker" || typeId === "9";
-      if (isMarkerLike && name.toLowerCase().includes("waypoint")){
-        candidates.push({ id: it.kv.id ?? "", label: name });
-      }
+    for (const sec of state.sectionBlocks){
+      if (sec.kind !== "waypoint") continue;
+      const n = parseWaypointNumber(sec);
+      if (!Number.isInteger(n) || n < 1 || n > 127) continue;
+      const desc = getWaypointDescription(sec);
+      candidates.push({ id: String(n), label: `${n} - ${desc || `Waypoint ${n}`}` });
     }
+    candidates.sort((a,b) => Number(a.id) - Number(b.id));
     ui.wpList.innerHTML = `<option value="">None</option>` + candidates.map(c => {
-      const v = String(c.id);
-      return `<option value="${escapeHtml(v)}">${escapeHtml(c.label)}</option>`;
+      return `<option value="${escapeHtml(c.id)}">${escapeHtml(c.label)}</option>`;
     }).join("");
   }
 
@@ -1632,6 +1949,8 @@
     if (colorVal > 0){ sec.kv.color = String(colorVal); lines.push(`  color ${colorVal}`); }
     if (attribVal > 0){ sec.kv.attrib = String(attribVal); lines.push(`  attrib ${attribVal}`); }
     sec.lines = lines;
+    buildWaypointList();
+    refreshLiveMisWindow();
   }
 
   function buildWaypointColorOptions(){
@@ -1757,6 +2076,11 @@
       const kv = { ...(it ? it.kv : liveSec.kv) };
       const srcLines = (it ? it.lines : liveSec.lines) || [];
 
+      if (liveSec.kind === "general_information"){
+        kv.num_items = String(items.length);
+        kv.num_events = String(sectionBlocks.filter(s => s.kind === "event").length);
+      }
+
       if (it){
         if ("position" in kv) kv.position = `${it.x} ${it.y} ${it.z}`;
         if ("facing" in kv){
@@ -1809,6 +2133,10 @@
       const n = parseWaypointNumber(sec) || sec.label || sec.id;
       const desc = getWaypointDescription(sec);
       return `${n} - ${desc || ""}`;
+    }
+    if (sec.kind === "weapon_availability"){
+      const summary = formatWeaponLoadoutSummary(sec);
+      return summary ? `weapon_availability - ${summary}` : "weapon_availability";
     }
     const id = sec.label || sec.kv.id || sec.kv.name || sec.kv.description || sec.kv.title || sec.id;
     return `${sec.kind} ${id}`;
@@ -1891,10 +2219,54 @@
     liveMisText.innerHTML = html;
   }
 
-  function refreshLiveMisWindow(){
+  function refreshLiveMisWindow(resetBaseline=false){
     state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
+    if (misRealtimeConsoleEl){
+      updateRealtimeChangesConsole(state.liveMisRawText, resetBaseline);
+    }
     if (!state.liveMisOpen) return;
     renderLiveMisHighlighted();
+  }
+
+  function updateRealtimeChangesConsole(newMisText, resetBaseline=false){
+    const nextText = String(newMisText || "");
+
+    if (resetBaseline || !state.realtimePrevMisText){
+      state.realtimePrevMisText = nextText;
+      state.realtimeLog = [];
+      misRealtimeConsoleEl.textContent = "// Baseline loaded. Make changes to see live MIS diffs.";
+      return;
+    }
+
+    if (nextText === state.realtimePrevMisText){
+      if (!state.realtimeLog.length){
+        misRealtimeConsoleEl.textContent = "// No changes detected yet.";
+      }
+      return;
+    }
+
+    const prevLines = state.realtimePrevMisText.split("\n");
+    const nextLines = nextText.split("\n");
+    const maxLen = Math.max(prevLines.length, nextLines.length);
+    const changed = [];
+
+    for (let i = 0; i < maxLen; i++){
+      const a = prevLines[i] ?? "";
+      const b = nextLines[i] ?? "";
+      if (a === b) continue;
+      if (a !== "") changed.push(`- L${i+1}: ${a}`);
+      if (b !== "") changed.push(`+ L${i+1}: ${b}`);
+      if (changed.length >= 24) break;
+    }
+
+    const stamp = new Date().toLocaleTimeString();
+    const entry = [`[${stamp}]`, ...changed].join("\n");
+    state.realtimeLog.unshift(entry);
+    if (state.realtimeLog.length > 20) state.realtimeLog.length = 20;
+
+    misRealtimeConsoleEl.textContent = state.realtimeLog.join("\n\n");
+    state.realtimePrevMisText = nextText;
+    misRealtimeConsoleEl.scrollTop = 0;
   }
 
   function openLiveMisWindow(){
@@ -1913,6 +2285,10 @@
     liveMisOverlay.classList.remove("open");
     liveMisOverlay.setAttribute("aria-hidden", "true");
   }
+
+  logsCloseBtn.addEventListener("click", closeLogsWindow);
+  logsOverlay.addEventListener("mousedown", (e) => { if (e.target === logsOverlay) closeLogsWindow(); });
+  logsClearBtn.addEventListener("click", () => { state.logs = []; renderLogsWindow(); addLog("Logs cleared by user."); });
 
   function findInLiveMis(next=false, focusResult=false){
     const term = (liveMisSearch.value || "").toLowerCase();
@@ -2006,6 +2382,8 @@
       sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===state.waypointSelectedNumber));
       const sec = getWaypointSectionByNumber(state.waypointSelectedNumber);
       sectionMeta.textContent = `begin waypoint ${state.waypointSelectedNumber}`;
+      state.selectedWaypointMarkerIds.clear();
+      updateWaypointMarkerCount(0);
       fillWaypointEditor(sec);
       return;
     }
@@ -2063,6 +2441,7 @@
 
       buildGroupOptions();
       renderSectionList();
+      refreshLiveMisWindow();
       if (state.modalOpen) renderItemWindow();
       return;
     }
@@ -2099,6 +2478,7 @@
     if (sec.kind === 'general_information') syncWeaponLoadoutsFromGeneral(sec);
 
     renderSectionList();
+    refreshLiveMisWindow();
   }
 
   function deleteSectionBlock(){
@@ -2153,11 +2533,9 @@
   }
 
   function syncWeaponLoadoutsFromGeneral(sec){
-    const primary = sec.kv.default_primary || '';
-    const secondary = sec.kv.default_secondary || '';
-    const accessory = sec.kv.default_accessory || '';
-    if (!primary && !secondary && !accessory) return;
-    statusEl.textContent = `Loadout padrão: ${primary} | ${secondary} | ${accessory}`;
+    const summary = formatWeaponLoadoutSummary(sec);
+    if (!summary) return;
+    statusEl.textContent = `Loadout padrão: ${summary}`;
   }
 
 
@@ -2211,8 +2589,52 @@
 
   function selectById(id){
     state.selectedId = id;
+    state.selectedWaypointMarkerIds.clear();
+    updateWaypointMarkerCount(0);
     renderList();
     draw();
+  }
+
+  function updateWaypointMarkerCount(count){
+    if (!wpMarkerCount) return;
+    const n = Math.max(0, Math.trunc(Number(count) || 0));
+    wpMarkerCount.textContent = `Markers selected: ${n}`;
+  }
+
+  function getItemWaypointId(it){
+    const n = Number(it?.kv?.waypoint_id ?? "");
+    if (!Number.isFinite(n)) return null;
+    const v = Math.trunc(n);
+    return v > 0 ? v : null;
+  }
+
+  function isWaypointMarkerItem(it){
+    const def = getDefForItem(it);
+    const defType = def?.type ? String(def.type).toLowerCase() : "";
+    const typeId = String(it?.kv?.type_id || "");
+    const name = String(it?.kv?.name || it?.kv?.iai_name || "").toLowerCase();
+    const graphic = String(def?.graphic || it?.kv?.graphic || "").toLowerCase();
+    return (defType === "marker" || typeId === "9")
+      && (name.includes("waypoint") || graphic.includes("waypoint") || kvHas(it, "wpnumber"));
+  }
+
+  function selectWaypointMarkers(){
+    const waypointNumber = Math.max(1, Math.min(127, Number(state.waypointSelectedNumber) || 1));
+    const markers = state.items.filter(it => getItemWaypointId(it) === waypointNumber);
+    state.selectedWaypointMarkerIds = new Set(markers.map(m => m.id));
+    updateWaypointMarkerCount(markers.length);
+
+    if (!markers.length){
+      state.selectedId = null;
+      draw();
+      statusEl.textContent = `Select Markers: no marker found for waypoint ${waypointNumber}.`;
+      return;
+    }
+
+    state.selectedId = markers[0].id;
+    renderList();
+    draw();
+    statusEl.textContent = `Select Markers: selected ${markers.length} marker(s) for waypoint ${waypointNumber}.`;
   }
 
   function getFilteredItems(){
@@ -2247,6 +2669,7 @@
   }
 
   function renderList(){
+    if (!listEl) return;
     const items = getFilteredItems();
     listEl.innerHTML = items.slice(0, 1200).map(it => {
       const active = it.id === state.selectedId ? "active" : "";
@@ -2432,19 +2855,23 @@
 
     // Waypoints
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
-    const wpEnabled = kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "wpname") || kvHas(it, "adv_event") || kvHas(it, "nav_wp") || !!wpDistanceKey;
-    setEnabled(ui.wpList, wpEnabled && kvHas(it, "waypoint_id"));
-    setEnabled(ui.wpNumber, wpEnabled && kvHas(it, "wpnumber"));
+    const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
+    const wpEnabled = kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "ttoolindex") || !!wpAdvKey || kvHas(it, "nav_wp") || !!wpDistanceKey;
+    const hasWaypointChoices = state.sectionBlocks.some(s => s.kind === "waypoint");
+    setEnabled(ui.wpList, hasWaypointChoices || (wpEnabled && kvHas(it, "waypoint_id")));
+    setEnabled(ui.wpNumber, hasWaypointChoices || wpEnabled || kvHas(it, "wpnumber"));
     setEnabled(ui.wpDistance, wpEnabled && !!wpDistanceKey);
-    setEnabled(ui.wpName, wpEnabled && kvHas(it, "wpname"));
-    setEnabled(ui.advEvent, wpEnabled && kvHas(it, "adv_event"));
+    setEnabled(ui.wpName, state.wpNames.length > 0);
+    setEnabled(ui.advEvent, wpEnabled && !!wpAdvKey);
     setEnabled(ui.navWp, wpEnabled && (kvHas(it, "nav_wp") || kvHas(it, "attrib")));
 
     setValueIf(ui.wpList, kvHas(it, "waypoint_id") ? it.kv.waypoint_id : "");
     setValueIf(ui.wpNumber, kvHas(it, "wpnumber") ? it.kv.wpnumber : "");
     setValueIf(ui.wpDistance, wpDistanceKey ? it.kv[wpDistanceKey] : "");
-    setValueIf(ui.wpName, kvHas(it, "wpname") ? it.kv.wpname : "");
-    setValueIf(ui.advEvent, kvHas(it, "adv_event") ? it.kv.adv_event : "");
+    const tt = Number(it?.kv?.ttoolindex ?? "");
+    const ttIdx = Number.isFinite(tt) && tt >= 0 ? Math.trunc(tt) : 0;
+    setValueIf(ui.wpName, String(Math.min(ttIdx, Math.max(0, state.wpNames.length - 1))));
+    setValueIf(ui.advEvent, wpAdvKey ? it.kv[wpAdvKey] : "");
     const navFromAttrib = (attribValue & 4194304) !== 0;
     setValueIf(ui.navWp, kvHas(it, "nav_wp") ? String(it.kv.nav_wp) === "1" : navFromAttrib);
 
@@ -2483,11 +2910,9 @@
     if (kvHas(it, "absolute_height")) it.kv.absolute_height = ui.absHeight.checked ? "1" : "0";
 
     if (kvHas(it, "facing")){
-      const parts = String(it.kv.facing).split(/\s+/).map(Number);
-      const b = (parts.length >= 2 && Number.isFinite(parts[1])) ? parts[1] : (it.pitch ?? 0);
       it.heading = parseFloatSafe(ui.heading.value);
       it.pitch = parseFloatSafe(ui.pitch.value);
-      it.kv.facing = `${it.heading} ${b}`;
+      it.kv.facing = `${it.heading} ${it.pitch}`;
     } else if (kvHas(it, "rot")){
       it.heading = parseFloatSafe(ui.heading.value);
       it.kv.rot = String(it.heading);
@@ -2519,12 +2944,21 @@
 
     if (kvHas(it, "mission_critical")) it.kv.mission_critical = ui.missionCritical.checked ? "1" : "0";
 
-    if (kvHas(it, "waypoint_id")) it.kv.waypoint_id = ui.wpList.value;
-    if (kvHas(it, "wpnumber")) it.kv.wpnumber = ui.wpNumber.value;
+    const hasWaypointRef = !!ui.wpList.value;
+    if (hasWaypointRef) it.kv.waypoint_id = ui.wpList.value;
+    else delete it.kv.waypoint_id;
+
+    const wpNum = Math.trunc(Number(ui.wpNumber.value));
+    if (hasWaypointRef && Number.isFinite(wpNum) && wpNum > 0) it.kv.wpnumber = String(wpNum);
+    else delete it.kv.wpnumber;
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
-    if (kvHas(it, "wpname")) it.kv.wpname = ui.wpName.value;
-    if (kvHas(it, "adv_event")) it.kv.adv_event = ui.advEvent.value;
+    if (state.wpNames.length){
+      const idx = Math.trunc(Number(ui.wpName.value));
+      if (Number.isFinite(idx) && idx >= 0) it.kv.ttoolindex = String(idx);
+    }
+    const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
+    if (wpAdvKey) it.kv[wpAdvKey] = ui.advEvent.value;
     if (kvHas(it, "nav_wp")) it.kv.nav_wp = ui.navWp.checked ? "1" : "0";
 
     updateAttribFromCoreControls(it);
@@ -2583,6 +3017,7 @@
 
     renderList();
     draw();
+    refreshLiveMisWindow();
   }
 
   function closeModalOk(){
@@ -2594,6 +3029,7 @@
 
     renderList();
     draw();
+    refreshLiveMisWindow();
   }
 
   modalOverlay.addEventListener("mousedown", (e) => {
@@ -2631,6 +3067,7 @@
     }
     selectById(copy.id);
     renderItemWindow();
+    refreshLiveMisWindow();
     statusEl.textContent = `Duplicado: #${it.id} -> #${copy.id}`;
   });
 
@@ -2644,6 +3081,7 @@
     if (state.modalOpen) closeModalOk();
     renderList();
     draw();
+    refreshLiveMisWindow();
     statusEl.textContent = `Apagado: #${it.id}`;
   }
 
@@ -2671,7 +3109,7 @@
   [giWaterEnabled, giFogDistEnabled, giFogColorEnabled, giNvgAvailable].forEach(el => {
     if (el) el.addEventListener("change", updateGeneralInfoEnables);
   });
-  wpSelectMarkersBtn.addEventListener("click", () => { statusEl.textContent = "Select Markers ainda não está implementado."; });
+  wpSelectMarkersBtn.addEventListener("click", selectWaypointMarkers);
   wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
   wpOkBtn.addEventListener("click", () => { saveCurrentWaypoint(); closeSectionEditor(); });
 
@@ -2783,7 +3221,8 @@
     "edit.layerNames": () => openSectionEditor("layer"),
     "edit.globalReplace": runGlobalReplace,
     "edit.weaponLoadouts": () => openSectionEditor("weapon_availability"),
-    "mis.liveChanges": openLiveMisWindow
+    "mis.liveChanges": openLiveMisWindow,
+    "logs.open": openLogsWindow
   };
 
   const menuTree = [
@@ -2855,13 +3294,11 @@
       ]
     },
     {
-      label: "Info",
-      children: [
-        { label: "About", command: "info.about" }
-      ]
+      label: "Logs",
+      directCommand: "logs.open"
     },
     {
-      label: "MIS Live Changes",
+      label: "MIS Code",
       directCommand: "mis.liveChanges"
     }
   ];
@@ -2950,6 +3387,8 @@
     state.items = parsed.items;
     state.sectionBlocks = parsed.sectionBlocks;
     state.selectedId = null;
+    state.selectedWaypointMarkerIds.clear();
+    updateWaypointMarkerCount(0);
 
     exportBtn.disabled = state.items.length === 0;
 
@@ -2962,7 +3401,7 @@
     fitView();
     renderList();
     draw();
-    refreshLiveMisWindow();
+    refreshLiveMisWindow(true);
   });
   // Canvas
   const cv = document.getElementById("cv");
@@ -3037,11 +3476,20 @@
     for (const it of items){
       const p = worldToScreen(it.x,it.y);
       const isSel = it.id === state.selectedId;
-      ctx.fillStyle = isSel ? "#5865f2" : "#e0e3ff";
-      const r = isSel ? 5 : 3;
+      const isWpMarked = state.selectedWaypointMarkerIds.has(it.id);
+      ctx.fillStyle = isSel ? "#5865f2" : (isWpMarked ? "#ffcc33" : "#e0e3ff");
+      const r = isSel ? 5 : (isWpMarked ? 4 : 3);
       ctx.beginPath();
       ctx.arc(p.sx,p.sy,r,0,Math.PI*2);
       ctx.fill();
+
+      if (isWpMarked && !isSel){
+        ctx.strokeStyle = "#ff8a00";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(p.sx,p.sy,r + 1.5,0,Math.PI*2);
+        ctx.stroke();
+      }
     }
   }
 
@@ -3127,6 +3575,7 @@
         it.kv.position = `${it.x} ${it.y} ${it.z}`;
         renderList();
         draw();
+        refreshLiveMisWindow();
       }
     } else if (state.draggingPan){
       state.view.ox += dx;
@@ -3162,20 +3611,38 @@
 
     draw();
   }, { passive:false });
-  // Boot: load embedded ITEMS.DEF (works with file:// too)
-  try{
-    const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
-    const defs = parseItemsDef(defText);
-    if (defs && defs.length){
-      applyDefs(defs);
-      defStatusEl.textContent = `Catálogo de itens carregado (defs: ${defs.length}).`;
-    } else {
-      defStatusEl.textContent = "Aviso: catálogo embutido vazio (ITEMS.DEF).";
+  // Boot: load embedded ITEMS.DEF + optional resources (weapon.def + game strings).
+  (async function boot(){
+    addLog("Editor boot started.");
+    try{
+      const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
+      const defs = parseItemsDef(defText);
+      if (defs && defs.length){
+        applyDefs(defs);
+      } else {
+        defStatusEl.textContent = "Aviso: catálogo embutido vazio (ITEMS.DEF).";
+        addLog("WARNING: Embedded ITEMS.DEF parsed with 0 defs.");
+      }
+    } catch (err){
+      console.error(err);
+      defStatusEl.textContent = "Erro ao carregar catálogo embutido (ver console).";
+      addLog("ERROR: Failed to parse embedded ITEMS.DEF.");
     }
-  } catch (err){
-    console.error(err);
-    defStatusEl.textContent = "Erro ao carregar catálogo embutido (ver console).";
-  }
+
+    await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames()]);
+
+    const stringInfo = state.gameStrings.size
+      ? `strings: ${state.gameStrings.size}`
+      : "strings: indisponível";
+    const weaponInfo = state.weaponDefs.size
+      ? `weapons: ${state.weaponDefs.size}`
+      : "weapons: indisponível";
+    const defInfo = state.defsSorted.length
+      ? `defs: ${state.defsSorted.length}`
+      : "defs: 0";
+    defStatusEl.textContent = `Catálogos carregados (${defInfo}, ${weaponInfo}, ${stringInfo}).`;
+    addLog(`Boot finished: ${defInfo}, ${weaponInfo}, ${stringInfo}, wpNames: ${state.wpNames.length}`);
+  })();
 
 </script>
 </body>
