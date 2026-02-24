@@ -154,6 +154,17 @@
       font-weight:600;
       letter-spacing:.2px;
     }
+    #misRealtimeHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+    }
+    #misRealtimeClearBtn{
+      font-size:11px;
+      padding:2px 8px;
+      min-height:22px;
+    }
     #misRealtimeConsole{
       margin:0;
       overflow:auto;
@@ -166,6 +177,9 @@
       border-radius:6px;
       padding:8px;
     }
+    #misRealtimeConsole .diffAdded{ color:#7ee787; }
+    #misRealtimeConsole .diffRemoved{ color:#ff7b72; }
+    #misRealtimeConsole .diffStamp{ color:#79c0ff; }
     .itemCard{
       padding:8px;
       border:1px solid var(--line);
@@ -545,7 +559,7 @@
     #sectionWindow.generalInfoMode #sectionText{ display:none; }
     #sectionWindow.generalInfoMode #sectionBody{ grid-template-columns:1fr; height:auto; }
     #sectionWindow.generalInfoMode #sectionEditor{ grid-template-rows:1fr auto; }
-    #sectionWindow.generalInfoMode #sectionActions{ justify-content:flex-start; }
+    #sectionWindow.generalInfoMode #sectionActions{ display:none; }
     #generalInfoEditor{ display:none; font-size:12px; }
     #sectionWindow.generalInfoMode #generalInfoEditor{ display:block; }
     .giLayout{ display:grid; grid-template-columns: 1fr 1.55fr 1fr; gap:10px; }
@@ -555,9 +569,12 @@
     .giRow input, .giRow select{ width:100%; }
     .giMapTypes label,.giFlags label{ display:block; margin:2px 0; }
     .giCondRow{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; margin-bottom:4px; align-items:center; }
-    .giCondHead{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; color:#333; margin-bottom:4px; }
+    .giCondHead{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; color:#333; margin-bottom:4px; align-items:center; }
+    .giCondHead span:first-child{ text-align:center; }
+    .giCondHead span:last-child{ text-align:center; }
     .giInline{ display:grid; grid-template-columns:1fr 90px; gap:6px; align-items:center; margin-bottom:6px; }
     .giInline3{ display:grid; grid-template-columns:1fr 56px 56px 56px; gap:6px; align-items:center; margin-bottom:6px; }
+    .giActions{ display:flex; gap:6px; margin-top:8px; }
   </style>
 </head>
 
@@ -589,7 +606,10 @@
     </div>
 
     <div id="misRealtimePanel">
-      <div id="misRealtimeTitle">MIS Realtime Changes</div>
+      <div id="misRealtimeHeader">
+        <div id="misRealtimeTitle">MIS Realtime Changes</div>
+        <button id="misRealtimeClearBtn" type="button">Clear</button>
+      </div>
       <pre id="misRealtimeConsole">// Open a .mis file to track live code changes here.</pre>
     </div>
   </div>
@@ -656,16 +676,17 @@
                     <div class="giRow" style="margin-top:6px;"><label>Starting Spin-map Zoom</label><input id="giMapZoom" type="range" min="0" max="1" step="0.01" /></div>
                     <div class="giInline"><label>Bonus Expiration</label><input id="giBonusExpiration" type="number" /></div>
                     <div class="giInline"><label>Max Saved Games</label><input id="giMaxSaves" type="number" /></div>
+                    <div class="giActions"><button id="giCancelBtn" type="button">Cancel</button><button id="giOkBtn" type="button">OK</button></div>
                   </div>
                   <div>
                     <div class="giBox">
                       <div><b>Win Conditions</b></div>
-                      <div class="giCondHead"><span></span><span>Critical</span><span>Score</span></div>
+                      <div class="giCondHead"><span>Critical</span><span></span><span>Score</span></div>
                       <div id="giWinRows"></div>
                     </div>
                     <div class="giBox" style="margin-top:8px;">
                       <div><b>Lose Conditions</b></div>
-                      <div class="giCondHead"><span></span><span>Critical</span><span>Score</span></div>
+                      <div class="giCondHead"><span>Critical</span><span></span><span>Score</span></div>
                       <div id="giLoseRows"></div>
                     </div>
                   </div>
@@ -683,7 +704,7 @@
                         <label><input type="checkbox" id="giNvgStartOn" /> Start with NVG Turned On</label>
                       </div>
                     </div>
-                    <div class="giRow" style="margin-top:8px;"><label>Terrain Type</label><select id="giTerrainType"></select></div>
+                    <div class="giRow" style="margin-top:8px;"><label>Player Camo Type</label><select id="giTerrainType"></select></div>
                     <div class="giFlags"><label><input type="checkbox" id="giRotate180" /> Rotate Map 180 degrees</label></div>
                   </div>
                 </div>
@@ -1031,6 +1052,7 @@
   const typeFilterEl = document.getElementById("typeFilter");
   const listEl = document.getElementById("list");
   const misRealtimeConsoleEl = document.getElementById("misRealtimeConsole");
+  const misRealtimeClearBtn = document.getElementById("misRealtimeClearBtn");
   const exportBtn = document.getElementById("exportBtn");
   const statusEl = document.getElementById("status");
 
@@ -1071,6 +1093,8 @@
   const giMapZoom = document.getElementById("giMapZoom");
   const giBonusExpiration = document.getElementById("giBonusExpiration");
   const giMaxSaves = document.getElementById("giMaxSaves");
+  const giCancelBtn = document.getElementById("giCancelBtn");
+  const giOkBtn = document.getElementById("giOkBtn");
   const giWinRows = document.getElementById("giWinRows");
   const giLoseRows = document.getElementById("giLoseRows");
   const giWaterEnabled = document.getElementById("giWaterEnabled");
@@ -1196,7 +1220,12 @@
 
   const GENERAL_TERRAINS = ["dvd1","dvd2","dvd3","jungle1","arctic1","desert1"];
   const GENERAL_TILES = ["trntile11","trntile12","trntile13","trntile21","trntile31"];
-  const GENERAL_PLAYERS = ["Delta Force","SEALs","SAS","Spetsnaz","GIGN"];
+  const GENERAL_PLAYERS = [
+    { value: "3", label: "10th Mountain" },
+    { value: "1", label: "Delta Force" },
+    { value: "2", label: "Ranger" },
+    { value: "4", label: "SAS" },
+  ];
   const GENERAL_SUBGOALS = [
     { value:0, label:"null" },
     { value:1, label:"Reach Final Waypoint" },
@@ -1684,6 +1713,15 @@
       vals.push({ value:String(currentValue), label:String(currentValue) });
     }
     selectEl.innerHTML = vals.map(o => `<option value="${escapeHtml(String(o.value))}">${escapeHtml(String(o.label))}</option>`).join("");
+
+    const desired = currentValue !== undefined && currentValue !== null && currentValue !== ""
+      ? String(currentValue)
+      : String(selectEl.value || "");
+    if (vals.some(o => String(o.value) === desired)){
+      selectEl.value = desired;
+    } else if (vals.length){
+      selectEl.value = String(vals[0].value);
+    }
   }
 
   function parseIntList(raw, count){
@@ -1741,16 +1779,25 @@
     const kv = sec?.kv || {};
     ensureSelectOptions(giTerrain, GENERAL_TERRAINS.map(v=>({ value:v, label:v })), kv.terrain || "dvd1");
     ensureSelectOptions(giTiles, GENERAL_TILES.map(v=>({ value:v, label:v })), kv.terrain_tile_tga || "trntile11");
-    ensureSelectOptions(giPlayerType, GENERAL_PLAYERS.map((label, idx)=>({ value:String(idx), label })), kv.player_type || "0");
+    const playerTypeRaw = String(kv.player_type ?? "1");
+    ensureSelectOptions(
+      giPlayerType,
+      GENERAL_PLAYERS,
+      GENERAL_PLAYERS.some(p => p.value === playerTypeRaw) ? playerTypeRaw : "1"
+    );
     ensureSelectOptions(giEnvironment, GENERAL_ENV_FILES, kv.sunset || "day1");
 
-    const terrainColorRaw = String(kv.terrain_color ?? "");
+    const terrainColorRaw = String(kv.terrain_color ?? "0");
     ensureSelectOptions(
       giTerrainType,
-      [{ value: terrainColorRaw || "", label: terrainColorRaw ? `Preserve (${terrainColorRaw})` : "Preserve (unknown)" }],
-      terrainColorRaw
+      [
+        { value: "0", label: "Desert" },
+        { value: "1", label: "Jungle" },
+        { value: "2", label: "Snow" },
+      ],
+      ["0", "1", "2"].includes(terrainColorRaw) ? terrainColorRaw : "0"
     );
-    giTerrainType.disabled = true;
+    giTerrainType.disabled = false;
 
     giMissionName.value = String(kv.name || "").replace(/^"|"$/g, "");
     giDesigner.value = String(kv.designer || "").replace(/^"|"$/g, "");
@@ -1846,6 +1893,7 @@
 
     kv.wind = `${Math.max(0, Math.trunc(Number(giWindSpeed.value || 0)))} ${Math.max(0, Math.trunc(Number(giWindDirection.value || 0)))}`;
     kv.sunset = giEnvironment.value || "day1";
+    kv.terrain_color = String(Math.max(0, Math.min(2, Math.trunc(Number(giTerrainType.value || 0)))));
 
     // Legacy keys from previous implementation are no longer written by this dialog.
     delete kv.terrain_type;
@@ -2263,13 +2311,13 @@
     if (resetBaseline || !state.realtimePrevMisText){
       state.realtimePrevMisText = nextText;
       state.realtimeLog = [];
-      misRealtimeConsoleEl.textContent = "// Baseline loaded. Make changes to see live MIS diffs.";
+      renderRealtimeConsole(["// Baseline loaded. Make changes to see live MIS diffs."]);
       return;
     }
 
     if (nextText === state.realtimePrevMisText){
       if (!state.realtimeLog.length){
-        misRealtimeConsoleEl.textContent = "// No changes detected yet.";
+        renderRealtimeConsole(["// No changes detected yet."]);
       }
       return;
     }
@@ -2293,9 +2341,21 @@
     state.realtimeLog.unshift(entry);
     if (state.realtimeLog.length > 20) state.realtimeLog.length = 20;
 
-    misRealtimeConsoleEl.textContent = state.realtimeLog.join("\n\n");
+    renderRealtimeConsole(state.realtimeLog);
     state.realtimePrevMisText = nextText;
     misRealtimeConsoleEl.scrollTop = 0;
+  }
+
+  function renderRealtimeConsole(entries){
+    const raw = Array.isArray(entries) ? entries.join("\n\n") : String(entries || "");
+    const lines = raw.split("\n");
+    const html = lines.map((line) => {
+      if (line.startsWith("+ ")) return `<span class="diffAdded">${escapeHtml(line)}</span>`;
+      if (line.startsWith("- ")) return `<span class="diffRemoved">${escapeHtml(line)}</span>`;
+      if (line.startsWith("[")) return `<span class="diffStamp">${escapeHtml(line)}</span>`;
+      return escapeHtml(line);
+    }).join("\n");
+    misRealtimeConsoleEl.innerHTML = html;
   }
 
   function openLiveMisWindow(){
@@ -2318,6 +2378,11 @@
   logsCloseBtn.addEventListener("click", closeLogsWindow);
   logsOverlay.addEventListener("mousedown", (e) => { if (e.target === logsOverlay) closeLogsWindow(); });
   logsClearBtn.addEventListener("click", () => { state.logs = []; renderLogsWindow(); addLog("Logs cleared by user."); });
+  misRealtimeClearBtn.addEventListener("click", () => {
+    state.realtimeLog = [];
+    state.realtimePrevMisText = state.liveMisRawText || state.realtimePrevMisText;
+    renderRealtimeConsole(["// Realtime changes cleared."]);
+  });
 
   function findInLiveMis(next=false, focusResult=false){
     const term = (liveMisSearch.value || "").toLowerCase();
@@ -2390,7 +2455,7 @@
     }
 
     sectionDeleteBtn.disabled = false;
-    const secs = getSectionsByKind(kind).filter(s => !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
+    const secs = getSectionsByKind(kind).filter(s => kind === "general_information" || !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
     sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
     sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
     if (!state.sectionSelectedId && secs.length) selectSectionBlock(secs[0].id);
@@ -3134,6 +3199,8 @@
   sectionSearch.addEventListener("input", renderSectionList);
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
+  giOkBtn.addEventListener("click", applySectionBlock);
+  giCancelBtn.addEventListener("click", deleteSectionBlock);
   sectionAddBtn.addEventListener("click", addSectionBlock);
   [giWaterEnabled, giFogDistEnabled, giFogColorEnabled, giNvgAvailable].forEach(el => {
     if (el) el.addEventListener("change", updateGeneralInfoEnables);
@@ -3310,7 +3377,6 @@
           { label: "Groups", command: "edit.groups" },
           { label: "Area Triggers", command: "edit.areaTriggers" },
           { label: "Waypoints", command: "edit.waypoints" },
-          { label: "Player Waypoint Names", command: "edit.playerWaypointNames" },
           { label: "Events", command: "edit.events" },
           { label: "Layer Names", command: "edit.layerNames" },
           { label: "Global Replace", command: "edit.globalReplace" },
