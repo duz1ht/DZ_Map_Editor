@@ -1240,10 +1240,18 @@
     lose: [{ value: 0, label: "null" }],
   };
   const GENERAL_ENV_FILES = [
-    { value:"day1", label:"Daytime 1" }, { value:"day2", label:"Daytime 2" },
-    { value:"dawn1", label:"Dawn 1" }, { value:"dusk1", label:"Dusk 1" },
-    { value:"overcst1", label:"Overcast 1" },
+    "day1", "day2", "day3", "day4", "day5", "day6",
+    "dawn1", "dawn2", "dawn3", "dawn4", "dawn5",
+    "dusk1", "dusk2", "dusk3", "dusk4",
+    "night1", "night2", "night3", "night4", "night5",
+  ].map(v => ({ value: v, label: v.toUpperCase() }));
+  const GENERAL_ENV_FILE_PATHS = [
+    "day1.ENV", "DAY2.ENV", "day3.ENV", "Day4.ENV", "day5.ENV", "day6.ENV",
+    "dawn1.ENV", "dawn2.ENV", "Dawn3.ENV", "dawn4.ENV", "dawn5.ENV",
+    "dusk1.ENV", "Dusk2.ENV", "Dusk3.ENV", "Dusk4.ENV",
+    "NIGHT1.ENV", "NIGHT2.ENV", "NIGHT3.ENV", "NIGHT4.ENV", "NIGHT5.ENV",
   ];
+  const GENERAL_ENV_DATA = new Map();
 
   function parseFloatSafe(v){
     const n = Number(v);
@@ -1781,6 +1789,62 @@
     return (rr << 16) | (gg << 8) | bb;
   }
 
+  function parseEnvRgb(raw){
+    const m = String(raw || "").trim().match(/^(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (!m) return null;
+    return {
+      r: Math.max(0, Math.min(255, Math.trunc(Number(m[1]) || 0))),
+      g: Math.max(0, Math.min(255, Math.trunc(Number(m[2]) || 0))),
+      b: Math.max(0, Math.min(255, Math.trunc(Number(m[3]) || 0))),
+    };
+  }
+
+  function parseEnvironmentFile(rawText){
+    const env = {};
+    const lines = String(rawText || "").split(/\r?\n/);
+    for (const line of lines){
+      const stripped = line.split(";")[0].trim();
+      if (!stripped) continue;
+      const m = stripped.match(/^([a-z0-9_]+)\s+(.+)$/i);
+      if (!m) continue;
+      env[m[1].toLowerCase()] = m[2].trim();
+    }
+    return {
+      fogLevel: Math.max(0, Math.trunc(Number(env.fog_level) || 0)),
+      fogType: Math.max(0, Math.trunc(Number(env.fog_type) || 0)),
+      fogRgb: parseEnvRgb(env.fog_rgb),
+    };
+  }
+
+  async function preloadEnvironmentFiles(){
+    const pending = GENERAL_ENV_FILE_PATHS.map(async fileName => {
+      const res = await fetch(`resources/enviroments/${fileName}`);
+      if (!res.ok) return;
+      const parsed = parseEnvironmentFile(await res.text());
+      GENERAL_ENV_DATA.set(fileName.replace(/\.env$/i, "").toLowerCase(), parsed);
+    });
+    await Promise.allSettled(pending);
+  }
+
+  function applyEnvironmentFogToInputs(){
+    const selectedEnv = String(giEnvironment.value || "").trim().toLowerCase();
+    const envData = GENERAL_ENV_DATA.get(selectedEnv);
+    if (!envData) return;
+    if (!giFogDistEnabled.checked) giFogLevel.value = String(envData.fogLevel);
+    if (!giFogColorEnabled.checked){
+      if (envData.fogRgb){
+        giFogR.value = String(envData.fogRgb.r);
+        giFogG.value = String(envData.fogRgb.g);
+        giFogB.value = String(envData.fogRgb.b);
+      } else {
+        const gray = String(Math.max(0, Math.min(255, envData.fogType * 85)));
+        giFogR.value = gray;
+        giFogG.value = gray;
+        giFogB.value = gray;
+      }
+    }
+  }
+
   function updateGeneralInfoEnables(){
     giWaterLevel.disabled = !giWaterEnabled.checked;
     giFogLevel.disabled = !giFogDistEnabled.checked;
@@ -1881,6 +1945,7 @@
     giNvgStartOn.checked = (attrib & GENERAL_ATTRIB_BITS.nvgStartOn) !== 0;
     giRotate180.checked = (attrib & GENERAL_ATTRIB_BITS.rotate180) !== 0;
 
+    applyEnvironmentFogToInputs();
     updateGeneralInfoEnables();
   }
 
@@ -1925,8 +1990,16 @@
     kv.hardlose = String(lose.criticalMask);
 
     kv.water_level = String(Math.max(0, Math.round(Number(giWaterLevel.value || 0) / 0.5)));
-    kv.fog_level = String(Math.max(0, Math.trunc(Number(giFogLevel.value || 0))));
-    kv.fog_color = String(encodeFogColor(giFogR.value, giFogG.value, giFogB.value));
+    if (giFogDistEnabled.checked){
+      kv.fog_level = String(Math.max(0, Math.trunc(Number(giFogLevel.value || 0))));
+    } else {
+      delete kv.fog_level;
+    }
+    if (giFogColorEnabled.checked){
+      kv.fog_color = String(encodeFogColor(giFogR.value, giFogG.value, giFogB.value));
+    } else {
+      delete kv.fog_color;
+    }
 
     kv.wind = `${Math.max(0, Math.trunc(Number(giWindSpeed.value || 0)))} ${Math.max(0, Math.trunc(Number(giWindDirection.value || 0)))}`;
     kv.sunset = giEnvironment.value || "day1";
@@ -3242,6 +3315,9 @@
   [giWaterEnabled, giFogDistEnabled, giFogColorEnabled, giNvgAvailable].forEach(el => {
     if (el) el.addEventListener("change", updateGeneralInfoEnables);
   });
+  giEnvironment.addEventListener("change", applyEnvironmentFogToInputs);
+  giFogDistEnabled.addEventListener("change", applyEnvironmentFogToInputs);
+  giFogColorEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   wpSelectMarkersBtn.addEventListener("click", selectWaypointMarkers);
   wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
   wpOkBtn.addEventListener("click", () => { saveCurrentWaypoint(); closeSectionEditor(); });
@@ -3787,6 +3863,8 @@
       defStatusEl.textContent = "Error loading embedded catalog (see console).";
       addLog("ERROR: Failed to parse embedded ITEMS.DEF.");
     }
+
+    await preloadEnvironmentFiles();
 
     if (state.isLocalRuntime){
       addLog("Local runtime detected (file://). Waiting for 'Set Editor Folder'.");
