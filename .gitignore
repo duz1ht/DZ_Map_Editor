@@ -1,7 +1,7 @@
-3d_items/
+resources/3d_items/
+resources/terrains/**/*.cpt
+resources/terrains/**/*.tga
 source_codes/
-terrains/*.cpt
-terrains/*.tga
 resource.pff
 _FILES.PFF
 localres.pff
