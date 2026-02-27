@@ -8,15 +8,155 @@
     :root{
       --bg:#f2f2f2;
       --panel:#ffffff;
+      --panel-muted:#e5e5e5;
+      --panel-subtle:#dcdcdc;
+      --panel-alt:#f8f8f8;
+      --surface:#ffffff;
+      --surface-subtle:#fafafa;
+      --surface-soft:#ddd;
       --line:#cfcfcf;
+      --line-strong:#9f9f9f;
+      --line-heavy:#9b9b9b;
+      --line-soft:#d8d8d8;
+      --line-muted:#aaa;
+      --line-card:#ccc;
       --text:#111;
-      --muted:#666;
+      --text-strong:#222;
+      --text-muted:#666;
+      --text-soft:#888;
+      --text-disabled:#8d8d8d;
+      --text-subtle:#333;
+      --text-secondary:#444;
       --disabled-bg:#efefef;
       --disabled-text:#888;
       --accent:#5865f2;
+      --accent-soft:#eef2ff;
+      --accent-glow:rgba(88,101,242,.15);
+      --accent-glow-strong:rgba(88,101,242,.25);
+      --overlay: rgba(0,0,0,.45);
+      --overlay-soft: rgba(0,0,0,.06);
+      --overlay-border: rgba(0,0,0,.08);
+      --shadow-sm:0 2px 10px rgba(0,0,0,.12);
+      --shadow-md:0 2px 12px rgba(0,0,0,.18);
+      --radius-sm:6px;
+      --radius-md:8px;
+      --radius-pill:999px;
+      --focus-ring:0 0 0 2px var(--accent-glow-strong);
       --canvas:#0f1117;
       --dot:#e0e3ff;
-      --overlay: rgba(0,0,0,.45);
+      --console-panel:#0f1117;
+      --console-bg:#0b0d12;
+      --console-line:#2a2f3d;
+      --console-text:#d7deff;
+      --console-title:#c7ceeb;
+      --console-added:#7ee787;
+      --console-removed:#ff7b72;
+      --console-stamp:#79c0ff;
+      --tag-warn:#fff3bf;
+      --tag-warn-hover:#ffe066;
+      --highlight:#ffe463;
+      --highlight-current:#ff8a00;
+      --highlight-text:var(--text-strong);
+      --control-hover-bg:var(--surface-subtle);
+      --control-active-bg:#ececec;
+    }
+    body[data-theme="night"]{
+      --bg:#11161f;
+      --panel:#1b2330;
+      --panel-muted:#1f2836;
+      --panel-subtle:#243143;
+      --panel-alt:#243143;
+      --surface:#18202c;
+      --surface-subtle:#212b38;
+      --surface-soft:#222d3c;
+      --line:#334154;
+      --line-strong:#4d607a;
+      --line-heavy:#5c6f88;
+      --line-soft:#2d3a4d;
+      --line-muted:#50627a;
+      --line-card:#3e4f66;
+      --text:#ecf2ff;
+      --text-strong:#f6f8ff;
+      --text-muted:#b2bfd7;
+      --text-soft:#9aa9c4;
+      --text-disabled:#7f8da8;
+      --text-subtle:#c9d5ea;
+      --text-secondary:#b6c4de;
+      --disabled-bg:#2c3646;
+      --disabled-text:#8a99b5;
+      --accent:#7c92ff;
+      --accent-soft:#2f3e63;
+      --accent-glow:rgba(124,146,255,.24);
+      --accent-glow-strong:rgba(124,146,255,.42);
+      --overlay:rgba(7,10,17,.62);
+      --overlay-soft:rgba(236,242,255,.08);
+      --overlay-border:rgba(236,242,255,.14);
+      --shadow-sm:0 2px 10px rgba(0,0,0,.4);
+      --shadow-md:0 2px 12px rgba(0,0,0,.48);
+      --console-panel:#0f1724;
+      --console-bg:#0a1220;
+      --console-line:#2d3d55;
+      --console-text:#c9d6f5;
+      --console-title:#adbee7;
+      --console-added:#72dfc0;
+      --console-removed:#ff9ba1;
+      --console-stamp:#8bc9ff;
+      --tag-warn:#6a5419;
+      --tag-warn-hover:#846925;
+      --highlight:#f2c24f;
+      --highlight-current:#e88b2f;
+      --highlight-text:#f6f8ff;
+      --control-hover-bg:#223044;
+      --control-active-bg:#2a3a52;
+    }
+    body[data-theme="forest"]{
+      --bg:#e8efe7;
+      --panel:#f6faf4;
+      --panel-muted:#e6f0e1;
+      --panel-subtle:#dde9d8;
+      --panel-alt:#edf4e9;
+      --surface:#ffffff;
+      --surface-subtle:#f4f8f2;
+      --surface-soft:#dce8d8;
+      --line:#b7c8b3;
+      --line-strong:#96ad90;
+      --line-heavy:#8da687;
+      --line-soft:#cedacb;
+      --line-muted:#a7bba3;
+      --line-card:#c3d2be;
+      --text:#1e2d22;
+      --text-strong:#18241b;
+      --text-muted:#4f6654;
+      --text-soft:#6d816f;
+      --text-disabled:#708470;
+      --text-subtle:#334436;
+      --text-secondary:#425645;
+      --disabled-bg:#e1e9df;
+      --disabled-text:#6c7f6d;
+      --accent:#3f8f60;
+      --accent-soft:#e4f4e8;
+      --accent-glow:rgba(63,143,96,.16);
+      --accent-glow-strong:rgba(63,143,96,.3);
+      --overlay:rgba(33,51,34,.42);
+      --overlay-soft:rgba(34,58,39,.1);
+      --overlay-border:rgba(33,52,35,.16);
+      --shadow-sm:0 2px 10px rgba(41,66,43,.18);
+      --shadow-md:0 2px 12px rgba(41,66,43,.26);
+      --console-panel:#1a2f24;
+      --console-bg:#15261d;
+      --console-line:#3f5b4b;
+      --console-text:#d6e9da;
+      --console-title:#bfdac7;
+      --console-added:#7bec99;
+      --console-removed:#ff8f95;
+      --console-stamp:#85d8ff;
+      --tag-warn:#f2e0ab;
+      --tag-warn-hover:#ebd287;
+      --highlight:#f4da67;
+      --highlight-current:#ef9e2f;
+      --highlight-text:#18241b;
+      --control-hover-bg:#edf5ea;
+      --control-active-bg:#dcead7;
     }
     html,body{ height:100%; }
     body{
@@ -34,6 +174,12 @@
       padding:10px;
       position:relative;
       z-index:20;
+    }
+    .globalMenuContent{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
     }
     #appLayout{
       display:grid;
@@ -63,12 +209,25 @@
     }
     #status{
       margin-left:auto;
-      color:var(--muted);
+      color:var(--text-muted);
       font-size:12px;
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
       max-width: 55%;
+    }
+    .themeSwitcher{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-size:12px;
+      color:var(--text-muted);
+      flex:0 0 auto;
+      margin-left:auto;
+    }
+    .themeSwitcher select{
+      min-width:120px;
+      background:var(--surface);
     }
 
     #canvasWrap{
@@ -83,7 +242,7 @@
     }
 
     .hint{
-      color:var(--muted);
+      color:var(--text-muted);
       font-size:12px;
       line-height:1.35;
     }
@@ -98,15 +257,25 @@
       font:inherit;
       padding:4px 6px;
       border:1px solid var(--line);
-      border-radius:6px;
-      background:#fff;
+      border-radius:var(--radius-sm);
+      background:var(--surface);
+      color:var(--text);
       box-sizing:border-box;
     }
     button{
       cursor:pointer;
-      background:#fff;
+      background:var(--surface);
+      transition:background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
     }
+    button:hover:not(:disabled){ background:var(--control-hover-bg); }
+    button:active:not(:disabled){ background:var(--control-active-bg); }
     button:disabled{ cursor:not-allowed; opacity:.6; }
+    input:focus-visible, select:focus-visible, button:focus-visible, textarea:focus-visible{
+      outline:none;
+      box-shadow:var(--focus-ring);
+      border-color:var(--accent);
+    }
+    input::placeholder, textarea::placeholder{ color:var(--text-muted); }
     input:disabled, select:disabled{
       background:var(--disabled-bg);
       color:var(--disabled-text);
@@ -115,18 +284,18 @@
       border:1px solid var(--line);
       border-bottom-width:2px;
       padding:1px 6px;
-      border-radius:6px;
-      background:#fafafa;
-      color:#222;
+      border-radius:var(--radius-sm);
+      background:var(--surface-subtle);
+      color:var(--text-strong);
     }
 
     .tag{
       font-size:11px;
-      color:#222;
-      background: rgba(0,0,0,.06);
-      border: 1px solid rgba(0,0,0,.08);
+      color:var(--text-strong);
+      background:var(--overlay-soft);
+      border:1px solid var(--overlay-border);
       padding: 2px 6px;
-      border-radius: 999px;
+      border-radius:var(--radius-pill);
       display:inline-block;
       margin-left:6px;
     }
@@ -139,9 +308,9 @@
     #misRealtimePanel{
       margin-top:12px;
       border:1px solid var(--line);
-      background:#0f1117;
-      color:#d7deff;
-      border-radius:8px;
+      background:var(--console-panel);
+      color:var(--console-text);
+      border-radius:var(--radius-md);
       padding:8px;
       min-height:360px;
       display:grid;
@@ -150,7 +319,7 @@
     }
     #misRealtimeTitle{
       font-size:12px;
-      color:#c7ceeb;
+      color:var(--console-title);
       font-weight:600;
       letter-spacing:.2px;
     }
@@ -172,26 +341,26 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size:11px;
       line-height:1.35;
-      background:#0b0d12;
-      border:1px solid #2a2f3d;
-      border-radius:6px;
+      background:var(--console-bg);
+      border:1px solid var(--console-line);
+      border-radius:var(--radius-sm);
       padding:8px;
     }
-    #misRealtimeConsole .diffAdded{ color:#7ee787; }
-    #misRealtimeConsole .diffRemoved{ color:#ff7b72; }
-    #misRealtimeConsole .diffStamp{ color:#79c0ff; }
+    #misRealtimeConsole .diffAdded{ color:var(--console-added); }
+    #misRealtimeConsole .diffRemoved{ color:var(--console-removed); }
+    #misRealtimeConsole .diffStamp{ color:var(--console-stamp); }
     .itemCard{
       padding:8px;
       border:1px solid var(--line);
-      border-radius:8px;
+      border-radius:var(--radius-md);
       background:var(--panel);
       cursor:pointer;
     }
     .itemCard.active{
       border-color:var(--accent);
-      box-shadow:0 0 0 2px rgba(88,101,242,.15);
+      box-shadow:0 0 0 2px var(--accent-glow);
     }
-    .meta{ color:var(--muted); font-size:12px; margin-top:4px; }
+    .meta{ color:var(--text-muted); font-size:12px; margin-top:4px; }
 
     /* Modal Item Attributes */
     #modalOverlay{
@@ -219,8 +388,8 @@
     #liveMisWindow{
       width:min(1120px,100%);
       height:min(820px,100%);
-      background:#e5e5e5;
-      border:1px solid #999;
+      background:var(--panel-muted);
+      border:1px solid var(--line-heavy);
       padding:10px;
       display:grid;
       grid-template-rows:auto 1fr;
@@ -232,12 +401,13 @@
       max-width:360px;
     }
     #liveMisText{
+      color:var(--text);
       width:100%;
       height:100%;
       min-height:0;
       overflow:auto;
-      border:1px solid #9f9f9f;
-      background:#fff;
+      border:1px solid var(--line-strong);
+      background:var(--surface);
       padding:8px;
       white-space:pre;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -246,8 +416,8 @@
       box-sizing:border-box;
       margin:0;
     }
-    #liveMisText mark{ background:#ffe463; color:#111; }
-    #liveMisText mark.current{ background:#ff8a00; color:#111; }
+    #liveMisText mark{ background:var(--highlight); color:var(--highlight-text); }
+    #liveMisText mark.current{ background:var(--highlight-current); color:var(--highlight-text); }
     #logsOverlay{
       position:absolute;
       inset:0;
@@ -262,8 +432,8 @@
     #logsWindow{
       width:min(1120px,100%);
       height:min(820px,100%);
-      background:#e5e5e5;
-      border:1px solid #999;
+      background:var(--panel-muted);
+      border:1px solid var(--line-heavy);
       padding:10px;
       display:grid;
       grid-template-rows:auto 1fr auto;
@@ -271,12 +441,13 @@
       overflow:hidden;
     }
     #logsText{
+      color:var(--text);
       width:100%;
       height:100%;
       min-height:0;
       overflow:auto;
-      border:1px solid #9f9f9f;
-      background:#fff;
+      border:1px solid var(--line-strong);
+      background:var(--surface);
       padding:8px;
       white-space:pre;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -289,8 +460,8 @@
       width: min(980px, 100%);
       max-height: min(720px, 100%);
       overflow:auto;
-      background:#dcdcdc;
-      border:1px solid #9f9f9f;
+      background:var(--panel-subtle);
+      border:1px solid var(--line-strong);
       border-radius:0;
       box-shadow:none;
       padding: 10px;
@@ -313,8 +484,8 @@
     }
     .windowTitle .spacer{ flex:1; }
     .xbtn{
-      border:1px solid #9b9b9b;
-      background:#efefef;
+      border:1px solid var(--line-heavy);
+      background:var(--disabled-bg);
       border-radius:0;
       padding: 2px 8px;
       cursor:pointer;
@@ -341,7 +512,7 @@
     }
     .topHint{
       font-size:11px;
-      color:var(--muted);
+      color:var(--text-muted);
       margin-bottom:8px;
     }
     .grid2{
@@ -351,7 +522,7 @@
       margin-top:6px;
     }
     fieldset{
-      border:1px solid #9f9f9f;
+      border:1px solid var(--line-strong);
       border-radius:0;
       padding:8px;
       margin:0;
@@ -360,7 +531,7 @@
     }
     legend{
       font-size:12px;
-      color:#333;
+      color:var(--text-subtle);
       padding:0 6px;
     }
     .section{
@@ -369,7 +540,7 @@
     }
     .small{
       font-size:12px;
-      color:var(--muted);
+      color:var(--text-muted);
     }
     .checks{
       display:grid;
@@ -381,7 +552,7 @@
       gap:8px;
       align-items:center;
       font-size:12px;
-      color:#222;
+      color:var(--text-strong);
     }
     .checkRow input{ flex:0 0 auto; }
     .checkRow span{ flex:1; }
@@ -408,7 +579,7 @@
     }
     .inlineLabel{
       font-size:12px;
-      color:var(--muted);
+      color:var(--text-muted);
       margin-bottom:4px;
     }
     .kvRow{
@@ -436,24 +607,25 @@
       position:relative;
       z-index:5;
       flex-wrap:wrap;
+      flex:1;
     }
     .menuRoot{ position:relative; }
     .menuRootBtn{
-      border:1px solid #9b9b9b;
+      border:1px solid var(--line-heavy);
       border-radius:0;
       padding:4px 10px;
       min-width:72px;
       text-align:left;
-      background:#f8f8f8;
+      background:var(--panel-alt);
     }
     .menuDropdown{
       position:absolute;
       top:100%;
       left:0;
       min-width:210px;
-      background:#fff;
-      border:1px solid #9b9b9b;
-      box-shadow:0 2px 10px rgba(0,0,0,.12);
+      background:var(--surface);
+      border:1px solid var(--line-heavy);
+      box-shadow:var(--shadow-sm);
       display:none;
       padding:4px 0;
     }
@@ -467,28 +639,29 @@
       padding:6px 10px;
       font-size:12px;
     }
-    .menuItemBtn:hover{ background:#eef2ff; }
+    .menuItemBtn:hover{ background:var(--accent-soft); }
+    .menuItemBtn:active:not(:disabled){ background:var(--control-active-bg); }
     .menuItemBtn.attention{
-      background:#fff3bf;
+      background:var(--tag-warn);
       font-weight:700;
     }
-    .menuItemBtn.attention:hover{ background:#ffe066; }
+    .menuItemBtn.attention:hover{ background:var(--tag-warn-hover); }
     .menuItemBtn:disabled{
-      color:#8d8d8d;
+      color:var(--text-disabled);
       background:transparent;
       cursor:not-allowed;
     }
     .menuSep{
       height:1px;
-      background:#d8d8d8;
+      background:var(--line-soft);
       margin:4px 0;
     }
     .contextMenu{
       position:absolute;
       min-width:220px;
-      background:#fff;
-      border:1px solid #9b9b9b;
-      box-shadow:0 2px 12px rgba(0,0,0,.18);
+      background:var(--surface);
+      border:1px solid var(--line-heavy);
+      box-shadow:var(--shadow-md);
       padding:4px 0;
       z-index:70;
       display:none;
@@ -509,8 +682,8 @@
     #sectionWindow{
       width:min(1000px, 100%);
       max-height:min(760px, 100%);
-      background:#e5e5e5;
-      border:1px solid #999;
+      background:var(--panel-muted);
+      border:1px solid var(--line-heavy);
       padding:10px;
       display:grid;
       gap:8px;
@@ -522,12 +695,12 @@
       height:520px;
       min-height:0;
     }
-    #sectionList{ overflow:auto; border:1px solid #aaa; background:#fff; padding:6px; min-height:0; max-height:100%; }
-    .secCard{ border:1px solid #ccc; padding:6px; margin-bottom:5px; cursor:pointer; font-size:12px; background:#fff; }
-    .secCard.active{ border-color:#5865f2; box-shadow:0 0 0 1px rgba(88,101,242,.25); }
+    #sectionList{ overflow:auto; border:1px solid var(--line-muted); background:var(--surface); padding:6px; min-height:0; max-height:100%; }
+    .secCard{ border:1px solid var(--line-card); padding:6px; margin-bottom:5px; cursor:pointer; font-size:12px; background:var(--surface); }
+    .secCard.active{ border-color:#5865f2; box-shadow:0 0 0 1px var(--accent-glow-strong); }
     #sectionEditor{ display:grid; grid-template-rows:auto auto 1fr auto; gap:6px; }
-    #sectionMeta{ font-size:12px; color:#444; }
-    #sectionText{ width:100%; height:100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+    #sectionMeta{ font-size:12px; color:var(--text-secondary); }
+    #sectionText{ width:100%; height:100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; border:1px solid var(--line); background:var(--surface); color:var(--text); }
     #sectionWindow.compactMode{ width:min(640px,100%); max-height:min(500px,100%); }
     #sectionWindow.compactMode #sectionBody{ grid-template-columns:1fr 240px; height:320px; }
     #sectionWindow.groupMode #sectionEditor{ grid-template-rows:auto auto auto; }
@@ -543,7 +716,7 @@
     #wpMarkerCount{
       justify-self:end;
       font-size:12px;
-      color:#333;
+      color:var(--text-subtle);
       margin-top:2px;
     }
     #waypointTopActions{ display:none; gap:8px; }
@@ -563,13 +736,13 @@
     #generalInfoEditor{ display:none; font-size:12px; }
     #sectionWindow.generalInfoMode #generalInfoEditor{ display:block; }
     .giLayout{ display:grid; grid-template-columns: 1fr 1.55fr 1fr; gap:10px; }
-    .giBox{ border:1px solid #9f9f9f; padding:6px; background:#ddd; }
+    .giBox{ border:1px solid var(--line-strong); padding:6px; background:var(--surface-soft); }
     .giRow{ margin-bottom:6px; }
     .giRow label{ display:block; margin-bottom:2px; }
     .giRow input, .giRow select{ width:100%; }
     .giMapTypes label,.giFlags label{ display:block; margin:2px 0; }
     .giCondRow{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; margin-bottom:4px; align-items:center; }
-    .giCondHead{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; color:#333; margin-bottom:4px; align-items:center; }
+    .giCondHead{ display:grid; grid-template-columns:16px 1fr 60px; gap:6px; color:var(--text-subtle); margin-bottom:4px; align-items:center; }
     .giCondHead span:first-child{ text-align:center; }
     .giCondHead span:last-child{ text-align:center; }
     .giInline{ display:grid; grid-template-columns:1fr 90px; gap:6px; align-items:center; margin-bottom:6px; }
@@ -580,7 +753,16 @@
 
 <body>
   <div id="globalMenuWrap">
-    <div class="menuBar" id="menuBar"></div>
+    <div class="globalMenuContent">
+      <div class="menuBar" id="menuBar"></div>
+      <label class="themeSwitcher" for="themeSelect">Theme
+        <select id="themeSelect" aria-label="Theme selector">
+          <option value="default">Default</option>
+          <option value="night">Night</option>
+          <option value="forest">Forest</option>
+        </select>
+      </label>
+    </div>
   </div>
 
   <div id="appLayout">
@@ -1055,6 +1237,7 @@
   const misRealtimeClearBtn = document.getElementById("misRealtimeClearBtn");
   const exportBtn = document.getElementById("exportBtn");
   const statusEl = document.getElementById("status");
+  const themeSelectEl = document.getElementById("themeSelect");
 
   const sectionOverlay = document.getElementById("sectionOverlay");
   const sectionWindow = document.getElementById("sectionWindow");
@@ -3516,24 +3699,50 @@
     statusEl.textContent = `Command '${label}' is not implemented in the web editor yet.`;
   }
 
+  function hasMapLoaded(){
+    return Boolean(state.filename || state.rawText || state.items.length || state.sectionBlocks.length);
+  }
+
+  function clearEditorMap(){
+    state.rawText = "";
+    state.items = [];
+    state.sectionBlocks = [];
+    state.selectedId = null;
+    state.filename = "";
+    state.selectedWaypointMarkerIds.clear();
+    updateWaypointMarkerCount(0);
+    exportBtn.disabled = true;
+    fileMisEl.value = "";
+    renderList();
+    draw();
+    refreshLiveMisWindow(true);
+  }
+
+  function saveCurrentMap(){
+    if (!state.rawText) return false;
+    const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
+    downloadText(state.filename || "edited.mis", out);
+    statusEl.textContent = "File saved.";
+    return true;
+  }
+
+  function handleNewProject(){
+    if (!hasMapLoaded()){
+      clearEditorMap();
+      statusEl.textContent = "New map project created.";
+      return;
+    }
+    const shouldSave = window.confirm("Do you want to save the current .mis before creating a new map project? Click OK to Save, or Cancel to continue without saving.");
+    if (shouldSave) saveCurrentMap();
+    clearEditorMap();
+    statusEl.textContent = "New map project created.";
+  }
+
   const menuHandlers = {
-    "file.clear": () => {
-      state.rawText = "";
-      state.items = [];
-      state.sectionBlocks = [];
-      state.selectedId = null;
-      state.filename = "";
-      exportBtn.disabled = true;
-      renderList();
-      draw();
-      statusEl.textContent = "Map cleared.";
-    },
+    "file.new": () => handleNewProject(),
     "file.open": () => fileMisEl.click(),
     "file.saveAs": () => {
-      if (!state.rawText) return showNotImplemented("Save As");
-      const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
-      downloadText(state.filename || "edited.mis", out);
-      statusEl.textContent = "File saved.";
+      if (!saveCurrentMap()) return showNotImplemented("Save As");
     },
     "file.setEditorFolder": async () => {
       if (!state.isLocalRuntime) return;
@@ -3568,7 +3777,7 @@
 
   function getMenuTree(){
     const fileChildren = [
-      { label: "Clear", command: "file.clear" },
+      { label: "New", command: "file.new" },
       { label: "Open", command: "file.open" },
       ...(state.isLocalRuntime ? [
         { label: "Set Editor Folder", command: "file.setEditorFolder", attention: !state.editorFolderHandle },
@@ -3960,8 +4169,28 @@
 
     draw();
   }, { passive:false });
+
+  function applyTheme(theme){
+    const normalized = theme && theme !== "default" ? theme : "";
+    if (normalized) document.body.setAttribute("data-theme", normalized);
+    else document.body.removeAttribute("data-theme");
+    if (themeSelectEl) themeSelectEl.value = normalized || "default";
+  }
+
+  function initTheme(){
+    const saved = localStorage.getItem("dz-theme") || "default";
+    applyTheme(saved);
+    if (!themeSelectEl) return;
+    themeSelectEl.addEventListener("change", () => {
+      const nextTheme = themeSelectEl.value || "default";
+      applyTheme(nextTheme);
+      localStorage.setItem("dz-theme", nextTheme);
+    });
+  }
+
   // Boot: load embedded ITEMS.DEF + optional resources (weapon.def + game strings).
   (async function boot(){
+    initTheme();
     addLog("Editor boot started.");
     try{
       const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
