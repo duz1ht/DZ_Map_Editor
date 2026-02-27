@@ -1188,6 +1188,7 @@
     rawText: "",
     items: [],
     selectedId: null,
+    multiSelectedIds: new Set(),
     view: { zoom: 0.00002, ox: 0, oy: 0 },
     draggingPan: false,
     draggingItem: false,
@@ -3119,6 +3120,7 @@
 
   function selectById(id){
     state.selectedId = id;
+    state.multiSelectedIds = new Set(id != null ? [id] : []);
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
     renderList();
@@ -3156,12 +3158,14 @@
 
     if (!markers.length){
       state.selectedId = null;
+      state.multiSelectedIds.clear();
       draw();
       statusEl.textContent = `Select Markers: no marker found for waypoint ${waypointNumber}.`;
       return;
     }
 
     state.selectedId = markers[0].id;
+    state.multiSelectedIds = new Set([markers[0].id]);
     renderList();
     draw();
     statusEl.textContent = `Select Markers: selected ${markers.length} marker(s) for waypoint ${waypointNumber}.`;
@@ -3202,7 +3206,7 @@
     if (!listEl) return;
     const items = getFilteredItems();
     listEl.innerHTML = items.slice(0, 1200).map(it => {
-      const active = it.id === state.selectedId ? "active" : "";
+      const active = (it.id === state.selectedId || state.multiSelectedIds.has(it.id)) ? "active" : "";
       const tid = (it.kv.type_id || "").toString();
       const def = getDefForItem(it);
       const label = def?.name ? def.name : (it.kv.name || it.kv.iai_name || it.kv.model || "").toString();
@@ -3671,6 +3675,7 @@
     state.items = state.items.filter(x => x.id !== it.id);
     state.sectionBlocks = state.sectionBlocks.filter(s => !(s.kind === "item" && s.start === it.start));
     state.selectedId = null;
+    state.multiSelectedIds.clear();
     closeItemContextMenu();
     if (state.modalOpen) closeModalOk();
     renderList();
@@ -3803,6 +3808,7 @@
     state.items = [];
     state.sectionBlocks = [];
     state.selectedId = null;
+    state.multiSelectedIds.clear();
     state.filename = "";
     state.currentMisFileHandle = null;
     state.selectedWaypointMarkerIds.clear();
@@ -4095,6 +4101,7 @@
     state.items = parsed.items;
     state.sectionBlocks = parsed.sectionBlocks;
     state.selectedId = null;
+    state.multiSelectedIds.clear();
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
 
@@ -4188,7 +4195,7 @@
     const items = getFilteredItems();
     for (const it of items){
       const p = worldToScreen(it.x,it.y);
-      const isSel = it.id === state.selectedId;
+      const isSel = it.id === state.selectedId || state.multiSelectedIds.has(it.id);
       const isWpMarked = state.selectedWaypointMarkerIds.has(it.id);
       ctx.fillStyle = isSel ? "#5865f2" : (isWpMarked ? "#ffcc33" : "#e0e3ff");
       const r = isSel ? 5 : (isWpMarked ? 4 : 3);
@@ -4255,19 +4262,38 @@
 
     const picked = pickItemAt(sx,sy);
     if (picked){
-      selectById(picked.id);
-      state.draggingItem = e.shiftKey;
+      if (e.ctrlKey){
+        if (state.multiSelectedIds.has(picked.id)){
+          state.multiSelectedIds.delete(picked.id);
+          if (state.selectedId === picked.id){
+            const next = state.multiSelectedIds.values().next();
+            state.selectedId = next.done ? null : next.value;
+          }
+        } else {
+          state.multiSelectedIds.add(picked.id);
+          state.selectedId = picked.id;
+        }
+        state.selectedWaypointMarkerIds.clear();
+        updateWaypointMarkerCount(0);
+        state.draggingItem = false;
+        renderList();
+        draw();
+      } else {
+        selectById(picked.id);
+        state.draggingItem = e.shiftKey;
+      }
     } else {
       state.draggingItem = false;
-      if (state.selectedId !== null || state.selectedWaypointMarkerIds.size){
+      if (state.selectedId !== null || state.multiSelectedIds.size || state.selectedWaypointMarkerIds.size){
         state.selectedId = null;
+        state.multiSelectedIds.clear();
         state.selectedWaypointMarkerIds.clear();
         updateWaypointMarkerCount(0);
         renderList();
         draw();
       }
     }
-    state.draggingPan = !state.draggingItem;
+    state.draggingPan = !state.draggingItem && !e.ctrlKey;
     state.lastMouse = { sx, sy };
   });
 
