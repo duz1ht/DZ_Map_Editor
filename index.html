@@ -3857,11 +3857,11 @@
 
   function getMenuTree(){
     const fileChildren = [
-      { label: "New", command: "file.new" },
-      { label: "Open", command: "file.open" },
       ...(state.isLocalRuntime ? [
         { label: "Set Editor Folder", command: "file.setEditorFolder", attention: !state.editorFolderHandle },
       ] : []),
+      { label: "New", command: "file.new" },
+      { label: "Open", command: "file.open" },
       { label: "Save As", command: "file.saveAs" },
       { label: "Export Binary Mission", command: "file.exportBinaryMission" },
       { label: "Save and Export", command: "file.saveAndExport" },
