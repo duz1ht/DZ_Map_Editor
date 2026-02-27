@@ -175,6 +175,12 @@
       position:relative;
       z-index:20;
     }
+    .globalMenuContent{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
     #appLayout{
       display:grid;
       grid-template-columns:420px 1fr;
@@ -216,6 +222,8 @@
       gap:6px;
       font-size:12px;
       color:var(--text-muted);
+      flex:0 0 auto;
+      margin-left:auto;
     }
     .themeSwitcher select{
       min-width:120px;
@@ -599,6 +607,7 @@
       position:relative;
       z-index:5;
       flex-wrap:wrap;
+      flex:1;
     }
     .menuRoot{ position:relative; }
     .menuRootBtn{
@@ -744,7 +753,16 @@
 
 <body>
   <div id="globalMenuWrap">
-    <div class="menuBar" id="menuBar"></div>
+    <div class="globalMenuContent">
+      <div class="menuBar" id="menuBar"></div>
+      <label class="themeSwitcher" for="themeSelect">Theme
+        <select id="themeSelect" aria-label="Theme selector">
+          <option value="default">Default</option>
+          <option value="night">Night</option>
+          <option value="forest">Forest</option>
+        </select>
+      </label>
+    </div>
   </div>
 
   <div id="appLayout">
@@ -783,13 +801,6 @@
       <div class="hint">
         Double-click: open Item Attributes. Esc: close.
       </div>
-      <label class="themeSwitcher" for="themeSelect">Theme
-        <select id="themeSelect" aria-label="Theme selector">
-          <option value="default">Default</option>
-          <option value="night">Night</option>
-          <option value="forest">Forest</option>
-        </select>
-      </label>
       <div id="status">No file loaded.</div>
     </div>
 
