@@ -1878,25 +1878,25 @@
   }
 
   async function preloadEnvironmentFiles(){
+    if (state.isLocalRuntime && !state.editorFolderHandle){
+      addLog("Environment preload skipped: set Editor Folder first in local mode.");
+      return;
+    }
+
     let loadedCount = 0;
     let failedCount = 0;
     const pending = GENERAL_ENV_FILE_PATHS.map(async fileName => {
       const path = `resources/enviroments/${fileName}`;
-      try {
-        const res = await fetch(path);
-        if (!res.ok){
-          failedCount += 1;
-          addLog(`ERROR loading environment file: ${path} (HTTP ${res.status})`);
-          return;
-        }
-        const parsed = parseEnvironmentFile(await res.text());
-        GENERAL_ENV_DATA.set(fileName.replace(/\.env$/i, "").toLowerCase(), parsed);
-        loadedCount += 1;
-        addLog(`Loaded environment file: ${path}`);
-      } catch (err) {
+      const text = await loadTextResource(path);
+      if (text === null){
         failedCount += 1;
-        addLog(`ERROR loading environment file: ${path} (${err?.message || "fetch failed"})`);
+        addLog(`ERROR loading environment file: ${path}`);
+        return;
       }
+      const parsed = parseEnvironmentFile(text);
+      GENERAL_ENV_DATA.set(fileName.replace(/\.env$/i, "").toLowerCase(), parsed);
+      loadedCount += 1;
+      addLog(`Loaded environment file: ${path}`);
     });
     await Promise.allSettled(pending);
     addLog(`Environment files preload finished: loaded=${loadedCount}, failed=${failedCount}`);
@@ -3545,7 +3545,7 @@
         const handle = await window.showDirectoryPicker({ mode: "read" });
         state.editorFolderHandle = handle;
         statusEl.textContent = `Editor folder set: ${handle.name}`;
-        await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames()]);
+        await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames(), preloadEnvironmentFiles()]);
         renderMenuBar();
       } catch (err){
         if (err?.name === "AbortError") return;
