@@ -3640,6 +3640,8 @@
     const pasted = createPastedItemFrom(state.itemClipboard, state.itemClipboardSection, { offset: false, worldPosition: world });
     state.pastePlacementActive = false;
     state.pastePreviewWorld = null;
+    state.itemClipboard = null;
+    state.itemClipboardSection = null;
     draw();
     statusEl.textContent = `Colado: novo item #${pasted.id}`;
   }
