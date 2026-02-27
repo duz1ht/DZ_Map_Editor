@@ -4418,9 +4418,17 @@
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const picked = pickItemAt(sx, sy);
+    const hasSelection = state.selectedId !== null || state.multiSelectedIds.size > 0;
 
     if (!picked){
-      if (state.itemClipboardItems.length){
+      if (hasSelection){
+        if (state.selectedId === null && state.multiSelectedIds.size){
+          state.selectedId = state.multiSelectedIds.values().next().value;
+          renderList();
+          draw();
+        }
+        showItemContextMenu(e.clientX, e.clientY);
+      } else if (state.itemClipboardItems.length){
         showItemContextMenu(e.clientX, e.clientY, [
           { label: "Paste", action: () => beginPastePlacementAtScreen(sx, sy) }
         ]);
@@ -4430,7 +4438,7 @@
       return;
     }
 
-    if (state.selectedId !== picked.id) selectById(picked.id);
+    if (state.selectedId !== picked.id && !state.multiSelectedIds.has(picked.id)) selectById(picked.id);
     showItemContextMenu(e.clientX, e.clientY);
   });
 
