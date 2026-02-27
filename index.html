@@ -4521,31 +4521,13 @@
   });
 
   function stopDrag(){
-    if (state.boxSelecting && state.boxStart && state.boxCurrent){
-      const x0 = Math.min(state.boxStart.sx, state.boxCurrent.sx);
-      const x1 = Math.max(state.boxStart.sx, state.boxCurrent.sx);
-      const y0 = Math.min(state.boxStart.sy, state.boxCurrent.sy);
-      const y1 = Math.max(state.boxStart.sy, state.boxCurrent.sy);
-      const minSize = 3;
-      if ((x1 - x0) >= minSize || (y1 - y0) >= minSize){
-        const boxIds = [];
-        for (const it of getFilteredItems()){
-          const p = worldToScreen(it.x, it.y);
-          if (p.sx >= x0 && p.sx <= x1 && p.sy >= y0 && p.sy <= y1){
-            boxIds.push(it.id);
-          }
-        }
-        if (!state.boxSelectAdditive){
-          state.multiSelectedIds.clear();
-        }
-        for (const id of boxIds) state.multiSelectedIds.add(id);
-        state.selectedId = state.multiSelectedIds.size ? Array.from(state.multiSelectedIds).at(-1) : null;
-        state.selectedWaypointMarkerIds.clear();
-        updateWaypointMarkerCount(0);
-        renderList();
-        draw();
-      }
-    }
+    const hadBoxSelection = state.boxSelecting && state.boxStart && state.boxCurrent;
+    const x0 = hadBoxSelection ? Math.min(state.boxStart.sx, state.boxCurrent.sx) : 0;
+    const x1 = hadBoxSelection ? Math.max(state.boxStart.sx, state.boxCurrent.sx) : 0;
+    const y0 = hadBoxSelection ? Math.min(state.boxStart.sy, state.boxCurrent.sy) : 0;
+    const y1 = hadBoxSelection ? Math.max(state.boxStart.sy, state.boxCurrent.sy) : 0;
+    const additiveSelection = state.boxSelectAdditive;
+
     state.draggingPan = false;
     state.draggingItem = false;
     state.boxSelecting = false;
@@ -4555,6 +4537,28 @@
     state.rightPanActive = false;
     state.rightPanStart = null;
     state.lastMouse = null;
+
+    if (hadBoxSelection){
+      const minSize = 3;
+      if ((x1 - x0) >= minSize || (y1 - y0) >= minSize){
+        const boxIds = [];
+        for (const it of getFilteredItems()){
+          const p = worldToScreen(it.x, it.y);
+          if (p.sx >= x0 && p.sx <= x1 && p.sy >= y0 && p.sy <= y1){
+            boxIds.push(it.id);
+          }
+        }
+        if (!additiveSelection){
+          state.multiSelectedIds.clear();
+        }
+        for (const id of boxIds) state.multiSelectedIds.add(id);
+        state.selectedId = state.multiSelectedIds.size ? Array.from(state.multiSelectedIds).at(-1) : null;
+        state.selectedWaypointMarkerIds.clear();
+        updateWaypointMarkerCount(0);
+      }
+      renderList();
+      draw();
+    }
   }
   cv.addEventListener("mouseup", stopDrag);
   cv.addEventListener("mouseleave", stopDrag);
