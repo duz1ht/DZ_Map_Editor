@@ -1196,6 +1196,9 @@
     boxSelectAdditive: false,
     boxStart: null,
     boxCurrent: null,
+    rightPanActive: false,
+    rightPanStart: null,
+    suppressContextMenu: false,
     lastMouse: null,
     filename: "",
     modalOpen: false,
@@ -4354,11 +4357,23 @@
   cv.addEventListener("mousedown", (e) => {
     if (state.modalOpen) return;
     closeItemContextMenu();
-    if (e.button !== 0) return;
 
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
+
+    if (e.button === 2){
+      state.draggingItem = false;
+      state.boxSelecting = false;
+      state.draggingPan = true;
+      state.rightPanActive = true;
+      state.rightPanStart = { sx, sy };
+      state.suppressContextMenu = false;
+      state.lastMouse = { sx, sy };
+      return;
+    }
+
+    if (e.button !== 0) return;
 
     if (state.pastePlacementActive){
       applyPasteAtWorld(screenToWorld(sx, sy));
@@ -4413,6 +4428,10 @@
   cv.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     if (state.modalOpen) return;
+    if (state.suppressContextMenu){
+      state.suppressContextMenu = false;
+      return;
+    }
 
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
@@ -4474,6 +4493,12 @@
     const dx = sx - state.lastMouse.sx;
     const dy = sy - state.lastMouse.sy;
 
+    if (state.rightPanActive && state.rightPanStart && !state.suppressContextMenu){
+      const movedX = Math.abs(sx - state.rightPanStart.sx);
+      const movedY = Math.abs(sy - state.rightPanStart.sy);
+      if (movedX > 3 || movedY > 3) state.suppressContextMenu = true;
+    }
+
     if (state.boxSelecting && state.boxStart){
       state.boxCurrent = { sx, sy };
       draw();
@@ -4527,6 +4552,8 @@
     state.boxSelectAdditive = false;
     state.boxStart = null;
     state.boxCurrent = null;
+    state.rightPanActive = false;
+    state.rightPanStart = null;
     state.lastMouse = null;
   }
   cv.addEventListener("mouseup", stopDrag);
