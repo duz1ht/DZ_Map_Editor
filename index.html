@@ -2767,6 +2767,17 @@
     let i = 0;
     let j = 0;
     const maxEntries = 24;
+    const lookAhead = 120;
+
+    function findForward(lines, start, target){
+      if (target === undefined) return -1;
+      const end = Math.min(lines.length, start + lookAhead + 1);
+      for (let k = start + 1; k < end; k++){
+        if (lines[k] === target) return k;
+      }
+      return -1;
+    }
+
     while ((i < prevLines.length || j < nextLines.length) && changed.length < maxEntries){
       const a = prevLines[i];
       const b = nextLines[j];
@@ -2777,18 +2788,22 @@
         continue;
       }
 
-      const nextB = nextLines[j + 1];
-      const nextA = prevLines[i + 1];
+      const insertAt = findForward(nextLines, j, a);
+      const deleteAt = findForward(prevLines, i, b);
 
-      if (a !== undefined && nextB === a){
-        changed.push(`+ L${j+1}: ${b ?? ""}`);
-        j++;
+      if (insertAt !== -1 && (deleteAt === -1 || (insertAt - j) <= (deleteAt - i))){
+        for (let k = j; k < insertAt && changed.length < maxEntries; k++){
+          changed.push(`+ L${k+1}: ${nextLines[k] ?? ""}`);
+        }
+        j = insertAt;
         continue;
       }
 
-      if (b !== undefined && nextA === b){
-        changed.push(`- L${i+1}: ${a ?? ""}`);
-        i++;
+      if (deleteAt !== -1){
+        for (let k = i; k < deleteAt && changed.length < maxEntries; k++){
+          changed.push(`- L${k+1}: ${prevLines[k] ?? ""}`);
+        }
+        i = deleteAt;
         continue;
       }
 
