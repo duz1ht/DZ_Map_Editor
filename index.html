@@ -1219,6 +1219,8 @@
 
     contextMenuOpen: false,
     contextTargetId: null,
+    itemClipboard: null,
+    itemClipboardSection: null,
 
     gameStrings: new Map(),
     weaponDefs: new Map(),
@@ -3571,19 +3573,16 @@
     if (e.key === "Escape" && state.liveMisOpen) closeLiveMisWindow();
   });
 
-  ui.dupBtn.addEventListener("click", () => {
-    const it = getSelected();
-    if (!it) return;
-    const copy = structuredClone(it);
+  function createPastedItemFrom(sourceItem, sourceSection = null){
+    const copy = structuredClone(sourceItem);
     copy.id = Math.max(...state.items.map(x => x.id)) + 1;
     copy.beginLine = "begin item";
     copy.x += 50000;
     copy.y += 50000;
     if (copy.kv.position) copy.kv.position = `${copy.x} ${copy.y} ${copy.z}`;
     state.items.push(copy);
-    const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
-    if (sec){
-      const newSec = structuredClone(sec);
+    if (sourceSection){
+      const newSec = structuredClone(sourceSection);
       newSec.id = state.sectionBlocks.reduce((m,x)=>Math.max(m,x.id),0)+1;
       newSec.start = Number.MAX_SAFE_INTEGER - newSec.id;
       newSec.end = newSec.start;
@@ -3594,6 +3593,36 @@
     selectById(copy.id);
     renderItemWindow();
     refreshLiveMisWindow();
+    return copy;
+  }
+
+  function copySelectedItem(){
+    const it = getSelected();
+    if (!it){
+      statusEl.textContent = "Selecione um item para copiar.";
+      return false;
+    }
+    state.itemClipboard = structuredClone(it);
+    const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
+    state.itemClipboardSection = sec ? structuredClone(sec) : null;
+    statusEl.textContent = `Copiado: #${it.id}`;
+    return true;
+  }
+
+  function pasteCopiedItem(){
+    if (!state.itemClipboard){
+      statusEl.textContent = "Nenhum item copiado para colar.";
+      return;
+    }
+    const pasted = createPastedItemFrom(state.itemClipboard, state.itemClipboardSection);
+    statusEl.textContent = `Colado: novo item #${pasted.id}`;
+  }
+
+  ui.dupBtn.addEventListener("click", () => {
+    const it = getSelected();
+    if (!it) return;
+    const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
+    const copy = createPastedItemFrom(it, sec || null);
     statusEl.textContent = `Duplicado: #${it.id} -> #${copy.id}`;
   });
 
@@ -3663,8 +3692,8 @@
       { label: "Edit Item Attributes", action: () => openModal() },
       { separator: true },
       { label: "Cut", action: () => showNotImplemented("Cut") },
-      { label: "Copy", action: () => showNotImplemented("Copy") },
-      { label: "Paste", action: () => showNotImplemented("Paste") },
+      { label: "Copy", action: () => copySelectedItem() },
+      { label: "Paste", action: () => pasteCopiedItem() },
       { separator: true },
       { label: "Move", action: () => statusEl.textContent = "Use Shift + arrastar para mover o item selecionado." },
       { label: "Numeric Move", action: () => showNotImplemented("Numeric Move") },
@@ -3849,6 +3878,9 @@
     "edit.waypoints": () => openSectionEditor("waypoint"),
     "edit.events": () => openSectionEditor("event"),
     "edit.layerNames": () => openSectionEditor("layer"),
+    "edit.copy": copySelectedItem,
+    "edit.paste": pasteCopiedItem,
+    "edit.delete": deleteSelectedItem,
     "edit.globalReplace": runGlobalReplace,
     "edit.weaponLoadouts": () => openSectionEditor("weapon_availability"),
     "mis.liveChanges": openLiveMisWindow,
