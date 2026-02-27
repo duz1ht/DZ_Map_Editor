@@ -14,6 +14,8 @@ html,body{margin:0;height:100%;background:#0f1117;color:#e6e6e6;font-family:syst
 #bar input,#bar button,label{font-size:12px}
 .modeBtn{min-width:26px;height:22px;padding:0 8px;border:1px solid #3a4358;background:#1a1f2e;color:#c9d1e2;border-radius:6px;cursor:pointer}
 .modeBtn.active{background:#2c7be5;border-color:#67a2ff;color:#fff}
+.gridCtl{display:flex;align-items:center;gap:4px}
+.gridVal{min-width:64px;display:inline-block;text-align:left}
 #gl{position:absolute;left:0;right:0;top:48px;bottom:0;outline:none;display:block}
 #dbg{
  position:fixed;left:10px;bottom:10px;z-index:20;
@@ -28,6 +30,11 @@ html,body{margin:0;height:100%;background:#0f1117;color:#e6e6e6;font-family:syst
 <div id="bar">
   <input id="pick" type="file" webkitdirectory multiple>
   <button id="reset">Reset</button>
+  <label class="small gridCtl">Grid
+    <button id="gridPlus" type="button" class="modeBtn" title="Increase grid size">+</button>
+    <button id="gridMinus" type="button" class="modeBtn" title="Decrease grid size">-</button>
+    <span id="gridValue" class="gridVal">512m</span>
+  </label>
   <button id="modeC" class="modeBtn active" title="Colormap (R)">C</button>
   <button id="modeH" class="modeBtn" title="Heightmap (R)">H</button>
   <button id="modeD" class="modeBtn" title="Delta/Variation (R)">D</button>
@@ -140,6 +147,29 @@ const luOffsetXZ=gl.getUniformLocation(lineProg,'uOffsetXZ');
 const luScaleXZ=gl.getUniformLocation(lineProg,'uScaleXZ');
 const luY=gl.getUniformLocation(lineProg,'uY');
 const luColor=gl.getUniformLocation(lineProg,'uColor');
+
+// World-space grid program
+const gridVsSrc=`
+attribute vec3 aPos;
+uniform mat4 uMVP;
+void main(){ gl_Position = uMVP * vec4(aPos,1.0); }
+`;
+const gridFsSrc=`
+precision mediump float;
+void main(){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); }
+`;
+
+const gridProg=gl.createProgram();
+gl.attachShader(gridProg,compile(gl.VERTEX_SHADER,gridVsSrc));
+gl.attachShader(gridProg,compile(gl.FRAGMENT_SHADER,gridFsSrc));
+gl.linkProgram(gridProg);
+if(!gl.getProgramParameter(gridProg,gl.LINK_STATUS)){
+ throw new Error(gl.getProgramInfoLog(gridProg)||"grid link failed");
+}
+
+const gaPos=gl.getAttribLocation(gridProg,'aPos');
+const guMVP=gl.getUniformLocation(gridProg,'uMVP');
+const gridVB=gl.createBuffer();
 
 
 // Water surface program (simple translucent plane)
@@ -364,6 +394,45 @@ let cam={ pos:vec3(0,400,1500), yaw:Math.PI, pitch:-0.25 };
 let move={w:0,a:0,s:0,d:0,q:0,e:0,shift:0};
 let renderMode='C';
 
+const GRID_EXP_MIN=-8;
+const GRID_EXP_MAX=12;
+const GRID_EXP_DEFAULT=9;
+const MAX_GRID_LINES_PER_AXIS=1024;
+let gridExponent=GRID_EXP_DEFAULT;
+
+let topViewLocked=false;
+let topViewRestore={yaw:Math.PI,pitch:-0.25};
+
+function gridSizeMeters(){
+ return Math.pow(2, gridExponent);
+}
+function formatGridValue(meters){
+ if(meters<1){
+  return (meters*100).toFixed(3)+'cm';
+ }
+ if(meters>=1024){
+  return meters.toFixed(0)+'m';
+ }
+ if(Number.isInteger(meters)){
+  return meters.toFixed(0)+'m';
+ }
+ return meters.toFixed(3)+'m';
+}
+function updateGridUi(){
+ const valEl=document.getElementById('gridValue');
+ const plus=document.getElementById('gridPlus');
+ const minus=document.getElementById('gridMinus');
+ if(valEl) valEl.textContent=formatGridValue(gridSizeMeters());
+ if(plus) plus.disabled = gridExponent>=GRID_EXP_MAX;
+ if(minus) minus.disabled = gridExponent<=GRID_EXP_MIN;
+}
+function stepGridExponent(delta){
+ const next=Math.max(GRID_EXP_MIN, Math.min(GRID_EXP_MAX, gridExponent+delta));
+ if(next===gridExponent) return;
+ gridExponent=next;
+ updateGridUi();
+}
+
 function resetCamera(){
  const spanX=terrainSpanX(), spanZ=terrainSpanZ();
  const cx=originWorldX() + spanX*0.5;
@@ -394,6 +463,9 @@ function toggleRenderMode(){
 document.getElementById('modeC').onclick=()=>setRenderMode('C');
 document.getElementById('modeH').onclick=()=>setRenderMode('H');
 document.getElementById('modeD').onclick=()=>setRenderMode('D');
+document.getElementById('gridPlus').onclick=()=>stepGridExponent(1);
+document.getElementById('gridMinus').onclick=()=>stepGridExponent(-1);
+updateGridUi();
 
 // Pointer lock + inputs
 canvas.addEventListener('click',()=>{
@@ -404,7 +476,14 @@ addEventListener('keydown',e=>{
  if(e.key==='Escape' && document.pointerLockElement===canvas) document.exitPointerLock();
  const k=e.key.toLowerCase();
  if(k==='t'){
-  cam.pitch = -Math.PI/2;
+  topViewLocked = !topViewLocked;
+  if(topViewLocked){
+   topViewRestore = {yaw:cam.yaw, pitch:cam.pitch};
+   cam.pitch = -Math.PI/2;
+  } else {
+   cam.yaw = topViewRestore.yaw;
+   cam.pitch = topViewRestore.pitch;
+  }
  }
  if(k==='r'){
   toggleRenderMode();
@@ -429,6 +508,7 @@ addEventListener('keyup',e=>{
 });
 addEventListener('mousemove',e=>{
  if(document.pointerLockElement!==canvas) return;
+ if(topViewLocked) return;
  cam.yaw   -= e.movementX * 0.002;
  cam.pitch -= e.movementY * 0.002;
  cam.pitch=Math.max(-1.55, Math.min(1.55, cam.pitch));
@@ -950,6 +1030,62 @@ if(trnInfo.waterHeight!==null && Number.isFinite(trnInfo.waterHeight)){
  gl.useProgram(prog);
 }
 
+  // Grid overlay (black lines)
+  const gridSize = gridSizeMeters();
+  if(gridSize>0){
+   const spanVisibleX = (i1 - i0 + 1) * SECTOR_STRIDE;
+   const spanVisibleZ = (j1 - j0 + 1) * SECTOR_STRIDE;
+   let gridMinX = ox + i0 * SECTOR_STRIDE;
+   let gridMaxX = gridMinX + spanVisibleX;
+   let gridMinZ = oz + j0 * SECTOR_STRIDE;
+   let gridMaxZ = gridMinZ + spanVisibleZ;
+
+   const maxSpan = gridSize * MAX_GRID_LINES_PER_AXIS;
+   if((gridMaxX-gridMinX) > maxSpan){
+    const cx=cam.pos.x;
+    gridMinX = Math.max(gridMinX, cx - maxSpan*0.5);
+    gridMaxX = Math.min(gridMaxX, cx + maxSpan*0.5);
+   }
+   if((gridMaxZ-gridMinZ) > maxSpan){
+    const cz=cam.pos.z;
+    gridMinZ = Math.max(gridMinZ, cz - maxSpan*0.5);
+    gridMaxZ = Math.min(gridMaxZ, cz + maxSpan*0.5);
+   }
+
+   const firstX = ox + Math.ceil((gridMinX - ox)/gridSize) * gridSize;
+   const firstZ = oz + Math.ceil((gridMinZ - oz)/gridSize) * gridSize;
+   const countX = Math.max(0, Math.floor((gridMaxX - firstX)/gridSize) + 1);
+   const countZ = Math.max(0, Math.floor((gridMaxZ - firstZ)/gridSize) + 1);
+
+   if(countX>0 || countZ>0){
+    const lineCount = countX + countZ;
+    const verts = new Float32Array(lineCount * 2 * 3);
+    let ptr=0;
+
+    for(let i=0;i<countX;i++){
+     const x = firstX + i*gridSize;
+     verts[ptr++]=x; verts[ptr++]=0.2; verts[ptr++]=gridMinZ;
+     verts[ptr++]=x; verts[ptr++]=0.2; verts[ptr++]=gridMaxZ;
+    }
+    for(let i=0;i<countZ;i++){
+     const z = firstZ + i*gridSize;
+     verts[ptr++]=gridMinX; verts[ptr++]=0.2; verts[ptr++]=z;
+     verts[ptr++]=gridMaxX; verts[ptr++]=0.2; verts[ptr++]=z;
+    }
+
+    gl.useProgram(gridProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridVB);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(gaPos);
+    gl.vertexAttribPointer(gaPos, 3, gl.FLOAT, false, 12, 0);
+    gl.uniformMatrix4fv(guMVP, false, mat4Mul(P, V));
+    gl.disable(gl.DEPTH_TEST);
+    gl.drawArrays(gl.LINES, 0, lineCount * 2);
+    gl.enable(gl.DEPTH_TEST);
+    gl.useProgram(prog);
+   }
+  }
+
   // Outlines overlays (Main Area + Show Sectors)
   const mainAreaOn = document.getElementById('mainArea') && document.getElementById('mainArea').checked;
   const showSectorsOn = document.getElementById('showSectors') && document.getElementById('showSectors').checked;
@@ -1008,6 +1144,8 @@ gl.enable(gl.DEPTH_TEST);
     "water_height          " + ((trnInfo.waterHeight===0 || trnInfo.waterHeight) ? trnInfo.waterHeight : "-") + "\n" +
     "water_y_used          " + ((trnInfo.waterHeight===0 || trnInfo.waterHeight) ? (trnInfo.waterHeight*0.5) : "-") + "\n\n" +
     "Mode: " + (renderMode==='C' ? 'Colormap' : (renderMode==='H' ? 'Heightmap' : 'Delta')) + "\n" +
+    "Grid: " + formatGridValue(gridSizeMeters()) + "\n" +
+    "Top view lock: " + (topViewLocked ? "on" : "off") + "\n" +
     "Draw calls: " + drawCalls + "\n" +
     "Wrap: x=" + wrapX + " y=" + wrapY + "\n" +
     "Sectors: " + (sectorCount+"x"+sectorCount) + " origin=" + terrainOrigin.x + "," + terrainOrigin.y + "\n" +
