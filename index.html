@@ -3699,24 +3699,50 @@
     statusEl.textContent = `Command '${label}' is not implemented in the web editor yet.`;
   }
 
+  function hasMapLoaded(){
+    return Boolean(state.filename || state.rawText || state.items.length || state.sectionBlocks.length);
+  }
+
+  function clearEditorMap(){
+    state.rawText = "";
+    state.items = [];
+    state.sectionBlocks = [];
+    state.selectedId = null;
+    state.filename = "";
+    state.selectedWaypointMarkerIds.clear();
+    updateWaypointMarkerCount(0);
+    exportBtn.disabled = true;
+    fileMisEl.value = "";
+    renderList();
+    draw();
+    refreshLiveMisWindow(true);
+  }
+
+  function saveCurrentMap(){
+    if (!state.rawText) return false;
+    const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
+    downloadText(state.filename || "edited.mis", out);
+    statusEl.textContent = "File saved.";
+    return true;
+  }
+
+  function handleNewProject(){
+    if (!hasMapLoaded()){
+      clearEditorMap();
+      statusEl.textContent = "New map project created.";
+      return;
+    }
+    const shouldSave = window.confirm("Do you want to save the current .mis before creating a new map project? Click OK to Save, or Cancel to continue without saving.");
+    if (shouldSave) saveCurrentMap();
+    clearEditorMap();
+    statusEl.textContent = "New map project created.";
+  }
+
   const menuHandlers = {
-    "file.clear": () => {
-      state.rawText = "";
-      state.items = [];
-      state.sectionBlocks = [];
-      state.selectedId = null;
-      state.filename = "";
-      exportBtn.disabled = true;
-      renderList();
-      draw();
-      statusEl.textContent = "Map cleared.";
-    },
+    "file.new": () => handleNewProject(),
     "file.open": () => fileMisEl.click(),
     "file.saveAs": () => {
-      if (!state.rawText) return showNotImplemented("Save As");
-      const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
-      downloadText(state.filename || "edited.mis", out);
-      statusEl.textContent = "File saved.";
+      if (!saveCurrentMap()) return showNotImplemented("Save As");
     },
     "file.setEditorFolder": async () => {
       if (!state.isLocalRuntime) return;
@@ -3751,7 +3777,7 @@
 
   function getMenuTree(){
     const fileChildren = [
-      { label: "Clear", command: "file.clear" },
+      { label: "New", command: "file.new" },
       { label: "Open", command: "file.open" },
       ...(state.isLocalRuntime ? [
         { label: "Set Editor Folder", command: "file.setEditorFolder", attention: !state.editorFolderHandle },
