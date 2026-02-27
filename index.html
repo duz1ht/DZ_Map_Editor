@@ -1188,9 +1188,17 @@
     rawText: "",
     items: [],
     selectedId: null,
+    multiSelectedIds: new Set(),
     view: { zoom: 0.00002, ox: 0, oy: 0 },
     draggingPan: false,
     draggingItem: false,
+    boxSelecting: false,
+    boxSelectAdditive: false,
+    boxStart: null,
+    boxCurrent: null,
+    rightPanActive: false,
+    rightPanStart: null,
+    suppressContextMenu: false,
     lastMouse: null,
     filename: "",
     modalOpen: false,
@@ -1219,6 +1227,11 @@
 
     contextMenuOpen: false,
     contextTargetId: null,
+    itemClipboard: null,
+    itemClipboardSection: null,
+    itemClipboardItems: [],
+    pastePlacementActive: false,
+    pastePreviewWorld: null,
 
     gameStrings: new Map(),
     weaponDefs: new Map(),
@@ -2756,16 +2769,56 @@
 
     const prevLines = state.realtimePrevMisText.split("\n");
     const nextLines = nextText.split("\n");
-    const maxLen = Math.max(prevLines.length, nextLines.length);
     const changed = [];
 
-    for (let i = 0; i < maxLen; i++){
-      const a = prevLines[i] ?? "";
-      const b = nextLines[i] ?? "";
-      if (a === b) continue;
-      if (a !== "") changed.push(`- L${i+1}: ${a}`);
-      if (b !== "") changed.push(`+ L${i+1}: ${b}`);
-      if (changed.length >= 24) break;
+    let i = 0;
+    let j = 0;
+    const maxEntries = 24;
+    const lookAhead = 120;
+
+    function findForward(lines, start, target){
+      if (target === undefined) return -1;
+      const end = Math.min(lines.length, start + lookAhead + 1);
+      for (let k = start + 1; k < end; k++){
+        if (lines[k] === target) return k;
+      }
+      return -1;
+    }
+
+    while ((i < prevLines.length || j < nextLines.length) && changed.length < maxEntries){
+      const a = prevLines[i];
+      const b = nextLines[j];
+
+      if (a === b){
+        i++;
+        j++;
+        continue;
+      }
+
+      const insertAt = findForward(nextLines, j, a);
+      const deleteAt = findForward(prevLines, i, b);
+
+      if (insertAt !== -1 && (deleteAt === -1 || (insertAt - j) <= (deleteAt - i))){
+        for (let k = j; k < insertAt && changed.length < maxEntries; k++){
+          changed.push(`+ L${k+1}: ${nextLines[k] ?? ""}`);
+        }
+        j = insertAt;
+        continue;
+      }
+
+      if (deleteAt !== -1){
+        for (let k = i; k < deleteAt && changed.length < maxEntries; k++){
+          changed.push(`- L${k+1}: ${prevLines[k] ?? ""}`);
+        }
+        i = deleteAt;
+        continue;
+      }
+
+      if (a !== undefined) changed.push(`- L${i+1}: ${a}`);
+      if (changed.length >= maxEntries) break;
+      if (b !== undefined) changed.push(`+ L${j+1}: ${b}`);
+      i++;
+      j++;
     }
 
     const stamp = new Date().toLocaleTimeString();
@@ -3115,6 +3168,7 @@
 
   function selectById(id){
     state.selectedId = id;
+    state.multiSelectedIds = new Set(id != null ? [id] : []);
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
     renderList();
@@ -3152,12 +3206,14 @@
 
     if (!markers.length){
       state.selectedId = null;
+      state.multiSelectedIds.clear();
       draw();
       statusEl.textContent = `Select Markers: no marker found for waypoint ${waypointNumber}.`;
       return;
     }
 
     state.selectedId = markers[0].id;
+    state.multiSelectedIds = new Set([markers[0].id]);
     renderList();
     draw();
     statusEl.textContent = `Select Markers: selected ${markers.length} marker(s) for waypoint ${waypointNumber}.`;
@@ -3198,7 +3254,7 @@
     if (!listEl) return;
     const items = getFilteredItems();
     listEl.innerHTML = items.slice(0, 1200).map(it => {
-      const active = it.id === state.selectedId ? "active" : "";
+      const active = (it.id === state.selectedId || state.multiSelectedIds.has(it.id)) ? "active" : "";
       const tid = (it.kv.type_id || "").toString();
       const def = getDefForItem(it);
       const label = def?.name ? def.name : (it.kv.name || it.kv.iai_name || it.kv.model || "").toString();
@@ -3569,21 +3625,31 @@
     if (e.key === "Escape" && state.modalOpen) closeModalCancel();
     if (e.key === "Escape" && state.sectionEditorOpen) closeSectionEditor();
     if (e.key === "Escape" && state.liveMisOpen) closeLiveMisWindow();
+    if (e.key === "Escape" && state.pastePlacementActive){
+      state.pastePlacementActive = false;
+      state.pastePreviewWorld = null;
+      draw();
+      statusEl.textContent = "Paste cancelado.";
+    }
   });
 
-  ui.dupBtn.addEventListener("click", () => {
-    const it = getSelected();
-    if (!it) return;
-    const copy = structuredClone(it);
+  function createPastedItemFrom(sourceItem, sourceSection = null, options = {}){
+    const { offset = true, worldPosition = null, selectCreated = true, refresh = true } = options;
+    const copy = structuredClone(sourceItem);
     copy.id = Math.max(...state.items.map(x => x.id)) + 1;
     copy.beginLine = "begin item";
-    copy.x += 50000;
-    copy.y += 50000;
+    if (offset){
+      copy.x += 50000;
+      copy.y += 50000;
+    }
+    if (worldPosition){
+      copy.x = worldPosition.x;
+      copy.y = worldPosition.y;
+    }
     if (copy.kv.position) copy.kv.position = `${copy.x} ${copy.y} ${copy.z}`;
     state.items.push(copy);
-    const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
-    if (sec){
-      const newSec = structuredClone(sec);
+    if (sourceSection){
+      const newSec = structuredClone(sourceSection);
       newSec.id = state.sectionBlocks.reduce((m,x)=>Math.max(m,x.id),0)+1;
       newSec.start = Number.MAX_SAFE_INTEGER - newSec.id;
       newSec.end = newSec.start;
@@ -3591,9 +3657,104 @@
       newSec.lines = copy.lines.slice();
       state.sectionBlocks.push(newSec);
     }
-    selectById(copy.id);
+    if (selectCreated) selectById(copy.id);
+    if (refresh){
+      renderItemWindow();
+      refreshLiveMisWindow();
+    }
+    return copy;
+  }
+
+  function copySelectedItem(){
+    const selectedIds = state.multiSelectedIds.size
+      ? Array.from(state.multiSelectedIds)
+      : (state.selectedId != null ? [state.selectedId] : []);
+    const selectedItems = state.items.filter(it => selectedIds.includes(it.id));
+    if (!selectedItems.length){
+      statusEl.textContent = "Selecione um item para copiar.";
+      return false;
+    }
+
+    const anchor = selectedItems.find(it => it.id === state.selectedId) || selectedItems[0];
+    const entries = selectedItems.map(it => {
+      const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
+      return {
+        item: structuredClone(it),
+        section: sec ? structuredClone(sec) : null,
+        dx: it.x - anchor.x,
+        dy: it.y - anchor.y
+      };
+    });
+
+    state.itemClipboardItems = entries;
+    state.itemClipboard = structuredClone(anchor);
+    const anchorSec = state.sectionBlocks.find(s => s.kind === "item" && s.start === anchor.start);
+    state.itemClipboardSection = anchorSec ? structuredClone(anchorSec) : null;
+    statusEl.textContent = entries.length === 1
+      ? `Copiado: #${anchor.id}`
+      : `Copiados: ${entries.length} itens`;
+    return true;
+  }
+
+  function beginPastePlacementAtScreen(sx, sy){
+    if (!state.itemClipboardItems.length){
+      statusEl.textContent = "Nenhum item copiado para colar.";
+      return;
+    }
+    state.pastePlacementActive = true;
+    state.pastePreviewWorld = screenToWorld(sx, sy);
+    draw();
+    statusEl.textContent = "Paste ativo: clique no canvas para aplicar na posição do ponteiro.";
+  }
+
+  function applyPasteAtWorld(world){
+    if (!state.itemClipboardItems.length || !world) return;
+    const pastedItems = [];
+    for (const entry of state.itemClipboardItems){
+      const pasted = createPastedItemFrom(entry.item, entry.section, {
+        offset: false,
+        worldPosition: { x: world.x + entry.dx, y: world.y + entry.dy },
+        selectCreated: false,
+        refresh: false
+      });
+      pastedItems.push(pasted);
+    }
+    const pastedIds = pastedItems.map(it => it.id);
+    state.selectedId = pastedIds[pastedIds.length - 1] ?? null;
+    state.multiSelectedIds = new Set(pastedIds);
+    state.selectedWaypointMarkerIds.clear();
+    updateWaypointMarkerCount(0);
+    renderList();
     renderItemWindow();
     refreshLiveMisWindow();
+
+    state.pastePlacementActive = false;
+    state.pastePreviewWorld = null;
+    state.itemClipboard = null;
+    state.itemClipboardSection = null;
+    state.itemClipboardItems = [];
+    draw();
+    statusEl.textContent = pastedItems.length === 1
+      ? `Colado: novo item #${pastedItems[0].id}`
+      : `Colados: ${pastedItems.length} itens`;
+  }
+
+  function pasteCopiedItem(){
+    if (!state.itemClipboardItems.length){
+      statusEl.textContent = "Nenhum item copiado para colar.";
+      return;
+    }
+    const rect = cv.getBoundingClientRect();
+    const sx = state.lastMouse ? state.lastMouse.sx : rect.width / 2;
+    const sy = state.lastMouse ? state.lastMouse.sy : rect.height / 2;
+    beginPastePlacementAtScreen(sx, sy);
+  }
+
+  ui.dupBtn.addEventListener("click", () => {
+    const it = getSelected();
+    if (!it) return;
+    const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
+    const copy = createPastedItemFrom(it, sec || null, { offset: true });
     statusEl.textContent = `Duplicado: #${it.id} -> #${copy.id}`;
   });
 
@@ -3603,6 +3764,7 @@
     state.items = state.items.filter(x => x.id !== it.id);
     state.sectionBlocks = state.sectionBlocks.filter(s => !(s.kind === "item" && s.start === it.start));
     state.selectedId = null;
+    state.multiSelectedIds.clear();
     closeItemContextMenu();
     if (state.modalOpen) closeModalOk();
     renderList();
@@ -3653,18 +3815,18 @@
     itemContextMenu.setAttribute("aria-hidden", "true");
   }
 
-  function showItemContextMenu(clientX, clientY){
+  function showItemContextMenu(clientX, clientY, menuItems = null){
     const selected = getSelected();
-    if (!selected) return;
+    if (!menuItems && !selected) return;
     state.contextMenuOpen = true;
-    state.contextTargetId = selected.id;
+    state.contextTargetId = selected ? selected.id : null;
 
-    const menuItems = [
+    const itemsToRender = menuItems || [
       { label: "Edit Item Attributes", action: () => openModal() },
       { separator: true },
       { label: "Cut", action: () => showNotImplemented("Cut") },
-      { label: "Copy", action: () => showNotImplemented("Copy") },
-      { label: "Paste", action: () => showNotImplemented("Paste") },
+      { label: "Copy", action: () => copySelectedItem() },
+      { label: "Paste", action: () => pasteCopiedItem() },
       { separator: true },
       { label: "Move", action: () => statusEl.textContent = "Use Shift + arrastar para mover o item selecionado." },
       { label: "Numeric Move", action: () => showNotImplemented("Numeric Move") },
@@ -3688,7 +3850,7 @@
     ];
 
     itemContextMenu.innerHTML = "";
-    for (const entry of menuItems){
+    for (const entry of itemsToRender){
       if (entry.separator){
         const sep = document.createElement("div");
         sep.className = "menuSep";
@@ -3735,8 +3897,12 @@
     state.items = [];
     state.sectionBlocks = [];
     state.selectedId = null;
+    state.multiSelectedIds.clear();
     state.filename = "";
     state.currentMisFileHandle = null;
+    state.itemClipboard = null;
+    state.itemClipboardSection = null;
+    state.itemClipboardItems = [];
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
     exportBtn.disabled = true;
@@ -3849,6 +4015,9 @@
     "edit.waypoints": () => openSectionEditor("waypoint"),
     "edit.events": () => openSectionEditor("event"),
     "edit.layerNames": () => openSectionEditor("layer"),
+    "edit.copy": copySelectedItem,
+    "edit.paste": pasteCopiedItem,
+    "edit.delete": deleteSelectedItem,
     "edit.globalReplace": runGlobalReplace,
     "edit.weaponLoadouts": () => openSectionEditor("weapon_availability"),
     "mis.liveChanges": openLiveMisWindow,
@@ -3857,11 +4026,11 @@
 
   function getMenuTree(){
     const fileChildren = [
-      { label: "New", command: "file.new" },
-      { label: "Open", command: "file.open" },
       ...(state.isLocalRuntime ? [
         { label: "Set Editor Folder", command: "file.setEditorFolder", attention: !state.editorFolderHandle },
       ] : []),
+      { label: "New", command: "file.new" },
+      { label: "Open", command: "file.open" },
       { label: "Save As", command: "file.saveAs" },
       { label: "Export Binary Mission", command: "file.exportBinaryMission" },
       { label: "Save and Export", command: "file.saveAndExport" },
@@ -4024,6 +4193,10 @@
     state.items = parsed.items;
     state.sectionBlocks = parsed.sectionBlocks;
     state.selectedId = null;
+    state.multiSelectedIds.clear();
+    state.itemClipboard = null;
+    state.itemClipboardSection = null;
+    state.itemClipboardItems = [];
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
 
@@ -4117,7 +4290,7 @@
     const items = getFilteredItems();
     for (const it of items){
       const p = worldToScreen(it.x,it.y);
-      const isSel = it.id === state.selectedId;
+      const isSel = it.id === state.selectedId || state.multiSelectedIds.has(it.id);
       const isWpMarked = state.selectedWaypointMarkerIds.has(it.id);
       ctx.fillStyle = isSel ? "#5865f2" : (isWpMarked ? "#ffcc33" : "#e0e3ff");
       const r = isSel ? 5 : (isWpMarked ? 4 : 3);
@@ -4132,6 +4305,38 @@
         ctx.arc(p.sx,p.sy,r + 1.5,0,Math.PI*2);
         ctx.stroke();
       }
+    }
+
+    if (state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length){
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      for (const entry of state.itemClipboardItems){
+        const p = worldToScreen(state.pastePreviewWorld.x + entry.dx, state.pastePreviewWorld.y + entry.dy);
+        ctx.fillStyle = "#57d38c";
+        ctx.beginPath();
+        ctx.arc(p.sx, p.sy, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#9bf0bf";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(p.sx, p.sy, 10, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    if (state.boxSelecting && state.boxStart && state.boxCurrent){
+      const x = Math.min(state.boxStart.sx, state.boxCurrent.sx);
+      const y = Math.min(state.boxStart.sy, state.boxCurrent.sy);
+      const w = Math.abs(state.boxCurrent.sx - state.boxStart.sx);
+      const h = Math.abs(state.boxCurrent.sy - state.boxStart.sy);
+      ctx.save();
+      ctx.fillStyle = "rgba(88,101,242,0.18)";
+      ctx.strokeStyle = "#5865f2";
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeRect(x, y, w, h);
+      ctx.restore();
     }
   }
 
@@ -4152,38 +4357,107 @@
   cv.addEventListener("mousedown", (e) => {
     if (state.modalOpen) return;
     closeItemContextMenu();
-    if (e.button !== 0) return;
 
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
 
+    if (e.button === 2){
+      state.draggingItem = false;
+      state.boxSelecting = false;
+      state.draggingPan = true;
+      state.rightPanActive = true;
+      state.rightPanStart = { sx, sy };
+      state.suppressContextMenu = false;
+      state.lastMouse = { sx, sy };
+      return;
+    }
+
+    if (e.button !== 0) return;
+
+    if (state.pastePlacementActive){
+      applyPasteAtWorld(screenToWorld(sx, sy));
+      state.draggingItem = false;
+      state.draggingPan = false;
+      state.lastMouse = { sx, sy };
+      return;
+    }
+
     const picked = pickItemAt(sx,sy);
     if (picked){
-      selectById(picked.id);
-      state.draggingItem = e.shiftKey;
+      if (e.ctrlKey){
+        if (state.multiSelectedIds.has(picked.id)){
+          state.multiSelectedIds.delete(picked.id);
+          if (state.selectedId === picked.id){
+            const next = state.multiSelectedIds.values().next();
+            state.selectedId = next.done ? null : next.value;
+          }
+        } else {
+          state.multiSelectedIds.add(picked.id);
+          state.selectedId = picked.id;
+        }
+        state.selectedWaypointMarkerIds.clear();
+        updateWaypointMarkerCount(0);
+        state.draggingItem = false;
+        renderList();
+        draw();
+      } else {
+        selectById(picked.id);
+        state.draggingItem = e.shiftKey;
+      }
     } else {
       state.draggingItem = false;
+      state.draggingPan = false;
+      state.boxSelecting = true;
+      state.boxSelectAdditive = e.ctrlKey;
+      state.boxStart = { sx, sy };
+      state.boxCurrent = { sx, sy };
+      if (!e.ctrlKey && (state.selectedId !== null || state.multiSelectedIds.size || state.selectedWaypointMarkerIds.size)){
+        state.selectedId = null;
+        state.multiSelectedIds.clear();
+        state.selectedWaypointMarkerIds.clear();
+        updateWaypointMarkerCount(0);
+      }
+      renderList();
+      draw();
     }
-    state.draggingPan = !state.draggingItem;
+    state.draggingPan = !state.draggingItem && !state.boxSelecting && !e.ctrlKey;
     state.lastMouse = { sx, sy };
   });
 
   cv.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     if (state.modalOpen) return;
+    if (state.suppressContextMenu){
+      state.suppressContextMenu = false;
+      return;
+    }
 
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const picked = pickItemAt(sx, sy);
+    const hasSelection = state.selectedId !== null || state.multiSelectedIds.size > 0;
 
     if (!picked){
-      closeItemContextMenu();
+      if (hasSelection){
+        if (state.selectedId === null && state.multiSelectedIds.size){
+          state.selectedId = state.multiSelectedIds.values().next().value;
+          renderList();
+          draw();
+        }
+        showItemContextMenu(e.clientX, e.clientY);
+      } else if (state.itemClipboardItems.length){
+        showItemContextMenu(e.clientX, e.clientY, [
+          { label: "Paste", action: () => beginPastePlacementAtScreen(sx, sy) }
+        ]);
+      } else {
+        closeItemContextMenu();
+      }
       return;
     }
 
-    if (state.selectedId !== picked.id) selectById(picked.id);
+    if (state.selectedId !== picked.id && !state.multiSelectedIds.has(picked.id)) selectById(picked.id);
     showItemContextMenu(e.clientX, e.clientY);
   });
 
@@ -4200,16 +4474,35 @@
   });
 
   cv.addEventListener("mousemove", (e) => {
-    if (!state.lastMouse) return;
     if (state.modalOpen) return;
 
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
+
+    if (state.pastePlacementActive){
+      state.pastePreviewWorld = screenToWorld(sx, sy);
+      draw();
+    }
+
+    if (!state.lastMouse){
+      state.lastMouse = { sx, sy };
+      return;
+    }
+
     const dx = sx - state.lastMouse.sx;
     const dy = sy - state.lastMouse.sy;
 
-    if (state.draggingItem && state.selectedId){
+    if (state.rightPanActive && state.rightPanStart && !state.suppressContextMenu){
+      const movedX = Math.abs(sx - state.rightPanStart.sx);
+      const movedY = Math.abs(sy - state.rightPanStart.sy);
+      if (movedX > 3 || movedY > 3) state.suppressContextMenu = true;
+    }
+
+    if (state.boxSelecting && state.boxStart){
+      state.boxCurrent = { sx, sy };
+      draw();
+    } else if (state.draggingItem && state.selectedId){
       const it = getSelected();
       if (it && kvHas(it, "position")){
         it.x += dx / state.view.zoom;
@@ -4228,9 +4521,44 @@
   });
 
   function stopDrag(){
+    const hadBoxSelection = state.boxSelecting && state.boxStart && state.boxCurrent;
+    const x0 = hadBoxSelection ? Math.min(state.boxStart.sx, state.boxCurrent.sx) : 0;
+    const x1 = hadBoxSelection ? Math.max(state.boxStart.sx, state.boxCurrent.sx) : 0;
+    const y0 = hadBoxSelection ? Math.min(state.boxStart.sy, state.boxCurrent.sy) : 0;
+    const y1 = hadBoxSelection ? Math.max(state.boxStart.sy, state.boxCurrent.sy) : 0;
+    const additiveSelection = state.boxSelectAdditive;
+
     state.draggingPan = false;
     state.draggingItem = false;
+    state.boxSelecting = false;
+    state.boxSelectAdditive = false;
+    state.boxStart = null;
+    state.boxCurrent = null;
+    state.rightPanActive = false;
+    state.rightPanStart = null;
     state.lastMouse = null;
+
+    if (hadBoxSelection){
+      const minSize = 3;
+      if ((x1 - x0) >= minSize || (y1 - y0) >= minSize){
+        const boxIds = [];
+        for (const it of getFilteredItems()){
+          const p = worldToScreen(it.x, it.y);
+          if (p.sx >= x0 && p.sx <= x1 && p.sy >= y0 && p.sy <= y1){
+            boxIds.push(it.id);
+          }
+        }
+        if (!additiveSelection){
+          state.multiSelectedIds.clear();
+        }
+        for (const id of boxIds) state.multiSelectedIds.add(id);
+        state.selectedId = state.multiSelectedIds.size ? Array.from(state.multiSelectedIds).at(-1) : null;
+        state.selectedWaypointMarkerIds.clear();
+        updateWaypointMarkerCount(0);
+      }
+      renderList();
+      draw();
+    }
   }
   cv.addEventListener("mouseup", stopDrag);
   cv.addEventListener("mouseleave", stopDrag);
