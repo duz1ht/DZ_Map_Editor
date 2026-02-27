@@ -1222,6 +1222,7 @@
     contextTargetId: null,
     itemClipboard: null,
     itemClipboardSection: null,
+    itemClipboardItems: [],
     pastePlacementActive: false,
     pastePreviewWorld: null,
 
@@ -3586,7 +3587,7 @@
   });
 
   function createPastedItemFrom(sourceItem, sourceSection = null, options = {}){
-    const { offset = true, worldPosition = null } = options;
+    const { offset = true, worldPosition = null, selectCreated = true, refresh = true } = options;
     const copy = structuredClone(sourceItem);
     copy.id = Math.max(...state.items.map(x => x.id)) + 1;
     copy.beginLine = "begin item";
@@ -3609,27 +3610,47 @@
       newSec.lines = copy.lines.slice();
       state.sectionBlocks.push(newSec);
     }
-    selectById(copy.id);
-    renderItemWindow();
-    refreshLiveMisWindow();
+    if (selectCreated) selectById(copy.id);
+    if (refresh){
+      renderItemWindow();
+      refreshLiveMisWindow();
+    }
     return copy;
   }
 
   function copySelectedItem(){
-    const it = getSelected();
-    if (!it){
+    const selectedIds = state.multiSelectedIds.size
+      ? Array.from(state.multiSelectedIds)
+      : (state.selectedId != null ? [state.selectedId] : []);
+    const selectedItems = state.items.filter(it => selectedIds.includes(it.id));
+    if (!selectedItems.length){
       statusEl.textContent = "Selecione um item para copiar.";
       return false;
     }
-    state.itemClipboard = structuredClone(it);
-    const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
-    state.itemClipboardSection = sec ? structuredClone(sec) : null;
-    statusEl.textContent = `Copiado: #${it.id}`;
+
+    const anchor = selectedItems.find(it => it.id === state.selectedId) || selectedItems[0];
+    const entries = selectedItems.map(it => {
+      const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
+      return {
+        item: structuredClone(it),
+        section: sec ? structuredClone(sec) : null,
+        dx: it.x - anchor.x,
+        dy: it.y - anchor.y
+      };
+    });
+
+    state.itemClipboardItems = entries;
+    state.itemClipboard = structuredClone(anchor);
+    const anchorSec = state.sectionBlocks.find(s => s.kind === "item" && s.start === anchor.start);
+    state.itemClipboardSection = anchorSec ? structuredClone(anchorSec) : null;
+    statusEl.textContent = entries.length === 1
+      ? `Copiado: #${anchor.id}`
+      : `Copiados: ${entries.length} itens`;
     return true;
   }
 
   function beginPastePlacementAtScreen(sx, sy){
-    if (!state.itemClipboard){
+    if (!state.itemClipboardItems.length){
       statusEl.textContent = "Nenhum item copiado para colar.";
       return;
     }
@@ -3640,18 +3661,39 @@
   }
 
   function applyPasteAtWorld(world){
-    if (!state.itemClipboard || !world) return;
-    const pasted = createPastedItemFrom(state.itemClipboard, state.itemClipboardSection, { offset: false, worldPosition: world });
+    if (!state.itemClipboardItems.length || !world) return;
+    const pastedItems = [];
+    for (const entry of state.itemClipboardItems){
+      const pasted = createPastedItemFrom(entry.item, entry.section, {
+        offset: false,
+        worldPosition: { x: world.x + entry.dx, y: world.y + entry.dy },
+        selectCreated: false,
+        refresh: false
+      });
+      pastedItems.push(pasted);
+    }
+    const pastedIds = pastedItems.map(it => it.id);
+    state.selectedId = pastedIds[pastedIds.length - 1] ?? null;
+    state.multiSelectedIds = new Set(pastedIds);
+    state.selectedWaypointMarkerIds.clear();
+    updateWaypointMarkerCount(0);
+    renderList();
+    renderItemWindow();
+    refreshLiveMisWindow();
+
     state.pastePlacementActive = false;
     state.pastePreviewWorld = null;
     state.itemClipboard = null;
     state.itemClipboardSection = null;
+    state.itemClipboardItems = [];
     draw();
-    statusEl.textContent = `Colado: novo item #${pasted.id}`;
+    statusEl.textContent = pastedItems.length === 1
+      ? `Colado: novo item #${pastedItems[0].id}`
+      : `Colados: ${pastedItems.length} itens`;
   }
 
   function pasteCopiedItem(){
-    if (!state.itemClipboard){
+    if (!state.itemClipboardItems.length){
       statusEl.textContent = "Nenhum item copiado para colar.";
       return;
     }
@@ -3811,6 +3853,9 @@
     state.multiSelectedIds.clear();
     state.filename = "";
     state.currentMisFileHandle = null;
+    state.itemClipboard = null;
+    state.itemClipboardSection = null;
+    state.itemClipboardItems = [];
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
     exportBtn.disabled = true;
@@ -4102,6 +4147,9 @@
     state.sectionBlocks = parsed.sectionBlocks;
     state.selectedId = null;
     state.multiSelectedIds.clear();
+    state.itemClipboard = null;
+    state.itemClipboardSection = null;
+    state.itemClipboardItems = [];
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
 
@@ -4212,19 +4260,21 @@
       }
     }
 
-    if (state.pastePlacementActive && state.pastePreviewWorld){
-      const p = worldToScreen(state.pastePreviewWorld.x, state.pastePreviewWorld.y);
+    if (state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length){
       ctx.save();
       ctx.globalAlpha = 0.75;
-      ctx.fillStyle = "#57d38c";
-      ctx.beginPath();
-      ctx.arc(p.sx, p.sy, 6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "#9bf0bf";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(p.sx, p.sy, 10, 0, Math.PI * 2);
-      ctx.stroke();
+      for (const entry of state.itemClipboardItems){
+        const p = worldToScreen(state.pastePreviewWorld.x + entry.dx, state.pastePreviewWorld.y + entry.dy);
+        ctx.fillStyle = "#57d38c";
+        ctx.beginPath();
+        ctx.arc(p.sx, p.sy, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#9bf0bf";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(p.sx, p.sy, 10, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.restore();
     }
   }
@@ -4307,7 +4357,7 @@
     const picked = pickItemAt(sx, sy);
 
     if (!picked){
-      if (state.itemClipboard){
+      if (state.itemClipboardItems.length){
         showItemContextMenu(e.clientX, e.clientY, [
           { label: "Paste", action: () => beginPastePlacementAtScreen(sx, sy) }
         ]);
