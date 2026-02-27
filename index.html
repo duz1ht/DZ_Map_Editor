@@ -1252,6 +1252,7 @@
     "NIGHT1.ENV", "NIGHT2.ENV", "NIGHT3.ENV", "NIGHT4.ENV", "NIGHT5.ENV",
   ];
   const GENERAL_ENV_DATA = new Map();
+  const GENERAL_TERRAIN_WATER_HEIGHT = new Map();
 
   function parseFloatSafe(v){
     const n = Number(v);
@@ -1789,6 +1790,66 @@
     return (rr << 16) | (gg << 8) | bb;
   }
 
+  function fixed16ToNumber(v){
+    const n = Number(v);
+    return Number.isFinite(n) ? (n / 65536) : 0;
+  }
+
+  function numberToFixed16(v){
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.round(n * 65536));
+  }
+
+  function parseTerrainWaterHeight(rawText){
+    const lines = String(rawText || "").split(/\r?\n/);
+    for (const line of lines){
+      const stripped = line.split(";")[0].trim();
+      if (!stripped) continue;
+      const m = stripped.match(/^water_height\s+(.+)$/i);
+      if (!m) continue;
+      const n = Number(m[1].trim());
+      return Number.isFinite(n) ? n : 0;
+    }
+    return 0;
+  }
+
+  async function loadTerrainWaterHeight(terrainName){
+    const key = String(terrainName || "").trim().toLowerCase();
+    if (!key) return 0;
+    if (GENERAL_TERRAIN_WATER_HEIGHT.has(key)) return GENERAL_TERRAIN_WATER_HEIGHT.get(key);
+
+    const folderUpper = key.toUpperCase();
+    const folderTitle = key.charAt(0).toUpperCase() + key.slice(1);
+    const candidates = [
+      `resources/terrains/${key}/${key}.trn`,
+      `resources/terrains/${key}/${key}.TRN`,
+      `resources/terrains/${key}/${folderUpper}.TRN`,
+      `resources/terrains/${folderUpper}/${folderUpper}.TRN`,
+      `resources/terrains/${folderUpper}/${key}.trn`,
+      `resources/terrains/${folderTitle}/${folderTitle}.trn`,
+    ];
+
+    for (const path of candidates){
+      try {
+        const res = await fetch(path);
+        if (!res.ok) continue;
+        const value = parseTerrainWaterHeight(await res.text());
+        GENERAL_TERRAIN_WATER_HEIGHT.set(key, value);
+        return value;
+      } catch (_err) {
+        // ignore and keep trying paths
+      }
+    }
+
+    GENERAL_TERRAIN_WATER_HEIGHT.set(key, 0);
+    return 0;
+  }
+
+  function hasMisLoaded(){
+    return String(state.rawText || "").trim().length > 0;
+  }
+
   function parseEnvRgb(raw){
     const m = String(raw || "").trim().match(/^(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
     if (!m) return null;
@@ -1827,9 +1888,18 @@
   }
 
   function applyEnvironmentFogToInputs(){
+    if (!hasMisLoaded()){
+      giFogLevel.value = "0";
+      giFogR.value = "0";
+      giFogG.value = "0";
+      giFogB.value = "0";
+      return;
+    }
+
     const selectedEnv = String(giEnvironment.value || "").trim().toLowerCase();
     const envData = GENERAL_ENV_DATA.get(selectedEnv);
     if (!envData) return;
+
     if (!giFogDistEnabled.checked) giFogLevel.value = String(envData.fogLevel);
     if (!giFogColorEnabled.checked){
       if (envData.fogRgb){
@@ -1837,12 +1907,21 @@
         giFogG.value = String(envData.fogRgb.g);
         giFogB.value = String(envData.fogRgb.b);
       } else {
-        const gray = String(Math.max(0, Math.min(255, envData.fogType * 85)));
-        giFogR.value = gray;
-        giFogG.value = gray;
-        giFogB.value = gray;
+        giFogR.value = "0";
+        giFogG.value = "0";
+        giFogB.value = "0";
       }
     }
+  }
+
+  async function applyTerrainWaterToInput(){
+    if (!hasMisLoaded()){
+      giWaterLevel.value = "0";
+      return;
+    }
+    if (giWaterEnabled.checked) return;
+    const waterHeight = await loadTerrainWaterHeight(giTerrain.value || "");
+    giWaterLevel.value = String(Number.isFinite(waterHeight) ? waterHeight : 0);
   }
 
   function updateGeneralInfoEnables(){
@@ -1927,13 +2006,13 @@
     }
 
     const waterRaw = Number(kv.water_level || 0);
-    giWaterEnabled.checked = ((attrib & GENERAL_ATTRIB_BITS.waterOverride) !== 0) || Object.prototype.hasOwnProperty.call(kv, "water_level");
+    giWaterEnabled.checked = (attrib & GENERAL_ATTRIB_BITS.waterOverride) !== 0;
     giWaterLevel.value = Number.isFinite(waterRaw) ? String(waterRaw * 0.5) : "0";
 
-    giFogDistEnabled.checked = ((attrib & GENERAL_ATTRIB_BITS.fogDistanceOverride) !== 0) || Object.prototype.hasOwnProperty.call(kv, "fog_level");
-    giFogLevel.value = kv.fog_level || "0";
+    giFogDistEnabled.checked = (attrib & GENERAL_ATTRIB_BITS.fogDistanceOverride) !== 0;
+    giFogLevel.value = String(fixed16ToNumber(kv.fog_level || 0));
 
-    giFogColorEnabled.checked = ((attrib & GENERAL_ATTRIB_BITS.fogColorOverride) !== 0) || Object.prototype.hasOwnProperty.call(kv, "fog_color");
+    giFogColorEnabled.checked = (attrib & GENERAL_ATTRIB_BITS.fogColorOverride) !== 0;
     const rgb = decodeFogColor(kv.fog_color || 0);
     giFogR.value = String(rgb.r); giFogG.value = String(rgb.g); giFogB.value = String(rgb.b);
 
@@ -1945,7 +2024,21 @@
     giNvgStartOn.checked = (attrib & GENERAL_ATTRIB_BITS.nvgStartOn) !== 0;
     giRotate180.checked = (attrib & GENERAL_ATTRIB_BITS.rotate180) !== 0;
 
+    if (!hasMisLoaded()) {
+      giWaterEnabled.checked = false;
+      giFogDistEnabled.checked = false;
+      giFogColorEnabled.checked = false;
+      giWaterLevel.value = "0";
+      giFogLevel.value = "0";
+      giFogR.value = "0";
+      giFogG.value = "0";
+      giFogB.value = "0";
+      giWindSpeed.value = "0";
+      giWindDirection.value = "0";
+    }
+
     applyEnvironmentFogToInputs();
+    applyTerrainWaterToInput();
     updateGeneralInfoEnables();
   }
 
@@ -1989,9 +2082,13 @@
     kv.hardwin = String(win.criticalMask);
     kv.hardlose = String(lose.criticalMask);
 
-    kv.water_level = String(Math.max(0, Math.round(Number(giWaterLevel.value || 0) / 0.5)));
+    if (giWaterEnabled.checked){
+      kv.water_level = String(Math.max(0, Math.round(Number(giWaterLevel.value || 0) / 0.5)));
+    } else {
+      delete kv.water_level;
+    }
     if (giFogDistEnabled.checked){
-      kv.fog_level = String(Math.max(0, Math.trunc(Number(giFogLevel.value || 0))));
+      kv.fog_level = String(numberToFixed16(giFogLevel.value || 0));
     } else {
       delete kv.fog_level;
     }
@@ -3318,6 +3415,8 @@
   giEnvironment.addEventListener("change", applyEnvironmentFogToInputs);
   giFogDistEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   giFogColorEnabled.addEventListener("change", applyEnvironmentFogToInputs);
+  giTerrain.addEventListener("change", applyTerrainWaterToInput);
+  giWaterEnabled.addEventListener("change", applyTerrainWaterToInput);
   wpSelectMarkersBtn.addEventListener("click", selectWaypointMarkers);
   wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
   wpOkBtn.addEventListener("click", () => { saveCurrentWaypoint(); closeSectionEditor(); });
