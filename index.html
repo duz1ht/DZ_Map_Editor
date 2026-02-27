@@ -1192,6 +1192,10 @@
     view: { zoom: 0.00002, ox: 0, oy: 0 },
     draggingPan: false,
     draggingItem: false,
+    boxSelecting: false,
+    boxSelectAdditive: false,
+    boxStart: null,
+    boxCurrent: null,
     lastMouse: null,
     filename: "",
     modalOpen: false,
@@ -4317,6 +4321,20 @@
       }
       ctx.restore();
     }
+
+    if (state.boxSelecting && state.boxStart && state.boxCurrent){
+      const x = Math.min(state.boxStart.sx, state.boxCurrent.sx);
+      const y = Math.min(state.boxStart.sy, state.boxCurrent.sy);
+      const w = Math.abs(state.boxCurrent.sx - state.boxStart.sx);
+      const h = Math.abs(state.boxCurrent.sy - state.boxStart.sy);
+      ctx.save();
+      ctx.fillStyle = "rgba(88,101,242,0.18)";
+      ctx.strokeStyle = "#5865f2";
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeRect(x, y, w, h);
+      ctx.restore();
+    }
   }
 
   function pickItemAt(sx,sy){
@@ -4374,16 +4392,21 @@
       }
     } else {
       state.draggingItem = false;
-      if (state.selectedId !== null || state.multiSelectedIds.size || state.selectedWaypointMarkerIds.size){
+      state.draggingPan = false;
+      state.boxSelecting = true;
+      state.boxSelectAdditive = e.ctrlKey;
+      state.boxStart = { sx, sy };
+      state.boxCurrent = { sx, sy };
+      if (!e.ctrlKey && (state.selectedId !== null || state.multiSelectedIds.size || state.selectedWaypointMarkerIds.size)){
         state.selectedId = null;
         state.multiSelectedIds.clear();
         state.selectedWaypointMarkerIds.clear();
         updateWaypointMarkerCount(0);
-        renderList();
-        draw();
       }
+      renderList();
+      draw();
     }
-    state.draggingPan = !state.draggingItem && !e.ctrlKey;
+    state.draggingPan = !state.draggingItem && !state.boxSelecting && !e.ctrlKey;
     state.lastMouse = { sx, sy };
   });
 
@@ -4443,7 +4466,10 @@
     const dx = sx - state.lastMouse.sx;
     const dy = sy - state.lastMouse.sy;
 
-    if (state.draggingItem && state.selectedId){
+    if (state.boxSelecting && state.boxStart){
+      state.boxCurrent = { sx, sy };
+      draw();
+    } else if (state.draggingItem && state.selectedId){
       const it = getSelected();
       if (it && kvHas(it, "position")){
         it.x += dx / state.view.zoom;
@@ -4462,8 +4488,37 @@
   });
 
   function stopDrag(){
+    if (state.boxSelecting && state.boxStart && state.boxCurrent){
+      const x0 = Math.min(state.boxStart.sx, state.boxCurrent.sx);
+      const x1 = Math.max(state.boxStart.sx, state.boxCurrent.sx);
+      const y0 = Math.min(state.boxStart.sy, state.boxCurrent.sy);
+      const y1 = Math.max(state.boxStart.sy, state.boxCurrent.sy);
+      const minSize = 3;
+      if ((x1 - x0) >= minSize || (y1 - y0) >= minSize){
+        const boxIds = [];
+        for (const it of getFilteredItems()){
+          const p = worldToScreen(it.x, it.y);
+          if (p.sx >= x0 && p.sx <= x1 && p.sy >= y0 && p.sy <= y1){
+            boxIds.push(it.id);
+          }
+        }
+        if (!state.boxSelectAdditive){
+          state.multiSelectedIds.clear();
+        }
+        for (const id of boxIds) state.multiSelectedIds.add(id);
+        state.selectedId = state.multiSelectedIds.size ? Array.from(state.multiSelectedIds).at(-1) : null;
+        state.selectedWaypointMarkerIds.clear();
+        updateWaypointMarkerCount(0);
+        renderList();
+        draw();
+      }
+    }
     state.draggingPan = false;
     state.draggingItem = false;
+    state.boxSelecting = false;
+    state.boxSelectAdditive = false;
+    state.boxStart = null;
+    state.boxCurrent = null;
     state.lastMouse = null;
   }
   cv.addEventListener("mouseup", stopDrag);
