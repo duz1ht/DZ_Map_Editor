@@ -2762,16 +2762,41 @@
 
     const prevLines = state.realtimePrevMisText.split("\n");
     const nextLines = nextText.split("\n");
-    const maxLen = Math.max(prevLines.length, nextLines.length);
     const changed = [];
 
-    for (let i = 0; i < maxLen; i++){
-      const a = prevLines[i] ?? "";
-      const b = nextLines[i] ?? "";
-      if (a === b) continue;
-      if (a !== "") changed.push(`- L${i+1}: ${a}`);
-      if (b !== "") changed.push(`+ L${i+1}: ${b}`);
-      if (changed.length >= 24) break;
+    let i = 0;
+    let j = 0;
+    const maxEntries = 24;
+    while ((i < prevLines.length || j < nextLines.length) && changed.length < maxEntries){
+      const a = prevLines[i];
+      const b = nextLines[j];
+
+      if (a === b){
+        i++;
+        j++;
+        continue;
+      }
+
+      const nextB = nextLines[j + 1];
+      const nextA = prevLines[i + 1];
+
+      if (a !== undefined && nextB === a){
+        changed.push(`+ L${j+1}: ${b ?? ""}`);
+        j++;
+        continue;
+      }
+
+      if (b !== undefined && nextA === b){
+        changed.push(`- L${i+1}: ${a ?? ""}`);
+        i++;
+        continue;
+      }
+
+      if (a !== undefined) changed.push(`- L${i+1}: ${a}`);
+      if (changed.length >= maxEntries) break;
+      if (b !== undefined) changed.push(`+ L${j+1}: ${b}`);
+      i++;
+      j++;
     }
 
     const stamp = new Date().toLocaleTimeString();
