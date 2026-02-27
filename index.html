@@ -1225,6 +1225,7 @@
     wpNames: [],
     isLocalRuntime: window.location.protocol === "file:",
     editorFolderHandle: null,
+    currentMisFileHandle: null,
   };
 
   // UI refs
@@ -3709,6 +3710,7 @@
     state.sectionBlocks = [];
     state.selectedId = null;
     state.filename = "";
+    state.currentMisFileHandle = null;
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
     exportBtn.disabled = true;
@@ -3718,31 +3720,82 @@
     refreshLiveMisWindow(true);
   }
 
-  function saveCurrentMap(){
+  async function saveCurrentMap(){
     if (!state.rawText) return false;
     const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
+    if (window.showSaveFilePicker){
+      try{
+        const handle = state.currentMisFileHandle || await window.showSaveFilePicker({
+          suggestedName: state.filename || "edited.mis",
+          types: [{
+            description: "Mission Files",
+            accept: { "text/plain": [".mis"] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(out);
+        await writable.close();
+        state.currentMisFileHandle = handle;
+        state.filename = handle.name || state.filename;
+        statusEl.textContent = "File saved.";
+        return true;
+      } catch (err){
+        if (err?.name === "AbortError"){
+          statusEl.textContent = "Save canceled.";
+          return false;
+        }
+        addLog(`ERROR saving .mis: ${err?.message || "unknown error"}`);
+        statusEl.textContent = "Failed to save file (see Logs).";
+        return false;
+      }
+    }
     downloadText(state.filename || "edited.mis", out);
     statusEl.textContent = "File saved.";
     return true;
   }
 
-  function handleNewProject(){
+  async function handleNewProject(){
     if (!hasMapLoaded()){
       clearEditorMap();
       statusEl.textContent = "New map project created.";
       return;
     }
     const shouldSave = window.confirm("Do you want to save the current .mis before creating a new map project? Click OK to Save, or Cancel to continue without saving.");
-    if (shouldSave) saveCurrentMap();
+    if (shouldSave){
+      const saved = await saveCurrentMap();
+      if (!saved) return;
+    }
     clearEditorMap();
     statusEl.textContent = "New map project created.";
   }
 
   const menuHandlers = {
-    "file.new": () => handleNewProject(),
-    "file.open": () => fileMisEl.click(),
-    "file.saveAs": () => {
-      if (!saveCurrentMap()) return showNotImplemented("Save As");
+    "file.new": async () => handleNewProject(),
+    "file.open": async () => {
+      if (window.showOpenFilePicker){
+        try{
+          const [handle] = await window.showOpenFilePicker({
+            multiple: false,
+            types: [{
+              description: "Mission Files",
+              accept: { "text/plain": [".mis"] }
+            }]
+          });
+          if (!handle) return;
+          const file = await handle.getFile();
+          await loadMisFile(file, handle);
+          return;
+        } catch (err){
+          if (err?.name === "AbortError") return;
+          addLog(`ERROR opening .mis: ${err?.message || "unknown error"}`);
+          statusEl.textContent = "Failed to open file (see Logs).";
+          return;
+        }
+      }
+      fileMisEl.click();
+    },
+    "file.saveAs": async () => {
+      if (!await saveCurrentMap()) return showNotImplemented("Save As");
     },
     "file.setEditorFolder": async () => {
       if (!state.isLocalRuntime) return;
@@ -3933,12 +3986,11 @@
   });
 
   // File inputs
-  fileMisEl.addEventListener("change", async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-
-    state.filename = f.name;
-    const text = await f.text();
+  async function loadMisFile(file, fileHandle = null){
+    if (!file) return;
+    state.filename = file.name;
+    state.currentMisFileHandle = fileHandle;
+    const text = await file.text();
     state.rawText = text;
 
     const parsed = parseMIS(text);
@@ -3955,11 +4007,16 @@
     buildGroupOptions();
     buildTypeFilterOptions();
 
-    statusEl.textContent = `${f.name} loaded. items: ${state.items.length}`;
+    statusEl.textContent = `${file.name} loaded. items: ${state.items.length}`;
     fitView();
     renderList();
     draw();
     refreshLiveMisWindow(true);
+  }
+
+  fileMisEl.addEventListener("change", async (e) => {
+    const f = e.target.files?.[0];
+    await loadMisFile(f);
   });
   // Canvas
   const cv = document.getElementById("cv");
