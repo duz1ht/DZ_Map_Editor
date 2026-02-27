@@ -56,6 +56,7 @@
       --tag-warn-hover:#ffe066;
       --highlight:#ffe463;
       --highlight-current:#ff8a00;
+      --highlight-text:var(--text-strong);
       --control-hover-bg:var(--surface-subtle);
       --control-active-bg:#ececec;
     }
@@ -104,6 +105,7 @@
       --tag-warn-hover:#846925;
       --highlight:#f2c24f;
       --highlight-current:#e88b2f;
+      --highlight-text:#f6f8ff;
       --control-hover-bg:#223044;
       --control-active-bg:#2a3a52;
     }
@@ -152,6 +154,7 @@
       --tag-warn-hover:#ebd287;
       --highlight:#f4da67;
       --highlight-current:#ef9e2f;
+      --highlight-text:#18241b;
       --control-hover-bg:#edf5ea;
       --control-active-bg:#dcead7;
     }
@@ -248,6 +251,7 @@
       border:1px solid var(--line);
       border-radius:var(--radius-sm);
       background:var(--surface);
+      color:var(--text);
       box-sizing:border-box;
     }
     button{
@@ -263,6 +267,7 @@
       box-shadow:var(--focus-ring);
       border-color:var(--accent);
     }
+    input::placeholder, textarea::placeholder{ color:var(--text-muted); }
     input:disabled, select:disabled{
       background:var(--disabled-bg);
       color:var(--disabled-text);
@@ -403,8 +408,8 @@
       box-sizing:border-box;
       margin:0;
     }
-    #liveMisText mark{ background:var(--highlight); color:#111; }
-    #liveMisText mark.current{ background:var(--highlight-current); color:#111; }
+    #liveMisText mark{ background:var(--highlight); color:var(--highlight-text); }
+    #liveMisText mark.current{ background:var(--highlight-current); color:var(--highlight-text); }
     #logsOverlay{
       position:absolute;
       inset:0;
