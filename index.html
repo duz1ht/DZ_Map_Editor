@@ -216,20 +216,6 @@
       text-overflow:ellipsis;
       max-width: 55%;
     }
-    .themeSwitcher{
-      display:flex;
-      align-items:center;
-      gap:6px;
-      font-size:12px;
-      color:var(--text-muted);
-      flex:0 0 auto;
-      margin-left:auto;
-    }
-    .themeSwitcher select{
-      min-width:120px;
-      background:var(--surface);
-    }
-
     #canvasWrap{
       position:relative;
       min-height: 0;
@@ -630,6 +616,16 @@
       padding:4px 0;
     }
     .menuRoot.open .menuDropdown{ display:block; }
+    .menuSubmenu{
+      position:relative;
+    }
+    .menuSubmenu > .menuDropdown{
+      top:-5px;
+      left:100%;
+      display:none;
+      z-index:15;
+    }
+    .menuSubmenu:hover > .menuDropdown{ display:block; }
     .menuItemBtn{
       width:100%;
       border:0;
@@ -650,6 +646,16 @@
       color:var(--text-disabled);
       background:transparent;
       cursor:not-allowed;
+    }
+    .menuSubmenuBtn{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .menuSubmenuBtn::after{
+      content:"›";
+      opacity:0.8;
+      font-size:13px;
     }
     .menuSep{
       height:1px;
@@ -755,13 +761,6 @@
   <div id="globalMenuWrap">
     <div class="globalMenuContent">
       <div class="menuBar" id="menuBar"></div>
-      <label class="themeSwitcher" for="themeSelect">Theme
-        <select id="themeSelect" aria-label="Theme selector">
-          <option value="default">Default</option>
-          <option value="night">Night</option>
-          <option value="forest">Forest</option>
-        </select>
-      </label>
     </div>
   </div>
 
@@ -1251,8 +1250,6 @@
   const misRealtimeClearBtn = document.getElementById("misRealtimeClearBtn");
   const exportBtn = document.getElementById("exportBtn");
   const statusEl = document.getElementById("status");
-  const themeSelectEl = document.getElementById("themeSelect");
-
   const sectionOverlay = document.getElementById("sectionOverlay");
   const sectionWindow = document.getElementById("sectionWindow");
   const sectionCloseBtn = document.getElementById("sectionCloseBtn");
@@ -4021,7 +4018,10 @@
     "edit.globalReplace": runGlobalReplace,
     "edit.weaponLoadouts": () => openSectionEditor("weapon_availability"),
     "mis.liveChanges": openLiveMisWindow,
-    "logs.open": openLogsWindow
+    "logs.open": openLogsWindow,
+    "uiStyle.default": () => setTheme("default"),
+    "uiStyle.night": () => setTheme("night"),
+    "uiStyle.forest": () => setTheme("forest")
   };
 
   function getMenuTree(){
@@ -4098,12 +4098,20 @@
         ]
       },
       {
-        label: "Logs",
-        directCommand: "logs.open"
-      },
-      {
-        label: "MIS Code",
-        directCommand: "mis.liveChanges"
+        label: "More",
+        children: [
+          { label: "Logs", command: "logs.open" },
+          { label: "MIS Code", command: "mis.liveChanges" },
+          { separator: true },
+          {
+            label: "UI Style",
+            children: [
+              { label: "Default", command: "uiStyle.default" },
+              { label: "Night", command: "uiStyle.night" },
+              { label: "Forest", command: "uiStyle.forest" }
+            ]
+          }
+        ]
       }
     ];
   }
@@ -4139,24 +4147,45 @@
       const dropdown = document.createElement("div");
       dropdown.className = "menuDropdown";
 
-      for (const child of rootDef.children){
-        if (child.separator){
-          const sep = document.createElement("div");
-          sep.className = "menuSep";
-          dropdown.appendChild(sep);
-          continue;
+      function appendMenuItems(container, children){
+        for (const child of children){
+          if (child.separator){
+            const sep = document.createElement("div");
+            sep.className = "menuSep";
+            container.appendChild(sep);
+            continue;
+          }
+
+          if (Array.isArray(child.children) && child.children.length){
+            const submenu = document.createElement("div");
+            submenu.className = "menuSubmenu";
+
+            const submenuBtn = document.createElement("button");
+            submenuBtn.className = `menuItemBtn menuSubmenuBtn${child.attention ? " attention" : ""}`;
+            submenuBtn.textContent = child.label;
+            submenu.appendChild(submenuBtn);
+
+            const subDropdown = document.createElement("div");
+            subDropdown.className = "menuDropdown";
+            appendMenuItems(subDropdown, child.children);
+            submenu.appendChild(subDropdown);
+            container.appendChild(submenu);
+            continue;
+          }
+
+          const itemBtn = document.createElement("button");
+          itemBtn.className = `menuItemBtn${child.attention ? " attention" : ""}`;
+          itemBtn.textContent = child.label;
+          const handler = menuHandlers[child.command];
+          itemBtn.addEventListener("click", () => {
+            closeMenus();
+            if (handler) handler();
+            else showNotImplemented(child.label);
+          });
+          container.appendChild(itemBtn);
         }
-        const itemBtn = document.createElement("button");
-        itemBtn.className = `menuItemBtn${child.attention ? " attention" : ""}`;
-        itemBtn.textContent = child.label;
-        const handler = menuHandlers[child.command];
-        itemBtn.addEventListener("click", () => {
-          closeMenus();
-          if (handler) handler();
-          else showNotImplemented(child.label);
-        });
-        dropdown.appendChild(itemBtn);
       }
+      appendMenuItems(dropdown, rootDef.children || []);
 
       root.appendChild(dropdown);
       menuBar.appendChild(root);
@@ -4586,18 +4615,17 @@
     const normalized = theme && theme !== "default" ? theme : "";
     if (normalized) document.body.setAttribute("data-theme", normalized);
     else document.body.removeAttribute("data-theme");
-    if (themeSelectEl) themeSelectEl.value = normalized || "default";
+  }
+
+  function setTheme(theme){
+    const nextTheme = theme || "default";
+    applyTheme(nextTheme);
+    localStorage.setItem("dz-theme", nextTheme);
   }
 
   function initTheme(){
     const saved = localStorage.getItem("dz-theme") || "default";
     applyTheme(saved);
-    if (!themeSelectEl) return;
-    themeSelectEl.addEventListener("change", () => {
-      const nextTheme = themeSelectEl.value || "default";
-      applyTheme(nextTheme);
-      localStorage.setItem("dz-theme", nextTheme);
-    });
   }
 
   // Boot: load embedded ITEMS.DEF + optional resources (weapon.def + game strings).
