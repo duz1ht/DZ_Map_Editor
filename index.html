@@ -2544,9 +2544,9 @@
 
   function rebuildMIS(originalText, items, sectionBlocks){
     const out = originalText.replace(/\r\n/g, "\n").split("\n");
+    const originalParsed = parseMIS(originalText);
 
-    const sorted = sectionBlocks.slice().sort((a,b) => b.start - a.start);
-    for (const liveSec of sorted){
+    function buildSectionBlock(liveSec){
       const newBlock = [];
 
       let it = null;
@@ -2595,7 +2595,33 @@
       }
 
       newBlock.push(`end ${liveSec.kind}`);
-      out.splice(liveSec.start, liveSec.end - liveSec.start + 1, ...newBlock);
+      return newBlock;
+    }
+
+    const liveByKey = new Map();
+    for (const sec of sectionBlocks){
+      liveByKey.set(`${sec.kind}::${sec.start}`, sec);
+    }
+
+    const originalSorted = originalParsed.sectionBlocks.slice().sort((a,b) => b.start - a.start);
+    for (const originalSec of originalSorted){
+      const key = `${originalSec.kind}::${originalSec.start}`;
+      const liveSec = liveByKey.get(key);
+      if (!liveSec){
+        out.splice(originalSec.start, originalSec.end - originalSec.start + 1);
+        continue;
+      }
+      const newBlock = buildSectionBlock(liveSec);
+      out.splice(originalSec.start, originalSec.end - originalSec.start + 1, ...newBlock);
+      liveByKey.delete(key);
+    }
+
+    const appendedSections = Array.from(liveByKey.values())
+      .sort((a,b) => a.start - b.start);
+    for (const sec of appendedSections){
+      const newBlock = buildSectionBlock(sec);
+      if (out.length && out[out.length - 1].trim() !== "") out.push("");
+      out.push(...newBlock);
     }
 
     return out.join("\n");
