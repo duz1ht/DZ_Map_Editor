@@ -3746,12 +3746,13 @@
     refreshLiveMisWindow(true);
   }
 
-  async function saveCurrentMap(){
+  async function saveCurrentMap(options = {}){
+    const forcePicker = Boolean(options?.forcePicker);
     if (!state.rawText) return false;
     const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
     if (window.showSaveFilePicker){
       try{
-        const handle = state.currentMisFileHandle || await window.showSaveFilePicker({
+        const handle = (!forcePicker && state.currentMisFileHandle) ? state.currentMisFileHandle : await window.showSaveFilePicker({
           suggestedName: state.filename || "edited.mis",
           types: [{
             description: "Mission Files",
@@ -3788,7 +3789,7 @@
     }
     const shouldSave = window.confirm("Do you want to save the current .mis before creating a new map project? Click OK to Save, or Cancel to continue without saving.");
     if (shouldSave){
-      const saved = await saveCurrentMap();
+      const saved = await saveCurrentMap({ forcePicker: true });
       if (!saved) return;
     }
     clearEditorMap();
@@ -3821,7 +3822,7 @@
       fileMisEl.click();
     },
     "file.saveAs": async () => {
-      if (!await saveCurrentMap()) return showNotImplemented("Save As");
+      if (!await saveCurrentMap({ forcePicker: true })) return showNotImplemented("Save As");
     },
     "file.setEditorFolder": async () => {
       if (!state.isLocalRuntime) return;
