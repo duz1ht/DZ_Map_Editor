@@ -1878,13 +1878,28 @@
   }
 
   async function preloadEnvironmentFiles(){
+    let loadedCount = 0;
+    let failedCount = 0;
     const pending = GENERAL_ENV_FILE_PATHS.map(async fileName => {
-      const res = await fetch(`resources/enviroments/${fileName}`);
-      if (!res.ok) return;
-      const parsed = parseEnvironmentFile(await res.text());
-      GENERAL_ENV_DATA.set(fileName.replace(/\.env$/i, "").toLowerCase(), parsed);
+      const path = `resources/enviroments/${fileName}`;
+      try {
+        const res = await fetch(path);
+        if (!res.ok){
+          failedCount += 1;
+          addLog(`ERROR loading environment file: ${path} (HTTP ${res.status})`);
+          return;
+        }
+        const parsed = parseEnvironmentFile(await res.text());
+        GENERAL_ENV_DATA.set(fileName.replace(/\.env$/i, "").toLowerCase(), parsed);
+        loadedCount += 1;
+        addLog(`Loaded environment file: ${path}`);
+      } catch (err) {
+        failedCount += 1;
+        addLog(`ERROR loading environment file: ${path} (${err?.message || "fetch failed"})`);
+      }
     });
     await Promise.allSettled(pending);
+    addLog(`Environment files preload finished: loaded=${loadedCount}, failed=${failedCount}`);
   }
 
   function applyEnvironmentFogToInputs(){
