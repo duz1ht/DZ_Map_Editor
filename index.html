@@ -4259,6 +4259,13 @@
       state.draggingItem = e.shiftKey;
     } else {
       state.draggingItem = false;
+      if (state.selectedId !== null || state.selectedWaypointMarkerIds.size){
+        state.selectedId = null;
+        state.selectedWaypointMarkerIds.clear();
+        updateWaypointMarkerCount(0);
+        renderList();
+        draw();
+      }
     }
     state.draggingPan = !state.draggingItem;
     state.lastMouse = { sx, sy };
