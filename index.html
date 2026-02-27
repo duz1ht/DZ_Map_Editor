@@ -1221,6 +1221,8 @@
     contextTargetId: null,
     itemClipboard: null,
     itemClipboardSection: null,
+    pastePlacementActive: false,
+    pastePreviewWorld: null,
 
     gameStrings: new Map(),
     weaponDefs: new Map(),
@@ -3571,14 +3573,27 @@
     if (e.key === "Escape" && state.modalOpen) closeModalCancel();
     if (e.key === "Escape" && state.sectionEditorOpen) closeSectionEditor();
     if (e.key === "Escape" && state.liveMisOpen) closeLiveMisWindow();
+    if (e.key === "Escape" && state.pastePlacementActive){
+      state.pastePlacementActive = false;
+      state.pastePreviewWorld = null;
+      draw();
+      statusEl.textContent = "Paste cancelado.";
+    }
   });
 
-  function createPastedItemFrom(sourceItem, sourceSection = null){
+  function createPastedItemFrom(sourceItem, sourceSection = null, options = {}){
+    const { offset = true, worldPosition = null } = options;
     const copy = structuredClone(sourceItem);
     copy.id = Math.max(...state.items.map(x => x.id)) + 1;
     copy.beginLine = "begin item";
-    copy.x += 50000;
-    copy.y += 50000;
+    if (offset){
+      copy.x += 50000;
+      copy.y += 50000;
+    }
+    if (worldPosition){
+      copy.x = worldPosition.x;
+      copy.y = worldPosition.y;
+    }
     if (copy.kv.position) copy.kv.position = `${copy.x} ${copy.y} ${copy.z}`;
     state.items.push(copy);
     if (sourceSection){
@@ -3609,20 +3624,42 @@
     return true;
   }
 
+  function beginPastePlacementAtScreen(sx, sy){
+    if (!state.itemClipboard){
+      statusEl.textContent = "Nenhum item copiado para colar.";
+      return;
+    }
+    state.pastePlacementActive = true;
+    state.pastePreviewWorld = screenToWorld(sx, sy);
+    draw();
+    statusEl.textContent = "Paste ativo: clique no canvas para aplicar na posição do ponteiro.";
+  }
+
+  function applyPasteAtWorld(world){
+    if (!state.itemClipboard || !world) return;
+    const pasted = createPastedItemFrom(state.itemClipboard, state.itemClipboardSection, { offset: false, worldPosition: world });
+    state.pastePlacementActive = false;
+    state.pastePreviewWorld = null;
+    draw();
+    statusEl.textContent = `Colado: novo item #${pasted.id}`;
+  }
+
   function pasteCopiedItem(){
     if (!state.itemClipboard){
       statusEl.textContent = "Nenhum item copiado para colar.";
       return;
     }
-    const pasted = createPastedItemFrom(state.itemClipboard, state.itemClipboardSection);
-    statusEl.textContent = `Colado: novo item #${pasted.id}`;
+    const rect = cv.getBoundingClientRect();
+    const sx = state.lastMouse ? state.lastMouse.sx : rect.width / 2;
+    const sy = state.lastMouse ? state.lastMouse.sy : rect.height / 2;
+    beginPastePlacementAtScreen(sx, sy);
   }
 
   ui.dupBtn.addEventListener("click", () => {
     const it = getSelected();
     if (!it) return;
     const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
-    const copy = createPastedItemFrom(it, sec || null);
+    const copy = createPastedItemFrom(it, sec || null, { offset: true });
     statusEl.textContent = `Duplicado: #${it.id} -> #${copy.id}`;
   });
 
@@ -3682,13 +3719,13 @@
     itemContextMenu.setAttribute("aria-hidden", "true");
   }
 
-  function showItemContextMenu(clientX, clientY){
+  function showItemContextMenu(clientX, clientY, menuItems = null){
     const selected = getSelected();
-    if (!selected) return;
+    if (!menuItems && !selected) return;
     state.contextMenuOpen = true;
-    state.contextTargetId = selected.id;
+    state.contextTargetId = selected ? selected.id : null;
 
-    const menuItems = [
+    const itemsToRender = menuItems || [
       { label: "Edit Item Attributes", action: () => openModal() },
       { separator: true },
       { label: "Cut", action: () => showNotImplemented("Cut") },
@@ -3717,7 +3754,7 @@
     ];
 
     itemContextMenu.innerHTML = "";
-    for (const entry of menuItems){
+    for (const entry of itemsToRender){
       if (entry.separator){
         const sep = document.createElement("div");
         sep.className = "menuSep";
@@ -4165,6 +4202,22 @@
         ctx.stroke();
       }
     }
+
+    if (state.pastePlacementActive && state.pastePreviewWorld){
+      const p = worldToScreen(state.pastePreviewWorld.x, state.pastePreviewWorld.y);
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = "#57d38c";
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#9bf0bf";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   function pickItemAt(sx,sy){
@@ -4190,6 +4243,14 @@
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
 
+    if (state.pastePlacementActive){
+      applyPasteAtWorld(screenToWorld(sx, sy));
+      state.draggingItem = false;
+      state.draggingPan = false;
+      state.lastMouse = { sx, sy };
+      return;
+    }
+
     const picked = pickItemAt(sx,sy);
     if (picked){
       selectById(picked.id);
@@ -4211,7 +4272,13 @@
     const picked = pickItemAt(sx, sy);
 
     if (!picked){
-      closeItemContextMenu();
+      if (state.itemClipboard){
+        showItemContextMenu(e.clientX, e.clientY, [
+          { label: "Paste", action: () => beginPastePlacementAtScreen(sx, sy) }
+        ]);
+      } else {
+        closeItemContextMenu();
+      }
       return;
     }
 
@@ -4232,12 +4299,22 @@
   });
 
   cv.addEventListener("mousemove", (e) => {
-    if (!state.lastMouse) return;
     if (state.modalOpen) return;
 
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
+
+    if (state.pastePlacementActive){
+      state.pastePreviewWorld = screenToWorld(sx, sy);
+      draw();
+    }
+
+    if (!state.lastMouse){
+      state.lastMouse = { sx, sy };
+      return;
+    }
+
     const dx = sx - state.lastMouse.sx;
     const dy = sy - state.lastMouse.sy;
 
