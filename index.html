@@ -4394,6 +4394,42 @@
   function pickItemAt(sx,sy){ const items=getFilteredItems(); let best=null,bestD2=Infinity; for(const it of items){ const p=worldToScreen(it.x,it.y,it.z||0); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
+  async function listTerrainFilesFromEditorFolder(terrainName){
+    if (!state.editorFolderHandle) return null;
+    try{
+      const parts = ["resources", "terrains"];
+      let dir = state.editorFolderHandle;
+      for (const part of parts){
+        dir = await dir.getDirectoryHandle(part);
+      }
+
+      let matchedDir = null;
+      const wanted = String(terrainName || "").toLowerCase();
+      for await (const [name, handle] of dir.entries()){
+        if (handle.kind !== "directory") continue;
+        if (name.toLowerCase() === wanted){
+          matchedDir = { name, handle };
+          break;
+        }
+      }
+      if (!matchedDir) return null;
+
+      const files = [];
+      for await (const [name, handle] of matchedDir.handle.entries()){
+        if (handle.kind === "file") files.push(name);
+      }
+      return { folder: matchedDir.name, files };
+    } catch (err){
+      addLog(`[terrain] error listing terrain folder from editor folder: ${err?.message || err}`);
+      return null;
+    }
+  }
+
+  function findFileCaseInsensitive(files, wanted){
+    const low = String(wanted || "").toLowerCase();
+    return (files || []).find(f => String(f).toLowerCase() === low) || null;
+  }
+
   const TERRAIN_FILE_INDEX={"CINE": ["CINE.TRN"], "DVD1": ["DVD1.TRN"], "dvd2": ["dvd2.trn"], "dvd3": ["dvd3.trn"], "DVD4": ["DVD4.TRN"], "dvd5": ["dvd5.trn"], "dvdg1": ["dvdg1.trn"], "DVDG2": ["DVDG2.TRN"], "dvg1": ["dvg1.trn"], "dvt1": ["dvt1.trn"], "Flat": ["Flat.TRN"], "MIS1": ["MIS1.TRN"], "mis10": ["mis10.trn"], "MIS11": ["MIS11.TRN"], "MIS13": ["MIS13.TRN"], "Mis14": ["Mis14.trn"], "MIS15": ["MIS15.TRN"], "MIS16": ["MIS16.TRN"], "MIS17": ["MIS17.TRN"], "MIS18": ["MIS18.TRN"], "MIS19B": ["MIS19B.TRN"], "MIS2": ["MIS2.TRN"], "MIS3": ["MIS3.TRN"], "MIS4": ["MIS4.TRN"], "MIS5": ["MIS5.TRN"], "MIS6": ["MIS6.TRN"], "MIS7": ["MIS7.TRN"], "MIS8": ["MIS8.TRN"], "MIS9": ["MIS9.TRN"], "MIST1": ["MIST1.TRN"], "MIST2": ["MIST2.TRN"], "rmp02b": ["rmp02b.trn"], "rmp03p": ["rmp03p.trn"], "rmp03r": ["rmp03r.trn"], "TKHR_04": ["TKHR_04.trn"], "ts_01": ["ts_01.trn"], "ts_02": ["ts_02.trn"], "TS_05": ["TS_05.trn"], "TS_09": ["TS_09.trn"], "ts_11": ["ts_11.trn"], "TSBHD_04": ["TSBHD_04.trn"], "TSBHD_06": ["TSBHD_06.trn"], "zoo": ["zoo.trn"]};
   async function loadTerrainFromMis(){
     const terrain=extractTerrainNameFromMis();
@@ -4404,21 +4440,36 @@
       return;
     }
 
-    const folders=Object.keys(TERRAIN_FILE_INDEX);
-    const folder=folders.find(n=>n.toLowerCase()===terrain.toLowerCase());
-    addLog(`[terrain] searching folder for '${terrain}' (folders indexed: ${folders.length})`);
-    if(!folder){
-      loadedTrnName=null;
-      addLog(`[terrain] folder not found for '${terrain}'. First folders: ${folders.slice(0,20).join(', ')}`);
-      throw new Error(`Pasta de terreno não encontrada para terrain ${terrain}`);
+    let folder = null;
+    let files = [];
+
+    if (state.isLocalRuntime && state.editorFolderHandle){
+      const localListing = await listTerrainFilesFromEditorFolder(terrain);
+      if (localListing){
+        folder = localListing.folder;
+        files = localListing.files;
+        addLog(`[terrain] folder matched from editor folder: ${folder} (files on disk: ${files.length})`);
+      } else {
+        addLog(`[terrain] no folder match on disk for '${terrain}' inside resources/terrains`);
+      }
     }
 
-    const files=TERRAIN_FILE_INDEX[folder] || [];
-    addLog(`[terrain] folder matched: ${folder} (indexed files: ${files.length})`);
-    const trnFile=files.find(f=>/\.trn$/i.test(f));
-    const colFile=files.find(f=>/_c\.tga$/i.test(f));
+    if (!folder){
+      const folders=Object.keys(TERRAIN_FILE_INDEX);
+      folder=folders.find(n=>n.toLowerCase()===terrain.toLowerCase()) || null;
+      addLog(`[terrain] searching folder in static index for '${terrain}' (folders indexed: ${folders.length})`);
+      if(!folder){
+        loadedTrnName=null;
+        addLog(`[terrain] folder not found for '${terrain}'. First folders: ${folders.slice(0,20).join(', ')}`);
+        throw new Error(`Pasta de terreno não encontrada para terrain ${terrain}`);
+      }
+      files = TERRAIN_FILE_INDEX[folder] || [];
+      addLog(`[terrain] folder matched via static index: ${folder} (indexed files: ${files.length})`);
+    }
+
+    const trnFile=(files||[]).find(f=>/\.trn$/i.test(f));
     if(!trnFile){
-      addLog(`[terrain] TRN not found in index for folder ${folder}. Files: ${files.join(', ') || '<none>'}`);
+      addLog(`[terrain] TRN not found in folder ${folder}. Files: ${files.join(', ') || '<none>'}`);
       throw new Error(`Arquivo .trn ausente em ${folder}`);
     }
 
@@ -4471,9 +4522,10 @@
     addLog(`[terrain] sector layout ready: ${sectorCount}x${sectorCount}, origin=${terrainOrigin.x},${terrainOrigin.y}, wrap=${wrapX}/${wrapY}`);
 
     const cptRef=(trnTxt.match(/polytrn_polydata\s+"?([^\s"]+)/i)||[])[1];
-    const cptFile=files.find(f=>f.toLowerCase()===String(cptRef||'').toLowerCase()) || files.find(f=>/\.cpt$/i.test(f));
-    const resolvedColFile=colFile || files.find(f=>/\.tga$/i.test(f));
-    addLog(`[terrain] CPT reference from TRN: ${cptRef || '<none>'}; resolved CPT: ${cptFile || '<none>'}; resolved TGA: ${resolvedColFile || '<none>'}`);
+    const tgaRef=(trnTxt.match(/polytrn_colormap\s+"?([^\s"]+)/i)||[])[1];
+    const cptFile=findFileCaseInsensitive(files, cptRef) || (files||[]).find(f=>/\.cpt$/i.test(f)) || null;
+    const resolvedColFile=findFileCaseInsensitive(files, tgaRef) || (files||[]).find(f=>/_c\.tga$/i.test(f)) || (files||[]).find(f=>/\.tga$/i.test(f)) || null;
+    addLog(`[terrain] CPT reference from TRN: ${cptRef || '<none>'}; resolved CPT: ${cptFile || '<none>'}; colormap ref: ${tgaRef || '<none>'}; resolved TGA: ${resolvedColFile || '<none>'}`);
     if(!cptFile) throw new Error(`CPT ausente em ${folder}`);
     if(!resolvedColFile) throw new Error(`TGA ausente em ${folder}`);
 
@@ -4497,6 +4549,7 @@
     rebuildTerrain();
     addLog(`[terrain] terrain rebuild complete: ${folder}/${trnFile}`);
   }
+
 
 
   function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); gl.viewport(0,0,cv.width,cv.height); }
