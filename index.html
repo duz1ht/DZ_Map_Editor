@@ -4776,7 +4776,15 @@
 
     const path = `resources/3d_items/${key}.glb`;
     try {
-      const gltf = await state.glb.loader.loadAsync(path);
+      const glbData = await loadBinaryResource(path);
+      if (!glbData) throw new Error(`Falha ao ler GLB: ${path}`);
+
+      const basePath = path.slice(0, path.lastIndexOf("/") + 1);
+      const gltf = state.glb.loader.parseAsync
+        ? await state.glb.loader.parseAsync(glbData, basePath)
+        : await new Promise((resolve, reject) => {
+            state.glb.loader.parse(glbData, basePath, resolve, reject);
+          });
       const root = gltf.scene || gltf.scenes?.[0] || null;
       if (!root) return null;
 
