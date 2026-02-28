@@ -226,6 +226,20 @@
       display:block;
       background:var(--canvas);
     }
+    #camDebug{
+      position:absolute;
+      left:10px;
+      bottom:10px;
+      z-index:5;
+      background:rgba(0,0,0,.55);
+      border:1px solid rgba(255,255,255,.12);
+      color:#dfe9ff;
+      padding:8px 10px;
+      border-radius:8px;
+      font-size:12px;
+      white-space:pre;
+      pointer-events:none;
+    }
 
     .hint{
       color:var(--text-muted);
@@ -805,6 +819,7 @@
 
     <div id="canvasWrap">
       <canvas id="cv"></canvas>
+      <div id="camDebug"></div>
 
       <div id="sectionOverlay" aria-hidden="true">
         <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
@@ -1188,7 +1203,9 @@
     items: [],
     selectedId: null,
     multiSelectedIds: new Set(),
-    view: { zoom: 0.00002, ox: 0, oy: 0 },
+    camera: { x: 0, y: 0, z: 800000, yaw: 0, pitch: -0.35, speed: 3000000 },
+    keysDown: new Set(),
+    pointerLocked: false,
     draggingPan: false,
     draggingItem: false,
     boxSelecting: false,
@@ -4247,17 +4264,96 @@
     const f = e.target.files?.[0];
     await loadMisFile(f);
   });
-  // Canvas
+  // Canvas (WebGL 1.0 + free-fly camera)
   const cv = document.getElementById("cv");
-  const ctx = cv.getContext("2d");
+  const camDebugEl = document.getElementById("camDebug");
+  const gl = cv.getContext("webgl", { antialias: true, alpha: false });
+
+  if (!gl){
+    statusEl.textContent = "WebGL indisponível neste navegador.";
+    throw new Error("WebGL not available");
+  }
+
+  const WG_VS = `
+    attribute vec3 aPos;
+    uniform mat4 uMVP;
+    uniform float uPointSize;
+    void main(){
+      gl_Position = uMVP * vec4(aPos, 1.0);
+      gl_PointSize = uPointSize;
+    }
+  `;
+  const WG_FS = `
+    precision mediump float;
+    uniform vec4 uColor;
+    uniform float uDisc;
+    void main(){
+      if (uDisc > 0.5){
+        vec2 c = gl_PointCoord - vec2(0.5);
+        if (dot(c,c) > 0.25) discard;
+      }
+      gl_FragColor = uColor;
+    }
+  `;
+  function compileShader(type, src){
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+    return sh;
+  }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, WG_VS));
+  gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, WG_FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+
+  const aPos = gl.getAttribLocation(prog, "aPos");
+  const uMVP = gl.getUniformLocation(prog, "uMVP");
+  const uColor = gl.getUniformLocation(prog, "uColor");
+  const uPointSize = gl.getUniformLocation(prog, "uPointSize");
+  const uDisc = gl.getUniformLocation(prog, "uDisc");
+
+  const gridBuffer = gl.createBuffer();
+  const itemBuffer = gl.createBuffer();
+
+  function v3(x=0,y=0,z=0){ return {x,y,z}; }
+  function add(a,b){ return v3(a.x+b.x,a.y+b.y,a.z+b.z); }
+  function sub(a,b){ return v3(a.x-b.x,a.y-b.y,a.z-b.z); }
+  function scale(a,s){ return v3(a.x*s,a.y*s,a.z*s); }
+  function dot(a,b){ return a.x*b.x+a.y*b.y+a.z*b.z; }
+  function cross(a,b){ return v3(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x); }
+  function norm(a){ const l=Math.hypot(a.x,a.y,a.z)||1; return v3(a.x/l,a.y/l,a.z/l); }
+
+  function mat4Mul(a,b){
+    const o = new Float32Array(16);
+    for (let c=0;c<4;c++) for (let r=0;r<4;r++){
+      o[c*4+r] = a[0*4+r]*b[c*4+0] + a[1*4+r]*b[c*4+1] + a[2*4+r]*b[c*4+2] + a[3*4+r]*b[c*4+3];
+    }
+    return o;
+  }
+  function perspective(fovy, aspect, near, far){
+    const f = 1/Math.tan(fovy/2), nf = 1/(near-far);
+    return new Float32Array([f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,(2*far*near)*nf,0]);
+  }
+  function lookAt(eye, center, up){
+    const f = norm(sub(center,eye));
+    const s = norm(cross(f,up));
+    const u = cross(s,f);
+    return new Float32Array([
+      s.x,u.x,-f.x,0,
+      s.y,u.y,-f.y,0,
+      s.z,u.z,-f.z,0,
+      -dot(s,eye),-dot(u,eye),dot(f,eye),1
+    ]);
+  }
 
   function resizeCanvas(){
     const r = cv.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     cv.width = Math.floor(r.width * dpr);
     cv.height = Math.floor(r.height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    draw();
+    gl.viewport(0,0,cv.width,cv.height);
   }
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
@@ -4265,123 +4361,207 @@
   function fitView(){
     const items = state.items;
     if (!items.length) return;
-    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,maxZ=0;
     for (const it of items){
-      minX = Math.min(minX, it.x);
-      maxX = Math.max(maxX, it.x);
-      minY = Math.min(minY, it.y);
-      maxY = Math.max(maxY, it.y);
+      minX = Math.min(minX, it.x); maxX = Math.max(maxX, it.x);
+      minY = Math.min(minY, it.y); maxY = Math.max(maxY, it.y);
+      maxZ = Math.max(maxZ, it.z||0);
     }
-    const w = cv.getBoundingClientRect().width;
-    const h = cv.getBoundingClientRect().height;
-    const spanX = Math.max(1, maxX - minX);
-    const spanY = Math.max(1, maxY - minY);
-    const zoomX = (w * 0.85) / spanX;
-    const zoomY = (h * 0.85) / spanY;
-    state.view.zoom = Math.min(zoomX, zoomY);
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    state.view.ox = w / 2 - cx * state.view.zoom;
-    state.view.oy = h / 2 - cy * state.view.zoom;
+    const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+    const span=Math.max(maxX-minX,maxY-minY,500000);
+    state.camera.x = cx;
+    state.camera.y = cy - span*0.8;
+    state.camera.z = Math.max(maxZ + span*0.3, 500000);
+    state.camera.yaw = 0;
+    state.camera.pitch = -0.28;
   }
 
-  function worldToScreen(x,y){
-    const { zoom, ox, oy } = state.view;
-    return { sx: x*zoom + ox, sy: y*zoom + oy };
+  function cameraBasis(){
+    const yaw=state.camera.yaw, pitch=state.camera.pitch;
+    const cp=Math.cos(pitch), sp=Math.sin(pitch);
+    const cy=Math.cos(yaw), sy=Math.sin(yaw);
+    const forward = norm(v3(sy*cp, cy*cp, sp));
+    const right = norm(v3(cy, -sy, 0));
+    const up = norm(cross(right, forward));
+    return {forward,right,up};
   }
-  function screenToWorld(sx,sy){
-    const { zoom, ox, oy } = state.view;
-    return { x: (sx-ox)/zoom, y: (sy-oy)/zoom };
+
+  function worldToScreen(x,y,z=0){
+    const r = cv.getBoundingClientRect();
+    const aspect = (cv.width||1)/(cv.height||1);
+    const P = perspective(Math.PI/3, aspect, 10, 1e9);
+    const {forward,up} = cameraBasis();
+    const eye=v3(state.camera.x,state.camera.y,state.camera.z);
+    const V = lookAt(eye, add(eye,forward), up);
+    const M = mat4Mul(P,V);
+    const px=M[0]*x+M[4]*y+M[8]*z+M[12];
+    const py=M[1]*x+M[5]*y+M[9]*z+M[13];
+    const pw=M[3]*x+M[7]*y+M[11]*z+M[15];
+    if (pw<=0) return {sx:-99999,sy:-99999,visible:false};
+    const nx=px/pw, ny=py/pw;
+    return { sx:(nx*0.5+0.5)*r.width, sy:(1-(ny*0.5+0.5))*r.height, visible:true };
   }
 
-  function draw(){
-    const w = cv.getBoundingClientRect().width;
-    const h = cv.getBoundingClientRect().height;
-    ctx.clearRect(0,0,w,h);
+  function screenRay(sx,sy){
+    const r = cv.getBoundingClientRect();
+    const nx = (sx / r.width) * 2 - 1;
+    const ny = 1 - (sy / r.height) * 2;
+    const aspect = r.width / Math.max(r.height,1);
+    const t = Math.tan(Math.PI/6);
+    const {forward,right,up} = cameraBasis();
+    const dir = norm(add(add(forward, scale(right, nx*t*aspect)), scale(up, ny*t)));
+    return { origin:v3(state.camera.x,state.camera.y,state.camera.z), dir };
+  }
 
-    ctx.globalAlpha = 0.25;
-    ctx.strokeStyle = "#2a2f3d";
-    ctx.lineWidth = 1;
-    const stepWorld = 200000;
-    const step = stepWorld * state.view.zoom;
-    if (step > 25){
-      const startX = ((0 - state.view.ox) % step + step) % step;
-      const startY = ((0 - state.view.oy) % step + step) % step;
-      for (let x = startX; x < w; x += step){
-        ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
-      }
-      for (let y = startY; y < h; y += step){
-        ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
-      }
-    }
-    ctx.globalAlpha = 1;
-
-    const items = getFilteredItems();
-    for (const it of items){
-      const p = worldToScreen(it.x,it.y);
-      const isSel = it.id === state.selectedId || state.multiSelectedIds.has(it.id);
-      const isWpMarked = state.selectedWaypointMarkerIds.has(it.id);
-      ctx.fillStyle = isSel ? "#5865f2" : (isWpMarked ? "#ffcc33" : "#e0e3ff");
-      const r = isSel ? 5 : (isWpMarked ? 4 : 3);
-      ctx.beginPath();
-      ctx.arc(p.sx,p.sy,r,0,Math.PI*2);
-      ctx.fill();
-
-      if (isWpMarked && !isSel){
-        ctx.strokeStyle = "#ff8a00";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(p.sx,p.sy,r + 1.5,0,Math.PI*2);
-        ctx.stroke();
-      }
-    }
-
-    if (state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length){
-      ctx.save();
-      ctx.globalAlpha = 0.75;
-      for (const entry of state.itemClipboardItems){
-        const p = worldToScreen(state.pastePreviewWorld.x + entry.dx, state.pastePreviewWorld.y + entry.dy);
-        ctx.fillStyle = "#57d38c";
-        ctx.beginPath();
-        ctx.arc(p.sx, p.sy, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#9bf0bf";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(p.sx, p.sy, 10, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    if (state.boxSelecting && state.boxStart && state.boxCurrent){
-      const x = Math.min(state.boxStart.sx, state.boxCurrent.sx);
-      const y = Math.min(state.boxStart.sy, state.boxCurrent.sy);
-      const w = Math.abs(state.boxCurrent.sx - state.boxStart.sx);
-      const h = Math.abs(state.boxCurrent.sy - state.boxStart.sy);
-      ctx.save();
-      ctx.fillStyle = "rgba(88,101,242,0.18)";
-      ctx.strokeStyle = "#5865f2";
-      ctx.lineWidth = 1.5;
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeRect(x, y, w, h);
-      ctx.restore();
-    }
+  function screenToWorld(sx,sy,zPlane=0){
+    const ray = screenRay(sx,sy);
+    const dz = ray.dir.z;
+    if (Math.abs(dz) < 1e-6) return {x:ray.origin.x,y:ray.origin.y,z:zPlane};
+    const t = (zPlane - ray.origin.z) / dz;
+    return { x: ray.origin.x + ray.dir.x * Math.max(t,0), y: ray.origin.y + ray.dir.y * Math.max(t,0), z: zPlane };
   }
 
   function pickItemAt(sx,sy){
     const items = getFilteredItems();
     let best=null, bestD2=Infinity;
     for (const it of items){
-      const p = worldToScreen(it.x,it.y);
-      const dx = p.sx - sx;
-      const dy = p.sy - sy;
-      const d2 = dx*dx + dy*dy;
+      const p = worldToScreen(it.x,it.y,it.z||0);
+      if (!p.visible) continue;
+      const dx=p.sx-sx, dy=p.sy-sy, d2=dx*dx+dy*dy;
       if (d2 < bestD2){ bestD2=d2; best=it; }
     }
-    if (best && bestD2 < 12*12) return best;
-    return null;
+    return (best && bestD2 < 14*14) ? best : null;
   }
+
+  function renderGrid(mvp){
+    const step = 2000000;
+    const half = 20;
+    const verts = [];
+    const cx=Math.round(state.camera.x/step)*step;
+    const cy=Math.round(state.camera.y/step)*step;
+    for (let i=-half;i<=half;i++){
+      const x = cx + i*step;
+      verts.push(x, cy-half*step, 0, x, cy+half*step, 0);
+      const y = cy + i*step;
+      verts.push(cx-half*step, y, 0, cx+half*step, y, 0);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.DYNAMIC_DRAW);
+    gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
+    gl.enableVertexAttribArray(aPos);
+    gl.uniformMatrix4fv(uMVP,false,mvp);
+    gl.uniform4f(uColor,0.17,0.22,0.30,1);
+    gl.uniform1f(uPointSize,1);
+    gl.uniform1f(uDisc,0);
+    gl.drawArrays(gl.LINES,0,verts.length/3);
+  }
+
+  function draw(){
+    const aspect = (cv.width||1)/(cv.height||1);
+    const P = perspective(Math.PI/3, aspect, 10, 1e9);
+    const eye=v3(state.camera.x,state.camera.y,state.camera.z);
+    const {forward,up} = cameraBasis();
+    const V = lookAt(eye, add(eye,forward), up);
+    const mvp = mat4Mul(P,V);
+
+    gl.clearColor(0.06,0.08,0.11,1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.useProgram(prog);
+
+    renderGrid(mvp);
+
+    const items = getFilteredItems();
+    const verts=[];
+    const colors=[];
+    for (const it of items){
+      verts.push(it.x,it.y,it.z||0);
+      const isSel = it.id===state.selectedId || state.multiSelectedIds.has(it.id);
+      const isWp = state.selectedWaypointMarkerIds.has(it.id);
+      if (isSel) colors.push(0.35,0.45,0.95,1);
+      else if (isWp) colors.push(1.0,0.8,0.2,1);
+      else colors.push(0.88,0.9,1.0,1);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER,itemBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.DYNAMIC_DRAW);
+    gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
+    gl.enableVertexAttribArray(aPos);
+    gl.uniformMatrix4fv(uMVP,false,mvp);
+    gl.uniform1f(uDisc,1);
+
+    for (let i=0;i<items.length;i++){
+      gl.uniform4f(uColor, colors[i*4],colors[i*4+1],colors[i*4+2],1);
+      gl.uniform1f(uPointSize, (items[i].id===state.selectedId || state.multiSelectedIds.has(items[i].id)) ? 11 : 8);
+      gl.drawArrays(gl.POINTS, i, 1);
+    }
+
+    if (state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length){
+      const pverts=[];
+      for (const entry of state.itemClipboardItems){
+        pverts.push(state.pastePreviewWorld.x+entry.dx, state.pastePreviewWorld.y+entry.dy, state.pastePreviewWorld.z||0);
+      }
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(pverts),gl.DYNAMIC_DRAW);
+      gl.uniform4f(uColor,0.34,0.83,0.55,0.9);
+      gl.uniform1f(uPointSize,13);
+      gl.drawArrays(gl.POINTS,0,pverts.length/3);
+    }
+
+    camDebugEl.textContent =
+      `Cam: x=${state.camera.x.toFixed(2)} y=${state.camera.y.toFixed(2)} z=${state.camera.z.toFixed(2)}
+`+
+      `Yaw: ${state.camera.yaw.toFixed(2)} Pitch: ${state.camera.pitch.toFixed(2)}
+`+
+      `PointerLock: ${document.pointerLockElement===cv?"on":"off"} Speed: ${Math.round(state.camera.speed)}`;
+  }
+
+  let framePrev = performance.now();
+  function frame(now){
+    const dt = Math.min(0.05, (now-framePrev)/1000);
+    framePrev = now;
+
+    const {right,forward} = cameraBasis();
+    const flatF = norm(v3(forward.x, forward.y, 0));
+    const flatR = norm(v3(right.x, right.y, 0));
+    let move = v3(0,0,0);
+    if (state.keysDown.has("KeyW")) move = add(move, flatF);
+    if (state.keysDown.has("KeyS")) move = add(move, scale(flatF,-1));
+    if (state.keysDown.has("KeyA")) move = add(move, scale(flatR,-1));
+    if (state.keysDown.has("KeyD")) move = add(move, flatR);
+    if (state.keysDown.has("KeyQ")) move.z -= 1;
+    if (state.keysDown.has("KeyE")) move.z += 1;
+    if (move.x || move.y || move.z){
+      move = norm(move);
+      const mult = state.keysDown.has("ShiftLeft") || state.keysDown.has("ShiftRight") ? 3 : 1;
+      state.camera.x += move.x * state.camera.speed * mult * dt;
+      state.camera.y += move.y * state.camera.speed * mult * dt;
+      state.camera.z += move.z * state.camera.speed * mult * dt;
+    }
+
+    draw();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  cv.addEventListener("click", () => {
+    if (document.pointerLockElement !== cv) cv.requestPointerLock();
+  });
+  document.addEventListener("pointerlockchange", () => {
+    state.pointerLocked = document.pointerLockElement === cv;
+  });
+
+  document.addEventListener("keydown", (e) => {
+    state.keysDown.add(e.code);
+  });
+  document.addEventListener("keyup", (e) => {
+    state.keysDown.delete(e.code);
+  });
+
+  cv.addEventListener("mousemove", (e) => {
+    if (document.pointerLockElement !== cv) return;
+    state.camera.yaw += e.movementX * 0.002;
+    state.camera.pitch -= e.movementY * 0.002;
+    state.camera.pitch = Math.max(-1.55, Math.min(1.55, state.camera.pitch));
+  });
 
   cv.addEventListener("mousedown", (e) => {
     if (state.modalOpen) return;
@@ -4391,23 +4571,10 @@
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
 
-    if (e.button === 2){
-      state.draggingItem = false;
-      state.boxSelecting = false;
-      state.draggingPan = true;
-      state.rightPanActive = true;
-      state.rightPanStart = { sx, sy };
-      state.suppressContextMenu = false;
-      state.lastMouse = { sx, sy };
-      return;
-    }
-
     if (e.button !== 0) return;
 
     if (state.pastePlacementActive){
-      applyPasteAtWorld(screenToWorld(sx, sy));
-      state.draggingItem = false;
-      state.draggingPan = false;
+      applyPasteAtWorld(screenToWorld(sx, sy, state.pastePreviewWorld?.z || 0));
       state.lastMouse = { sx, sy };
       return;
     }
@@ -4415,136 +4582,81 @@
     const picked = pickItemAt(sx,sy);
     if (picked){
       if (e.ctrlKey){
-        if (state.multiSelectedIds.has(picked.id)){
-          state.multiSelectedIds.delete(picked.id);
-          if (state.selectedId === picked.id){
-            const next = state.multiSelectedIds.values().next();
-            state.selectedId = next.done ? null : next.value;
-          }
-        } else {
-          state.multiSelectedIds.add(picked.id);
-          state.selectedId = picked.id;
-        }
-        state.selectedWaypointMarkerIds.clear();
-        updateWaypointMarkerCount(0);
-        state.draggingItem = false;
+        if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id);
+        else state.multiSelectedIds.add(picked.id);
+        state.selectedId = picked.id;
         renderList();
-        draw();
       } else {
         selectById(picked.id);
-        state.draggingItem = e.shiftKey;
+      }
+      state.draggingItem = e.shiftKey;
+      if (state.draggingItem){
+        state.dragAnchor = screenToWorld(sx, sy, picked.z||0);
       }
     } else {
       state.draggingItem = false;
-      state.draggingPan = false;
       state.boxSelecting = true;
       state.boxSelectAdditive = e.ctrlKey;
       state.boxStart = { sx, sy };
       state.boxCurrent = { sx, sy };
-      if (!e.ctrlKey && (state.selectedId !== null || state.multiSelectedIds.size || state.selectedWaypointMarkerIds.size)){
+      if (!e.ctrlKey){
         state.selectedId = null;
         state.multiSelectedIds.clear();
-        state.selectedWaypointMarkerIds.clear();
-        updateWaypointMarkerCount(0);
       }
       renderList();
-      draw();
     }
-    state.draggingPan = !state.draggingItem && !state.boxSelecting && !e.ctrlKey;
     state.lastMouse = { sx, sy };
   });
 
   cv.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    if (state.modalOpen) return;
-    if (state.suppressContextMenu){
-      state.suppressContextMenu = false;
-      return;
-    }
-
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const picked = pickItemAt(sx, sy);
-    const hasSelection = state.selectedId !== null || state.multiSelectedIds.size > 0;
-
-    if (!picked){
-      if (hasSelection){
-        if (state.selectedId === null && state.multiSelectedIds.size){
-          state.selectedId = state.multiSelectedIds.values().next().value;
-          renderList();
-          draw();
-        }
-        showItemContextMenu(e.clientX, e.clientY);
-      } else if (state.itemClipboardItems.length){
-        showItemContextMenu(e.clientX, e.clientY, [
-          { label: "Paste", action: () => beginPastePlacementAtScreen(sx, sy) }
-        ]);
-      } else {
-        closeItemContextMenu();
-      }
+    if (picked){
+      if (!(picked.id === state.selectedId || state.multiSelectedIds.has(picked.id))) selectById(picked.id);
+      showItemContextMenu(e.clientX, e.clientY);
       return;
     }
-
-    if (state.selectedId !== picked.id && !state.multiSelectedIds.has(picked.id)) selectById(picked.id);
-    showItemContextMenu(e.clientX, e.clientY);
+    if (state.selectedId !== null || state.multiSelectedIds.size > 0 || state.itemClipboardItems.length) showItemContextMenu(e.clientX, e.clientY);
   });
 
   cv.addEventListener("dblclick", (e) => {
-    if (state.modalOpen) return;
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const picked = pickItemAt(sx,sy);
-    if (picked){
-      selectById(picked.id);
-      openModal();
-    }
+    if (picked){ selectById(picked.id); openModal(); }
   });
 
   cv.addEventListener("mousemove", (e) => {
     if (state.modalOpen) return;
-
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
 
     if (state.pastePlacementActive){
-      state.pastePreviewWorld = screenToWorld(sx, sy);
-      draw();
-    }
-
-    if (!state.lastMouse){
-      state.lastMouse = { sx, sy };
-      return;
-    }
-
-    const dx = sx - state.lastMouse.sx;
-    const dy = sy - state.lastMouse.sy;
-
-    if (state.rightPanActive && state.rightPanStart && !state.suppressContextMenu){
-      const movedX = Math.abs(sx - state.rightPanStart.sx);
-      const movedY = Math.abs(sy - state.rightPanStart.sy);
-      if (movedX > 3 || movedY > 3) state.suppressContextMenu = true;
+      const z = state.selectedId ? (getSelected()?.z || 0) : 0;
+      state.pastePreviewWorld = screenToWorld(sx, sy, z);
     }
 
     if (state.boxSelecting && state.boxStart){
       state.boxCurrent = { sx, sy };
-      draw();
     } else if (state.draggingItem && state.selectedId){
-      const it = getSelected();
-      if (it && kvHas(it, "position")){
-        it.x += dx / state.view.zoom;
-        it.y += dy / state.view.zoom;
+      const active = state.items.filter(it => it.id===state.selectedId || state.multiSelectedIds.has(it.id));
+      const zPlane = (active[0]?.z)||0;
+      const nowW = screenToWorld(sx, sy, zPlane);
+      const prevW = state.dragAnchor || nowW;
+      const dx = nowW.x-prevW.x, dy = nowW.y-prevW.y;
+      for (const it of active){
+        if (!kvHas(it, "position")) continue;
+        it.x += dx; it.y += dy;
         it.kv.position = `${it.x} ${it.y} ${it.z}`;
-        renderList();
-        draw();
-        refreshLiveMisWindow();
       }
-    } else if (state.draggingPan){
-      state.view.ox += dx;
-      state.view.oy += dy;
-      draw();
+      state.dragAnchor = nowW;
+      renderList();
+      refreshLiveMisWindow();
     }
     state.lastMouse = { sx, sy };
   });
@@ -4557,58 +4669,33 @@
     const y1 = hadBoxSelection ? Math.max(state.boxStart.sy, state.boxCurrent.sy) : 0;
     const additiveSelection = state.boxSelectAdditive;
 
-    state.draggingPan = false;
     state.draggingItem = false;
     state.boxSelecting = false;
     state.boxSelectAdditive = false;
     state.boxStart = null;
     state.boxCurrent = null;
-    state.rightPanActive = false;
-    state.rightPanStart = null;
     state.lastMouse = null;
+    state.dragAnchor = null;
 
     if (hadBoxSelection){
-      const minSize = 3;
-      if ((x1 - x0) >= minSize || (y1 - y0) >= minSize){
-        const boxIds = [];
-        for (const it of getFilteredItems()){
-          const p = worldToScreen(it.x, it.y);
-          if (p.sx >= x0 && p.sx <= x1 && p.sy >= y0 && p.sy <= y1){
-            boxIds.push(it.id);
-          }
-        }
-        if (!additiveSelection){
-          state.multiSelectedIds.clear();
-        }
-        for (const id of boxIds) state.multiSelectedIds.add(id);
-        state.selectedId = state.multiSelectedIds.size ? Array.from(state.multiSelectedIds).at(-1) : null;
-        state.selectedWaypointMarkerIds.clear();
-        updateWaypointMarkerCount(0);
+      const ids=[];
+      for (const it of getFilteredItems()){
+        const p=worldToScreen(it.x,it.y,it.z||0);
+        if (p.visible && p.sx>=x0 && p.sx<=x1 && p.sy>=y0 && p.sy<=y1) ids.push(it.id);
       }
+      if (!additiveSelection) state.multiSelectedIds.clear();
+      for (const id of ids) state.multiSelectedIds.add(id);
+      state.selectedId = state.multiSelectedIds.size ? Array.from(state.multiSelectedIds).at(-1) : null;
       renderList();
-      draw();
     }
   }
   cv.addEventListener("mouseup", stopDrag);
   cv.addEventListener("mouseleave", stopDrag);
 
   cv.addEventListener("wheel", (e) => {
-    if (state.modalOpen) return;
     e.preventDefault();
-    const rect = cv.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-
-    const before = screenToWorld(sx,sy);
-    const factor = Math.exp(-e.deltaY * 0.001);
-    state.view.zoom *= factor;
-    state.view.zoom = Math.max(1e-12, Math.min(10, state.view.zoom));
-    const after = screenToWorld(sx,sy);
-
-    state.view.ox += (after.x - before.x) * state.view.zoom;
-    state.view.oy += (after.y - before.y) * state.view.zoom;
-
-    draw();
+    state.camera.speed *= Math.exp(-e.deltaY * 0.001);
+    state.camera.speed = Math.max(50000, Math.min(20000000, state.camera.speed));
   }, { passive:false });
 
   function applyTheme(theme){
