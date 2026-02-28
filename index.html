@@ -3558,9 +3558,9 @@
     setEnabled(ui.absHeight, kvHas(it, "absolute_height"));
     setValueIf(ui.absHeight, kvHas(it, "absolute_height") ? String(it.kv.absolute_height) === "1" : false);
 
-    // Facing
-    setEnabled(ui.heading, kvHas(it, "facing") || kvHas(it, "rot"));
-    setEnabled(ui.pitch, kvHas(it, "facing"));
+    // Facing (sempre editável na janela)
+    setEnabled(ui.heading, true);
+    setEnabled(ui.pitch, true);
     setValueIf(ui.heading, it.heading);
     setValueIf(ui.pitch, it.pitch);
 
@@ -3678,13 +3678,15 @@
     if (kvHas(it, "height_lock")) it.kv.height_lock = ui.lock.checked ? "1" : "0";
     if (kvHas(it, "absolute_height")) it.kv.absolute_height = ui.absHeight.checked ? "1" : "0";
 
-    if (applyOrientation && kvHas(it, "facing")){
+    if (applyOrientation){
       it.heading = parseFloatSafe(ui.heading.value);
       it.pitch = parseFloatSafe(ui.pitch.value);
-      it.kv.facing = `${it.heading} ${it.pitch}`;
-    } else if (applyOrientation && kvHas(it, "rot")){
-      it.heading = parseFloatSafe(ui.heading.value);
-      it.kv.rot = String(it.heading);
+
+      if (kvHas(it, "facing") || !kvHas(it, "rot")){
+        it.kv.facing = `${it.heading} ${it.pitch}`;
+      } else {
+        it.kv.rot = String(it.heading);
+      }
     }
 
     if (kvHas(it, "remove_if_less_than")) it.kv.remove_if_less_than = ui.lessThan.value;
