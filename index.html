@@ -4504,8 +4504,8 @@
   const DEPTH_W=1024, DEPTH_H=1024, SECTOR_SIZE=512, SECTOR_STRIDE=SECTOR_SIZE, SECTOR_MESH_MAX=SECTOR_SIZE;
   const TERRAIN_BASE_FLIP_Y=true;
   const MIS_POS_SCALE=65536;
-  const THREE_MODULE_URL = "https://unpkg.com/three@0.160.0/build/three.module.js";
-  const GLTF_LOADER_URL = "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+  const THREE_MODULE_URL = "https://esm.sh/three@0.160.0";
+  const GLTF_LOADER_URL = "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
   function mainAreaCenterX(){ return originWorldX() + terrainSpanX()*0.5; }
   function mainAreaCenterY(){ return originWorldY() + terrainSpanY()*0.5; }
   function rawToWorld(v, axis='z'){
