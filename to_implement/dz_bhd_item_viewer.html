@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GLB Viewer</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #0f1117; color: #e6e6e6; font-family: system-ui, Segoe UI, Arial; }
+    #app { position: fixed; inset: 0; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    .ui {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .panel {
+      pointer-events: auto;
+      background: rgba(20, 22, 30, 0.78);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      padding: 10px 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .title { font-weight: 700; }
+    .muted { opacity: 0.75; font-size: 12px; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      color: #e6e6e6;
+      padding: 8px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 13px;
+    }
+    .btn:hover { background: rgba(255,255,255,0.10); }
+    .btn:active { transform: translateY(1px); }
+    .chk { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; user-select: none; }
+    input[type="checkbox"] { width: 16px; height: 16px; }
+
+    #file { display: none; }
+
+    .drop {
+      position: fixed;
+      inset: 0;
+      border: 2px dashed rgba(255,255,255,0.22);
+      border-radius: 16px;
+      margin: 14px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9;
+      background: rgba(10, 12, 18, 0.55);
+      backdrop-filter: blur(6px);
+      pointer-events: none;
+    }
+    .drop.show { display: flex; }
+    .drop > div {
+      text-align: center;
+      padding: 16px 18px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+    }
+    .err {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      z-index: 20;
+      display: none;
+      pointer-events: none;
+    }
+    .err .panel { pointer-events: auto; gap: 8px; }
+    .err.show { display: block; }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div class="ui">
+    <div class="panel">
+      <div>
+        <div class="title">GLB Viewer</div>
+        <div class="muted" id="status">Nenhum modelo carregado</div>
+      </div>
+    </div>
+
+    <div class="panel row">
+      <label class="btn" for="file">Abrir .glb</label>
+      <input id="file" type="file" accept=".glb,model/gltf-binary" />
+      <button class="btn" id="resetView">Reset view</button>
+      <button class="btn" id="clear">Limpar</button>
+      <label class="chk"><input type="checkbox" id="grid" checked /> Grid</label>
+      <label class="chk"><input type="checkbox" id="axes" /> Eixos</label>
+      <label class="chk"><input type="checkbox" id="tone" checked /> Tone mapping</label>
+    </div>
+
+    <div class="panel">
+      <div class="muted">Dica: arraste e solte um .glb na página</div>
+    </div>
+  </div>
+
+  <div class="drop" id="drop">
+    <div>
+      <div style="font-weight:700; font-size:16px;">Solte o arquivo .glb aqui</div>
+      <div class="muted" style="margin-top:6px;">O arquivo fica local, não é enviado</div>
+    </div>
+  </div>
+
+  <div class="err" id="err">
+    <div class="panel">
+      <div style="font-weight:700;">Erro:</div>
+      <div class="muted" id="errText"></div>
+      <button class="btn" id="errClose" style="margin-left:auto;">OK</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+    const app = document.getElementById("app");
+    const statusEl = document.getElementById("status");
+    const errBox = document.getElementById("err");
+    const errText = document.getElementById("errText");
+    const drop = document.getElementById("drop");
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    app.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f1117);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 20000);
+    camera.position.set(2.5, 1.6, 2.5);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+    controls.target.set(0, 0.7, 0);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.65));
+
+    const dir1 = new THREE.DirectionalLight(0xffffff, 1.1);
+    dir1.position.set(5, 8, 6);
+    scene.add(dir1);
+
+    const dir2 = new THREE.DirectionalLight(0xffffff, 0.6);
+    dir2.position.set(-6, 3, -5);
+    scene.add(dir2);
+
+    const gridHelper = new THREE.GridHelper(20, 20, 0x2a2f3d, 0x1c2030);
+    scene.add(gridHelper);
+
+    const axesHelper = new THREE.AxesHelper(2);
+    axesHelper.visible = false;
+    scene.add(axesHelper);
+
+    let currentRoot = null;
+    let currentUrl = null;
+
+    function showError(msg) {
+      errText.textContent = msg || "Falha desconhecida";
+      errBox.classList.add("show");
+    }
+    document.getElementById("errClose").addEventListener("click", () => errBox.classList.remove("show"));
+
+    function disposeMaterial(mat) {
+      for (const k in mat) {
+        const v = mat[k];
+        if (v && v.isTexture) v.dispose();
+      }
+      mat.dispose?.();
+    }
+
+    function clearModel() {
+      if (currentRoot) {
+        scene.remove(currentRoot);
+        currentRoot.traverse((obj) => {
+          if (obj.isMesh) {
+            obj.geometry?.dispose?.();
+            const m = obj.material;
+            if (Array.isArray(m)) m.forEach(disposeMaterial);
+            else if (m) disposeMaterial(m);
+          }
+        });
+        currentRoot = null;
+      }
+      if (currentUrl) {
+        URL.revokeObjectURL(currentUrl);
+        currentUrl = null;
+      }
+      statusEl.textContent = "Nenhum modelo carregado";
+      controls.target.set(0, 0.7, 0);
+      controls.update();
+    }
+
+    function frameObject(obj3d) {
+      const box = new THREE.Box3().setFromObject(obj3d);
+      if (!isFinite(box.min.x) || !isFinite(box.max.x)) return;
+
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fitDist = maxDim / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)));
+      const dist = fitDist * 1.3;
+
+      const dir = new THREE.Vector3(1, 0.65, 1).normalize();
+      camera.near = Math.max(0.01, maxDim / 1000);
+      camera.far = Math.max(2000, maxDim * 50);
+      camera.updateProjectionMatrix();
+
+      camera.position.copy(center).addScaledVector(dir, dist);
+      controls.target.copy(center);
+      controls.update();
+    }
+
+    async function loadGLBFromFile(file) {
+      if (!file) return;
+      const name = (file.name || "").toLowerCase();
+      if (!name.endsWith(".glb")) {
+        showError("Selecione um arquivo .glb");
+        return;
+      }
+
+      clearModel();
+
+      currentUrl = URL.createObjectURL(file);
+      const loader = new GLTFLoader();
+
+      try {
+        statusEl.textContent = "Carregando: " + file.name;
+
+        const gltf = await loader.loadAsync(currentUrl);
+        currentRoot = gltf.scene || gltf.scenes?.[0];
+
+        if (!currentRoot) {
+          showError("GLB carregou, mas não veio com scene");
+          statusEl.textContent = "Falha ao carregar";
+          return;
+        }
+
+        currentRoot.traverse((obj) => {
+          if (!obj.isMesh) return;
+
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          for (const m of mats) {
+            if (!m) continue;
+            if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+            if (m.emissiveMap) m.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+            m.needsUpdate = true;
+          }
+        });
+
+        scene.add(currentRoot);
+        frameObject(currentRoot);
+
+        statusEl.textContent = "Carregado: " + file.name;
+      } catch (e) {
+        console.error(e);
+        showError(e?.message ? e.message : String(e));
+        statusEl.textContent = "Falha ao carregar";
+      }
+    }
+
+    document.getElementById("file").addEventListener("change", (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (f) loadGLBFromFile(f);
+      ev.target.value = "";
+    });
+
+    document.getElementById("resetView").addEventListener("click", () => {
+      if (currentRoot) frameObject(currentRoot);
+      else {
+        camera.position.set(2.5, 1.6, 2.5);
+        controls.target.set(0, 0.7, 0);
+        controls.update();
+      }
+    });
+
+    document.getElementById("clear").addEventListener("click", () => clearModel());
+
+    document.getElementById("grid").addEventListener("change", (e) => {
+      gridHelper.visible = !!e.target.checked;
+    });
+
+    document.getElementById("axes").addEventListener("change", (e) => {
+      axesHelper.visible = !!e.target.checked;
+    });
+
+    document.getElementById("tone").addEventListener("change", (e) => {
+      renderer.toneMapping = e.target.checked ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+    });
+
+    window.addEventListener("resize", () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    });
+
+    window.addEventListener("dragenter", (e) => { e.preventDefault(); drop.classList.add("show"); });
+    window.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("show"); });
+    window.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      if (e.target === document.documentElement || e.target === document.body) drop.classList.remove("show");
+    });
+    window.addEventListener("drop", (e) => {
+      e.preventDefault();
+      drop.classList.remove("show");
+      const f = e.dataTransfer?.files?.[0];
+      if (f) loadGLBFromFile(f);
+    });
+
+    function tick() {
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(tick);
+    }
+    tick();
+  </script>
+</body>
+</html>
