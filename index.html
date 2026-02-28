@@ -4395,13 +4395,13 @@
   function rawToWorld(v, axis='z'){
     const n=(Number(v)||0)/MIS_POS_SCALE;
     if(axis==='x') return n + mainAreaCenterX();
-    if(axis==='y') return n + mainAreaCenterY();
+    if(axis==='y') return mainAreaCenterY() - n;
     return n;
   }
   function worldToRaw(v, axis='z'){
     const n=Number(v)||0;
     if(axis==='x') return Math.round((n-mainAreaCenterX())*MIS_POS_SCALE);
-    if(axis==='y') return Math.round((n-mainAreaCenterY())*MIS_POS_SCALE);
+    if(axis==='y') return Math.round((mainAreaCenterY()-n)*MIS_POS_SCALE);
     return Math.round(n*MIS_POS_SCALE);
   }
   let sectorCount=8, terrainOrigin={x:0,y:0}, wrapX=1, wrapY=1, sectors=null, lastDepth=null, lastImg=null, loadedTrnName=null;
