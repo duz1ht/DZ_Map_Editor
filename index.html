@@ -4378,6 +4378,8 @@
   let texColor=null, texHeight=null, texDelta=null; let meshSector=[null,null,null,null,null];
   let cam={pos:vec3(0,1500,400), yaw:Math.PI, pitch:-0.25}, move={w:0,a:0,s:0,d:0,q:0,e:0,shift:0};
   let renderMode='C';
+  let topViewLocked=false;
+  let topViewRestore={yaw:Math.PI,pitch:-0.25};
   let gridExponent=9;
   const GRID_EXP_MIN=-8, GRID_EXP_MAX=12;
   function gridSizeMeters(){ return Math.pow(2, gridExponent); }
@@ -4689,15 +4691,15 @@
     camDebugEl.textContent=`Loaded terrain: ${loadedTrnName||'none'}
 Cam: x=${cam.pos.x.toFixed(6)} y=${cam.pos.y.toFixed(6)} z=${cam.pos.z.toFixed(6)}
 Yaw: ${cam.yaw.toFixed(2)} Pitch: ${cam.pitch.toFixed(2)}
-PointerLock: ${document.pointerLockElement===cv?'on':'off'} Draw calls: ${drawCalls}`;
+PointerLock: ${document.pointerLockElement===cv?'on':'off'} TopView: ${topViewLocked?'on':'off'} Draw calls: ${drawCalls}`;
     requestAnimationFrame(draw);
   }
   requestAnimationFrame(draw);
 
   cv.addEventListener('click',()=>{ cv.focus(); if(document.pointerLockElement!==cv) cv.requestPointerLock(); });
-  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='w') move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e') move.e=1; if(k==='shift') move.shift=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
+  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='w') move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e') move.e=1; if(k==='shift') move.shift=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
   addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); if(k==='w') move.w=0; if(k==='a') move.a=0; if(k==='s') move.s=0; if(k==='d') move.d=0; if(k==='q') move.q=0; if(k==='e') move.e=0; if(k==='shift') move.shift=0; state.keysDown.delete(e.code); });
-  addEventListener('mousemove',e=>{ if(document.pointerLockElement!==cv) return; cam.yaw += e.movementX*0.002; cam.pitch -= e.movementY*0.002; cam.pitch=Math.max(-1.55,Math.min(1.55,cam.pitch)); });
+  addEventListener('mousemove',e=>{ if(document.pointerLockElement!==cv) return; if(topViewLocked) return; cam.yaw += e.movementX*0.002; cam.pitch -= e.movementY*0.002; cam.pitch=Math.max(-1.55,Math.min(1.55,cam.pitch)); });
 
   document.getElementById('modeC')?.addEventListener('click',()=>setRenderMode('C'));
   document.getElementById('modeH')?.addEventListener('click',()=>setRenderMode('H'));
