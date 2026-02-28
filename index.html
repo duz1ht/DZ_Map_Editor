@@ -1272,6 +1272,7 @@
     isLocalRuntime: window.location.protocol === "file:",
     editorFolderHandle: null,
     currentMisFileHandle: null,
+    generalTerrainNames: [],
   };
 
   // UI refs
@@ -2018,6 +2019,89 @@
     }
   }
 
+  function terrainNameFromTrnFile(fileName){
+    return String(fileName || "").replace(/\.trn$/i, "").trim();
+  }
+
+  function collectTerrainNamesFromFileList(files){
+    const out = [];
+    const seen = new Set();
+    for (const fileName of files || []){
+      if (!/\.trn$/i.test(String(fileName || ""))) continue;
+      const terrainName = terrainNameFromTrnFile(fileName);
+      if (!terrainName) continue;
+      const key = terrainName.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(terrainName);
+    }
+    return out;
+  }
+
+  function collectTerrainNamesFromStaticIndex(){
+    const names = [];
+    const seen = new Set();
+    for (const files of Object.values(TERRAIN_FILE_INDEX || {})){
+      for (const terrainName of collectTerrainNamesFromFileList(files)){
+        const key = terrainName.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        names.push(terrainName);
+      }
+    }
+    names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    return names;
+  }
+
+  async function listTerrainNamesFromEditorFolder(){
+    if (!state.editorFolderHandle) return null;
+    try{
+      let dir = state.editorFolderHandle;
+      for (const part of ["resources", "terrains"]){
+        dir = await dir.getDirectoryHandle(part);
+      }
+
+      const names = [];
+      const seen = new Set();
+      for await (const [, handle] of dir.entries()){
+        if (handle.kind !== "directory") continue;
+        for await (const [fileName, fileHandle] of handle.entries()){
+          if (fileHandle.kind !== "file") continue;
+          if (!/\.trn$/i.test(fileName)) continue;
+          const terrainName = terrainNameFromTrnFile(fileName);
+          if (!terrainName) continue;
+          const key = terrainName.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          names.push(terrainName);
+        }
+      }
+
+      names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      addLog(`[terrain] mission terrain list loaded from editor folder (.trn names): ${names.length}`);
+      return names;
+    } catch (err){
+      addLog(`[terrain] error building mission terrain list from editor folder: ${err?.message || err}`);
+      return null;
+    }
+  }
+
+  async function refreshGeneralTerrainOptions(){
+    let names = null;
+    if (state.isLocalRuntime && state.editorFolderHandle){
+      names = await listTerrainNamesFromEditorFolder();
+    }
+    if (!names || !names.length){
+      names = collectTerrainNamesFromStaticIndex();
+    }
+    state.generalTerrainNames = names;
+
+    if (state.sectionEditorOpen && state.sectionKind === "general_information"){
+      const currentValue = giTerrain.value || extractTerrainNameFromMis() || "dvd1";
+      ensureSelectOptions(giTerrain, names.map(v => ({ value: v, label: v })), currentValue);
+    }
+  }
+
   function parseIntList(raw, count){
     const parts = String(raw || "").trim().split(/\s+/).filter(Boolean).map(v => Number(v));
     const out = [];
@@ -2234,7 +2318,8 @@
 
   function fillGeneralInfoEditor(sec){
     const kv = sec?.kv || {};
-    ensureSelectOptions(giTerrain, GENERAL_TERRAINS.map(v=>({ value:v, label:v })), kv.terrain || "dvd1");
+    const terrainOptions = state.generalTerrainNames || [];
+    ensureSelectOptions(giTerrain, terrainOptions.map(v=>({ value:v, label:v })), kv.terrain || "dvd1");
     ensureSelectOptions(giTiles, GENERAL_TILES.map(v=>({ value:v, label:v })), kv.terrain_tile_tga || "trntile11");
     const playerTypeRaw = String(kv.player_type ?? "1");
     ensureSelectOptions(
@@ -4081,6 +4166,7 @@
         state.editorFolderHandle = handle;
         statusEl.textContent = `Editor folder set: ${handle.name}`;
         await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames(), preloadEnvironmentFiles()]);
+        await refreshGeneralTerrainOptions();
         renderMenuBar();
       } catch (err){
         if (err?.name === "AbortError") return;
@@ -4893,6 +4979,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       : "defs: 0";
     if (!state.isLocalRuntime || state.editorFolderHandle)
       defStatusEl.textContent = `Catalogs loaded (${defInfo}, ${weaponInfo}, ${stringInfo}).`;
+    await refreshGeneralTerrainOptions();
     addLog(`Boot finished: ${defInfo}, ${weaponInfo}, ${stringInfo}, wpNames: ${state.wpNames.length}`);
   })();
 
