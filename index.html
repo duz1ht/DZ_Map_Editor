@@ -205,8 +205,17 @@
       display:flex;
       gap:10px;
       align-items:center;
+      flex-wrap:wrap;
       min-width: 0;
     }
+
+    .modeBtn{min-width:26px;height:22px;padding:0 8px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:6px;cursor:pointer}
+    .modeBtn.active{background:#2c7be5;border-color:#67a2ff;color:#fff}
+    .gridCtl{display:flex;align-items:center;gap:4px}
+    .gridVal{min-width:64px;display:inline-block;text-align:left}
+    .tbCtl{font-size:12px; display:flex; align-items:center; gap:4px}
+    #topbar input[type="range"]{ width:120px; }
+
     #status{
       margin-left:auto;
       color:var(--text-muted);
@@ -225,6 +234,20 @@
       height:100%;
       display:block;
       background:var(--canvas);
+    }
+    #camDebug{
+      position:absolute;
+      left:10px;
+      bottom:10px;
+      z-index:5;
+      background:rgba(0,0,0,.55);
+      border:1px solid rgba(255,255,255,.12);
+      color:#dfe9ff;
+      padding:8px 10px;
+      border-radius:8px;
+      font-size:12px;
+      white-space:pre;
+      pointer-events:none;
     }
 
     .hint{
@@ -783,7 +806,7 @@
       <select id="typeFilter">
         <option value="">All types</option>
       </select>
-      <button id="exportBtn" disabled>Export .mis</button>
+      <button id="exportBtn">Go to</button>
     </div>
 
     <div id="misRealtimePanel">
@@ -797,14 +820,28 @@
 
   <div id="main">
     <div id="topbar">
-      <div class="hint">
-        Double-click: open Item Attributes. Esc: close.
-      </div>
+      <div class="hint">Double-click: open Item Attributes. Esc: close.</div>
+      <label class="tbCtl gridCtl">Grid
+        <button id="gridPlus" type="button" class="modeBtn" title="Increase grid size">+</button>
+        <button id="gridMinus" type="button" class="modeBtn" title="Decrease grid size">-</button>
+        <span id="gridValue" class="gridVal">512m</span>
+      </label>
+      <button id="modeC" class="modeBtn active" title="Colormap (R)">C</button>
+      <button id="modeH" class="modeBtn" title="Heightmap (R)">H</button>
+      <button id="modeD" class="modeBtn" title="Delta/Variation (R)">D</button>
+      <label class="tbCtl"><input id="ground" type="checkbox" checked> Ground clamp</label>
+      <label class="tbCtl">Speed <input id="speed" type="range" min="20" max="1200" step="10" value="300"></label>
+      <label class="tbCtl">Clearance <input id="clear" type="range" min="1" max="200" step="1" value="40"></label>
+      <label class="tbCtl">Draw radius <input id="radius" type="range" min="512" max="65536" step="256" value="12288"></label>
+      <label class="tbCtl"><input id="mainArea" type="checkbox"> Main area</label>
+      <label class="tbCtl"><input id="showSectors" type="checkbox"> Show Sectors</label>
+      <label class="tbCtl">Mesh step <select id="step"><option>1</option><option>2</option><option>4</option><option selected>8</option><option>16</option></select></label>
       <div id="status">No file loaded.</div>
     </div>
 
     <div id="canvasWrap">
       <canvas id="cv"></canvas>
+      <div id="camDebug"></div>
 
       <div id="sectionOverlay" aria-hidden="true">
         <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
@@ -1188,7 +1225,9 @@
     items: [],
     selectedId: null,
     multiSelectedIds: new Set(),
-    view: { zoom: 0.00002, ox: 0, oy: 0 },
+    camera: { x: 0, y: 0, z: 800000, yaw: 0, pitch: -0.35, speed: 3000000 },
+    keysDown: new Set(),
+    pointerLocked: false,
     draggingPan: false,
     draggingItem: false,
     boxSelecting: false,
@@ -1456,7 +1495,7 @@
   function addLog(msg){
     const stamp = new Date().toLocaleTimeString();
     state.logs.unshift(`[${stamp}] ${msg}`);
-    if (state.logs.length > 500) state.logs.length = 500;
+    if (state.logs.length > 5000) state.logs.length = 5000;
     if (state.logsOpen) renderLogsWindow();
   }
 
@@ -1547,6 +1586,44 @@
       return text;
     } catch (err){
       addLog(`ERROR loading resource via editor folder: ${path} (${err?.message || "read failed"})`);
+      return null;
+    }
+  }
+
+  async function readArrayBufferFromEditorFolder(path){
+    if (!state.editorFolderHandle) return null;
+    try{
+      const parts = String(path || "").split("/").filter(Boolean);
+      let dir = state.editorFolderHandle;
+      for (let i = 0; i < parts.length - 1; i++){
+        dir = await dir.getDirectoryHandle(parts[i]);
+      }
+      const fileHandle = await dir.getFileHandle(parts[parts.length - 1]);
+      const file = await fileHandle.getFile();
+      const buf = await file.arrayBuffer();
+      addLog(`Loaded binary resource via editor folder: ${path} (${buf.byteLength} bytes)`);
+      return buf;
+    } catch (err){
+      addLog(`ERROR loading binary via editor folder: ${path} (${err?.message || "read failed"})`);
+      return null;
+    }
+  }
+
+  async function loadBinaryResource(path){
+    if (state.isLocalRuntime){
+      return readArrayBufferFromEditorFolder(path);
+    }
+    try{
+      const res = await fetch(path);
+      if (!res.ok){
+        addLog(`ERROR loading binary via fetch: ${path} (HTTP ${res.status})`);
+        return null;
+      }
+      const buf = await res.arrayBuffer();
+      addLog(`Loaded binary resource via fetch: ${path} (${buf.byteLength} bytes)`);
+      return buf;
+    } catch (err) {
+      addLog(`ERROR loading binary via fetch: ${path} (${err?.message || "fetch failed"})`);
       return null;
     }
   }
@@ -3640,8 +3717,8 @@
       copy.y += 50000;
     }
     if (worldPosition){
-      copy.x = worldPosition.x;
-      copy.y = worldPosition.y;
+      copy.x = worldToRaw(worldPosition.x,'x');
+      copy.y = worldToRaw(worldPosition.y,'y');
     }
     if (copy.kv.position) copy.kv.position = `${copy.x} ${copy.y} ${copy.z}`;
     state.items.push(copy);
@@ -3678,8 +3755,8 @@
       return {
         item: structuredClone(it),
         section: sec ? structuredClone(sec) : null,
-        dx: it.x - anchor.x,
-        dy: it.y - anchor.y
+        dx: rawToWorld(it.x,'x') - rawToWorld(anchor.x,'x'),
+        dy: rawToWorld(it.y,'y') - rawToWorld(anchor.y,'y')
       };
     });
 
@@ -3773,8 +3850,20 @@
   ui.delBtn.addEventListener("click", deleteSelectedItem);
 
   exportBtn.addEventListener("click", () => {
-    const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
-    downloadText("edited.mis", out);
+    const current = `${Math.round(state.camera.x)} ${Math.round(state.camera.y)} ${Math.round(state.camera.z)}`;
+    const raw = window.prompt("Go to (X Y Z):", current);
+    if (raw === null) return;
+    const nums = raw.trim().split(/[\s,;]+/).map(Number).filter(Number.isFinite);
+    if (nums.length < 3){
+      statusEl.textContent = "Go to cancelado: informe X Y Z.";
+      return;
+    }
+    const [x,y,z] = nums;
+    cam.pos = vec3(x,y,z);
+    state.camera.x = x;
+    state.camera.y = y;
+    state.camera.z = z;
+    statusEl.textContent = `Camera movida para X=${x.toFixed(2)} Y=${y.toFixed(2)} Z=${z.toFixed(2)}`;
   });
 
   searchEl.addEventListener("input", () => { renderList(); draw(); });
@@ -3902,7 +3991,6 @@
     state.itemClipboardItems = [];
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
-    exportBtn.disabled = true;
     fileMisEl.value = "";
     renderList();
     draw();
@@ -4229,7 +4317,6 @@
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
 
-    exportBtn.disabled = state.items.length === 0;
 
     buildLayerOptions();
     buildWaypointList();
@@ -4247,369 +4334,510 @@
     const f = e.target.files?.[0];
     await loadMisFile(f);
   });
-  // Canvas
+  // Canvas (WebGL terrain viewer + editor items)
   const cv = document.getElementById("cv");
-  const ctx = cv.getContext("2d");
+  const camDebugEl = document.getElementById("camDebug");
+  const gl = cv.getContext('webgl',{antialias:true, alpha:false});
+  if(!gl){ statusEl.textContent = "WebGL indisponível."; throw new Error('WebGL not available'); }
+  const extUInt=gl.getExtension('OES_element_index_uint');
 
-  function resizeCanvas(){
-    const r = cv.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    cv.width = Math.floor(r.width * dpr);
-    cv.height = Math.floor(r.height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    draw();
+  function compile(type,src){
+    const sh=gl.createShader(type); gl.shaderSource(sh,src); gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)||'shader compile failed');
+    return sh;
   }
-  window.addEventListener("resize", resizeCanvas);
-  resizeCanvas();
+
+  const vsSrc=`attribute vec3 aPos; attribute vec2 aUV; uniform mat4 uMVP; varying vec2 vUV; void main(){ gl_Position=uMVP*vec4(aPos,1.0); vUV=aUV; }`;
+  const fsSrc=`precision mediump float; varying vec2 vUV; uniform sampler2D uTex; uniform float uFlipV; void main(){ vec2 uv=vec2(vUV.x, mix(vUV.y,1.0-vUV.y,uFlipV)); gl_FragColor=texture2D(uTex,uv); }`;
+  const prog=gl.createProgram(); gl.attachShader(prog,compile(gl.VERTEX_SHADER,vsSrc)); gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fsSrc)); gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog)||'link failed');
+  const aPos=gl.getAttribLocation(prog,'aPos'), aUV=gl.getAttribLocation(prog,'aUV');
+  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV');
+
+  const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; }`;
+  const itemFs=`precision mediump float; uniform vec4 uColor; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; gl_FragColor=uColor; }`;
+  const itemProg=gl.createProgram(); gl.attachShader(itemProg,compile(gl.VERTEX_SHADER,itemVs)); gl.attachShader(itemProg,compile(gl.FRAGMENT_SHADER,itemFs)); gl.linkProgram(itemProg);
+  const iaPos=gl.getAttribLocation(itemProg,'aPos'), iuMVP=gl.getUniformLocation(itemProg,'uMVP'), iuPointSize=gl.getUniformLocation(itemProg,'uPointSize'), iuColor=gl.getUniformLocation(itemProg,'uColor');
+  const itemVB=gl.createBuffer();
+
+  const lineVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z+=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
+  const lineFs=`precision mediump float; uniform vec3 uColor; void main(){ gl_FragColor=vec4(uColor,1.0); }`;
+  const lineProg=gl.createProgram(); gl.attachShader(lineProg,compile(gl.VERTEX_SHADER,lineVs)); gl.attachShader(lineProg,compile(gl.FRAGMENT_SHADER,lineFs)); gl.linkProgram(lineProg);
+  const laPos=gl.getAttribLocation(lineProg,'aPos'), luMVP=gl.getUniformLocation(lineProg,'uMVP'), luOffsetXY=gl.getUniformLocation(lineProg,'uOffsetXY'), luScaleXY=gl.getUniformLocation(lineProg,'uScaleXY'), luZ=gl.getUniformLocation(lineProg,'uZ'), luColor=gl.getUniformLocation(lineProg,'uColor');
+
+  const gridVs=`attribute vec3 aPos; uniform mat4 uMVP; void main(){ gl_Position=uMVP*vec4(aPos,1.0); }`;
+  const gridFs=`precision mediump float; void main(){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); }`;
+  const gridProg=gl.createProgram(); gl.attachShader(gridProg,compile(gl.VERTEX_SHADER,gridVs)); gl.attachShader(gridProg,compile(gl.FRAGMENT_SHADER,gridFs)); gl.linkProgram(gridProg);
+  const gaPos=gl.getAttribLocation(gridProg,'aPos'), guMVP=gl.getUniformLocation(gridProg,'uMVP');
+  const gridVB=gl.createBuffer();
+
+  const waterVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
+  const waterFs=`precision mediump float; uniform vec3 uColor; uniform float uAlpha; void main(){ gl_FragColor=vec4(uColor,uAlpha); }`;
+  const waterProg=gl.createProgram(); gl.attachShader(waterProg,compile(gl.VERTEX_SHADER,waterVs)); gl.attachShader(waterProg,compile(gl.FRAGMENT_SHADER,waterFs)); gl.linkProgram(waterProg);
+  const waPos=gl.getAttribLocation(waterProg,'aPos'), wuMVP=gl.getUniformLocation(waterProg,'uMVP'), wuOffsetXY=gl.getUniformLocation(waterProg,'uOffsetXY'), wuScaleXY=gl.getUniformLocation(waterProg,'uScaleXY'), wuZ=gl.getUniformLocation(waterProg,'uZ'), wuColor=gl.getUniformLocation(waterProg,'uColor'), wuAlpha=gl.getUniformLocation(waterProg,'uAlpha');
+
+  const waterVB=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,0,1,0,0,1,1,0,0,1,0]),gl.STATIC_DRAW);
+  const waterIB=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array([0,1,2,0,2,3]),gl.STATIC_DRAW);
+  const lineVB=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,lineVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,0,1,0,0,1,0,0,1,1,0,1,1,0,0,1,0,0,1,0,0,0,0]),gl.STATIC_DRAW);
+
+  function mat4Identity(){ return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]); }
+  function mat4Mul(a,b){ const o=new Float32Array(16); for(let c=0;c<4;c++) for(let r=0;r<4;r++) o[c*4+r]=a[0*4+r]*b[c*4+0]+a[1*4+r]*b[c*4+1]+a[2*4+r]*b[c*4+2]+a[3*4+r]*b[c*4+3]; return o; }
+  function mat4Perspective(fovy,aspect,near,far){ const f=1/Math.tan(fovy/2), nf=1/(near-far); const o=new Float32Array(16); o[0]=f/aspect;o[5]=f;o[10]=(far+near)*nf;o[11]=-1;o[14]=(2*far*near)*nf; return o; }
+  function mat4Translate(x,y,z){ const o=mat4Identity(); o[12]=x;o[13]=y;o[14]=z; return o; }
+  function vec3(x,y,z){return {x,y,z};} function vec3Add(a,b){return vec3(a.x+b.x,a.y+b.y,a.z+b.z);} function vec3Sub(a,b){return vec3(a.x-b.x,a.y-b.y,a.z-b.z);} function vec3Scale(a,s){return vec3(a.x*s,a.y*s,a.z*s);} function vec3Dot(a,b){return a.x*b.x+a.y*b.y+a.z*b.z;} function vec3Cross(a,b){return vec3(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);} function vec3Len(a){return Math.hypot(a.x,a.y,a.z);} function vec3Norm(a){const l=vec3Len(a)||1;return vec3(a.x/l,a.y/l,a.z/l);}
+  function mat4LookAt(eye,center,up){ const f=vec3Norm(vec3Sub(center,eye)); let upRef=up; if(Math.abs(vec3Dot(f,upRef))>0.999) upRef=vec3(0,1,0); const s=vec3Norm(vec3Cross(f,upRef)); const u=vec3Cross(s,f); const out=mat4Identity(); out[0]=s.x; out[4]=s.y; out[8]=s.z; out[1]=u.x; out[5]=u.y; out[9]=u.z; out[2]=-f.x; out[6]=-f.y; out[10]=-f.z; out[12]=-vec3Dot(s,eye); out[13]=-vec3Dot(u,eye); out[14]=vec3Dot(f,eye); return out; }
+  function posMod(a,m){ return ((a%m)+m)%m; }
+
+  const DEPTH_W=1024, DEPTH_H=1024, SECTOR_SIZE=512, SECTOR_STRIDE=SECTOR_SIZE, SECTOR_MESH_MAX=SECTOR_SIZE;
+  const MIS_POS_SCALE=65536;
+  function mainAreaCenterX(){ return originWorldX() + terrainSpanX()*0.5; }
+  function mainAreaCenterY(){ return originWorldY() + terrainSpanY()*0.5; }
+  function rawToWorld(v, axis='z'){
+    const n=(Number(v)||0)/MIS_POS_SCALE;
+    if(axis==='x') return n + mainAreaCenterX();
+    if(axis==='y') return n + mainAreaCenterY();
+    return n;
+  }
+  function worldToRaw(v, axis='z'){
+    const n=Number(v)||0;
+    if(axis==='x') return Math.round((n-mainAreaCenterX())*MIS_POS_SCALE);
+    if(axis==='y') return Math.round((n-mainAreaCenterY())*MIS_POS_SCALE);
+    return Math.round(n*MIS_POS_SCALE);
+  }
+  let sectorCount=8, terrainOrigin={x:0,y:0}, wrapX=1, wrapY=1, sectors=null, lastDepth=null, lastImg=null, loadedTrnName=null;
+  let trnInfo={colormap:null,detailmap:null,polydata:null,tilestrip:null,charmap:null,foliagemap:null,waterHeight:null};
+  let texColor=null, texHeight=null, texDelta=null; let meshSector=[null,null,null,null,null];
+  let cam={pos:vec3(0,1500,400), yaw:Math.PI, pitch:-0.25}, move={w:0,a:0,s:0,d:0,q:0,e:0,shift:0};
+  let renderMode='C';
+  let gridVisible=true;
+  const MAX_GRID_LINES_PER_AXIS=1024;
+  let topViewLocked=false;
+  let topViewRestore={yaw:Math.PI,pitch:-0.25};
+  let gridExponent=9;
+  const GRID_EXP_MIN=-8, GRID_EXP_MAX=12;
+  function gridSizeMeters(){ return Math.pow(2, gridExponent); }
+  function formatGridValue(m){ if(m<1) return (m*100).toFixed(3)+'cm'; if(m>=1024) return m.toFixed(0)+'m'; if(Number.isInteger(m)) return m.toFixed(0)+'m'; return m.toFixed(3)+'m'; }
+  function updateGridUi(){ const el=document.getElementById('gridValue'); if(el) el.textContent=formatGridValue(gridSizeMeters()); const p=document.getElementById('gridPlus'); const n=document.getElementById('gridMinus'); if(p) p.disabled=gridExponent>=GRID_EXP_MAX; if(n) n.disabled=gridExponent<=GRID_EXP_MIN; }
+  function stepGridExponent(d){ gridExponent=Math.max(GRID_EXP_MIN,Math.min(GRID_EXP_MAX,gridExponent+d)); updateGridUi(); }
+  function setRenderMode(mode){ if(!['C','H','D'].includes(mode)) return; renderMode=mode; const c=document.getElementById('modeC'),h=document.getElementById('modeH'),d=document.getElementById('modeD'); if(c)c.classList.toggle('active',mode==='C'); if(h)h.classList.toggle('active',mode==='H'); if(d)d.classList.toggle('active',mode==='D'); }
+  function terrainSpanX(){ return sectorCount*SECTOR_STRIDE; } function terrainSpanY(){ return sectorCount*SECTOR_STRIDE; } function originWorldX(){ return terrainOrigin.x*SECTOR_STRIDE; } function originWorldY(){ return terrainOrigin.y*SECTOR_STRIDE; }
+  function resetCamera(){ const spanX=terrainSpanX(),spanY=terrainSpanY(), cx=originWorldX()+spanX*0.5, cy=originWorldY()+spanY*0.5, span=Math.max(spanX,spanY); cam.pos=vec3(cx,cy+span*0.65,220); cam.yaw=Math.PI; cam.pitch=-0.25; }
+
+  function decodeTGA(buf){ const d=new DataView(buf); const id=d.getUint8(0), type=d.getUint8(2), w=d.getUint16(12,true), h=d.getUint16(14,true), bpp=d.getUint8(16); let off=18+id; const out=new Uint8Array(w*h*4); let i=0; if(type===2){ for(let p=0;p<w*h;p++){ const b=d.getUint8(off++), g=d.getUint8(off++), r=d.getUint8(off++), a=bpp===32?d.getUint8(off++):255; out[i++]=r; out[i++]=g; out[i++]=b; out[i++]=a; } } else if(type===3){ for(let p=0;p<w*h;p++){ const v=d.getUint8(off++); out[i++]=v; out[i++]=v; out[i++]=v; out[i++]=255; } } else throw new Error('Unsupported TGA type '+type); return {w,h,pixels:out}; }
+  function getSectorOffset(sectorIndex){ switch(sectorIndex|0){ case 1:return {x:0,y:0}; case 2:return {x:0,y:512}; case 3:return {x:512,y:0}; case 4:return {x:512,y:512}; default:return {x:0,y:0}; } }
+  function heightSample(sectorIndex,x,y){ if(!lastDepth) return 0; const off=getSectorOffset(sectorIndex); const sx=(x>=SECTOR_SIZE)?(SECTOR_SIZE-1):x, sy=(y>=SECTOR_SIZE)?(SECTOR_SIZE-1):y, ix=off.x+sx, iy=off.y+sy; if(ix<0||iy<0||ix>=DEPTH_W||iy>=DEPTH_H) return 0; return lastDepth[iy*DEPTH_W+ix]/256.0; }
+  function buildMeshSingleSector(sectorIndex,step,heightMul){ if(!lastDepth) return {verts:new Float32Array(0),idx:new Uint32Array(0)}; const uvOff=getSectorOffset(sectorIndex); const xs=[],ys=[]; for(let v=0;v<=SECTOR_MESH_MAX;v+=step) xs.push(v); if(xs.at(-1)!==SECTOR_MESH_MAX) xs.push(SECTOR_MESH_MAX); for(let v=0;v<=SECTOR_MESH_MAX;v+=step) ys.push(v); if(ys.at(-1)!==SECTOR_MESH_MAX) ys.push(SECTOR_MESH_MAX); const gw=xs.length,gh=ys.length; const verts=new Float32Array(gw*gh*5), idx=new Uint32Array((gw-1)*(gh-1)*6); let vb=0; for(let y=0;y<gh;y++) for(let x=0;x<gw;x++){ const lx=xs[x],ly=ys[y],h=heightSample(sectorIndex,lx,ly)*heightMul; const su=(lx>=SECTOR_SIZE)?(SECTOR_SIZE-1):lx, sv=(ly>=SECTOR_SIZE)?(SECTOR_SIZE-1):ly; const u=(uvOff.x+su)/1024.0,v=(uvOff.y+sv)/1024.0,o=vb*5; verts[o]=lx;verts[o+1]=ly;verts[o+2]=h;verts[o+3]=u;verts[o+4]=v; vb++; } let ib=0; for(let y=0;y<gh-1;y++) for(let x=0;x<gw-1;x++){ const a=y*gw+x,b=a+1,c=a+gw,d=c+1; idx[ib++]=a;idx[ib++]=b;idx[ib++]=c; idx[ib++]=b;idx[ib++]=d;idx[ib++]=c; } return {verts,idx}; }
+  function createTextureFromPixels(w,h,pixels,opts={}){ const filter=opts.nearest?gl.NEAREST:gl.LINEAR; const tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); return tex; }
+  function createHeightmapTextureFromSectors(){ const px=new Uint8Array(DEPTH_W*DEPTH_H*4); for(let s=1;s<=4;s++){ const off=getSectorOffset(s); for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){ const g=Math.max(0,Math.min(255,Math.round(heightSample(s,x,y)*2.0))); const dst=((off.y+y)*DEPTH_W+(off.x+x))*4; px[dst]=g;px[dst+1]=g;px[dst+2]=g;px[dst+3]=255; } } return createTextureFromPixels(DEPTH_W,DEPTH_H,px); }
+  function createDeltaTextureFromSectors(){ const px=new Uint8Array(DEPTH_W*DEPTH_H*4); for(let s=1;s<=4;s++){ const off=getSectorOffset(s); for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){ const c=heightSample(s,x,y), xm=Math.max(0,x-1),xp=Math.min(SECTOR_SIZE-1,x+1), ym=Math.max(0,y-1),yp=Math.min(SECTOR_SIZE-1,y+1); const has=(Math.abs(heightSample(s,xm,y)-c)>1e-9)||(Math.abs(heightSample(s,xp,y)-c)>1e-9)||(Math.abs(heightSample(s,x,ym)-c)>1e-9)||(Math.abs(heightSample(s,x,yp)-c)>1e-9); const v=has?128:0,dst=((off.y+y)*DEPTH_W+(off.x+x))*4; px[dst]=v;px[dst+1]=v;px[dst+2]=v;px[dst+3]=255; } } return createTextureFromPixels(DEPTH_W,DEPTH_H,px,{nearest:true}); }
+  function activeTerrainTexture(){ if(renderMode==='H') return texHeight||texColor||texDelta; if(renderMode==='D') return texDelta||texColor||texHeight; return texColor||texHeight||texDelta; }
+  function Mesh(){ this.vb=null; this.ib=null; this.indexCount=0; this.indexType=gl.UNSIGNED_INT; }
+  Mesh.prototype.upload=function(mesh){ this.vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.vb); gl.bufferData(gl.ARRAY_BUFFER,mesh.verts,gl.STATIC_DRAW); this.ib=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,mesh.idx,gl.STATIC_DRAW); this.indexCount=mesh.idx.length; this.indexType=(mesh.idx instanceof Uint32Array)?gl.UNSIGNED_INT:gl.UNSIGNED_SHORT; if(this.indexType===gl.UNSIGNED_INT&&!extUInt) throw new Error('OES_element_index_uint not supported'); };
+  function rebuildTerrain(){ if(!lastDepth||!lastImg||!sectors) return; const step=parseInt(document.getElementById('step')?.value||'8',10)||8, hmul=1.0; for(let s=1;s<=4;s++){ const m=new Mesh(); m.upload(buildMeshSingleSector(s,step,hmul)); meshSector[s]=m; } texColor=createTextureFromPixels(lastImg.w,lastImg.h,lastImg.pixels); texHeight=createHeightmapTextureFromSectors(); texDelta=createDeltaTextureFromSectors(); resetCamera(); }
+
+  function mapSrcIdx(g,wrap){ if(wrap===1) return posMod(g,sectorCount); if(g<0) return 0; if(g>=sectorCount) return sectorCount-1; return g; }
+  function heightAtWorld(x,y,heightMul){
+    if(!lastDepth || !sectors) return -1e9;
+
+    const spanX=terrainSpanX();
+    const spanY=terrainSpanY();
+
+    let lxw = x - originWorldX();
+    let lyw = y - originWorldY();
+
+    if(wrapX===1) lxw = posMod(lxw, spanX);
+    if(wrapY===1) lyw = posMod(lyw, spanY);
+
+    let sx = Math.floor(lxw / SECTOR_STRIDE);
+    let sy = Math.floor(lyw / SECTOR_STRIDE);
+    let lx = lxw - sx*SECTOR_STRIDE;
+    let ly = lyw - sy*SECTOR_STRIDE;
+
+    if(wrapX===0){
+      if(sx < 0){
+        sx = 0;
+        lx = posMod(lxw, SECTOR_STRIDE);
+      } else if(sx >= sectorCount){
+        sx = sectorCount - 1;
+        lx = posMod(lxw, SECTOR_STRIDE);
+      }
+    }
+    if(wrapY===0){
+      if(sy < 0){
+        sy = 0;
+        ly = posMod(lyw, SECTOR_STRIDE);
+      } else if(sy >= sectorCount){
+        sy = sectorCount - 1;
+        ly = posMod(lyw, SECTOR_STRIDE);
+      }
+    }
+
+    if(sx<0 || sy<0 || sx>=sectorCount || sy>=sectorCount) return -1e9;
+    const sectorIndex = sectors[sy*sectorCount + sx] | 0;
+    if(sectorIndex<=0) return -1e9;
+
+    let x0 = Math.floor(lx);
+    let y0 = Math.floor(ly);
+
+    if(x0>0 && (x0 % 512)===0) x0 = x0 - 1;
+    if(y0>0 && (y0 % 512)===0) y0 = y0 - 1;
+
+    let x1 = Math.min(SECTOR_SIZE-1, x0+1);
+    let y1 = Math.min(SECTOR_SIZE-1, y0+1);
+
+    const tx = lx - x0;
+    const ty = ly - y0;
+
+    const h00 = heightSample(sectorIndex, x0, y0);
+    const h10 = heightSample(sectorIndex, x1, y0);
+    const h01 = heightSample(sectorIndex, x0, y1);
+    const h11 = heightSample(sectorIndex, x1, y1);
+
+    const h0 = h00*(1-tx) + h10*tx;
+    const h1 = h01*(1-tx) + h11*tx;
+    return (h0*(1-ty) + h1*ty) * heightMul;
+  }
+
+  function cameraBasis(){ const cy=Math.cos(cam.yaw), sy=Math.sin(cam.yaw), cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch); const forward=vec3(sy*cp, cy*cp, sp), forwardXY=vec3Norm(vec3(sy,cy,0)), right=vec3Norm(vec3Cross(forwardXY,vec3(0,0,1))); return {forward,forwardXY,right}; }
+  function currentPV(){ const {forward,forwardXY}=cameraBasis(); const P=mat4Perspective(Math.PI/3, cv.width/cv.height, 1.0, 1000000.0); const V=mat4LookAt(cam.pos, vec3Add(cam.pos,forward), (Math.abs(forward.z)>0.999)?forwardXY:vec3(0,0,1)); return {P,V,PV:mat4Mul(P,V)}; }
+  function worldToScreen(x,y,z=0){ const {PV}=currentPV(); const px=PV[0]*x+PV[4]*y+PV[8]*z+PV[12], py=PV[1]*x+PV[5]*y+PV[9]*z+PV[13], pw=PV[3]*x+PV[7]*y+PV[11]*z+PV[15]; if(pw<=0) return {sx:-999,sy:-999,visible:false}; const nx=px/pw, ny=py/pw, r=cv.getBoundingClientRect(); return {sx:(nx*0.5+0.5)*r.width, sy:(1-(ny*0.5+0.5))*r.height, visible:true}; }
+  function screenRay(sx,sy){ const r=cv.getBoundingClientRect(), nx=(sx/r.width)*2-1, ny=1-(sy/r.height)*2, aspect=r.width/Math.max(r.height,1), t=Math.tan(Math.PI/6); const {forward,right}=cameraBasis(); const up=vec3Norm(vec3Cross(right,forward)); const dir=vec3Norm(vec3Add(vec3Add(forward,vec3Scale(right,nx*t*aspect)),vec3Scale(up,ny*t))); return {origin:cam.pos,dir}; }
+  function screenToWorld(sx,sy,zPlane=0){ const ray=screenRay(sx,sy), dz=ray.dir.z; if(Math.abs(dz)<1e-6) return {x:ray.origin.x,y:ray.origin.y,z:zPlane}; const t=(zPlane-ray.origin.z)/dz; return {x:ray.origin.x+ray.dir.x*Math.max(t,0), y:ray.origin.y+ray.dir.y*Math.max(t,0), z:zPlane}; }
+
+  function bindMesh(m){ gl.bindBuffer(gl.ARRAY_BUFFER,m.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib); gl.enableVertexAttribArray(aPos); gl.enableVertexAttribArray(aUV); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,20,0); gl.vertexAttribPointer(aUV,2,gl.FLOAT,false,20,12); }
+  function drawTerrain(P,V,forward){ const tex=activeTerrainTexture(); if(!(tex&&sectors&&meshSector[1])) return 0; gl.useProgram(prog); gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0); gl.bindTexture(gl.TEXTURE_2D,tex); const ox=originWorldX(),oy=originWorldY(),radius=parseFloat(document.getElementById('radius')?.value||'12288')||12288; const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1,j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1; let draws=0; for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ const srcX=mapSrcIdx(gx,wrapX), srcY=mapSrcIdx(gy,wrapY), sectorIndex=sectors[srcY*sectorCount+srcX]|0; if(sectorIndex<=0) continue; const m=meshSector[sectorIndex]; if(!m||!m.indexCount) continue; const MVP=mat4Mul(P, mat4Mul(V, mat4Translate(ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE,0))); gl.uniformMatrix4fv(uMVP,false,MVP); bindMesh(m); gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0); draws++; }
+    if(trnInfo.waterHeight!==null&&Number.isFinite(trnInfo.waterHeight)){ gl.useProgram(waterProg); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.enableVertexAttribArray(waPos); gl.vertexAttribPointer(waPos,3,gl.FLOAT,false,12,0); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.uniformMatrix4fv(wuMVP,false,mat4Mul(P,V)); gl.uniform3f(wuColor,0.55,0.85,1.0); gl.uniform1f(wuAlpha,0.28); gl.uniform1f(wuZ,trnInfo.waterHeight*0.5); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ gl.uniform2f(wuOffsetXY,ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE); gl.uniform2f(wuScaleXY,SECTOR_STRIDE,SECTOR_STRIDE); gl.drawElements(gl.TRIANGLES,6,gl.UNSIGNED_SHORT,0); } gl.depthMask(true); gl.disable(gl.BLEND); }
+    if(gridVisible){
+      const gridSize=gridSizeMeters();
+      if(gridSize>0){
+        const spanVisibleX=(i1-i0+1)*SECTOR_STRIDE;
+        const spanVisibleY=(j1-j0+1)*SECTOR_STRIDE;
+        let gridMinX=ox + i0*SECTOR_STRIDE;
+        let gridMaxX=gridMinX + spanVisibleX;
+        let gridMinY=oy + j0*SECTOR_STRIDE;
+        let gridMaxY=gridMinY + spanVisibleY;
+
+        const maxSpan=gridSize*MAX_GRID_LINES_PER_AXIS;
+        if((gridMaxX-gridMinX)>maxSpan){
+          const cx=cam.pos.x;
+          gridMinX=Math.max(gridMinX, cx-maxSpan*0.5);
+          gridMaxX=Math.min(gridMaxX, cx+maxSpan*0.5);
+        }
+        if((gridMaxY-gridMinY)>maxSpan){
+          const cy=cam.pos.y;
+          gridMinY=Math.max(gridMinY, cy-maxSpan*0.5);
+          gridMaxY=Math.min(gridMaxY, cy+maxSpan*0.5);
+        }
+
+        const firstX=ox + Math.ceil((gridMinX-ox)/gridSize)*gridSize;
+        const firstY=oy + Math.ceil((gridMinY-oy)/gridSize)*gridSize;
+        const countX=Math.max(0, Math.floor((gridMaxX-firstX)/gridSize)+1);
+        const countY=Math.max(0, Math.floor((gridMaxY-firstY)/gridSize)+1);
+
+        if(countX>0 || countY>0){
+          const lineCount=countX+countY;
+          const verts=new Float32Array(lineCount*2*3);
+          let ptr=0;
+          for(let i=0;i<countX;i++){
+            const x=firstX+i*gridSize;
+            verts[ptr++]=x; verts[ptr++]=gridMinY; verts[ptr++]=0.2;
+            verts[ptr++]=x; verts[ptr++]=gridMaxY; verts[ptr++]=0.2;
+          }
+          for(let i=0;i<countY;i++){
+            const y=firstY+i*gridSize;
+            verts[ptr++]=gridMinX; verts[ptr++]=y; verts[ptr++]=0.2;
+            verts[ptr++]=gridMaxX; verts[ptr++]=y; verts[ptr++]=0.2;
+          }
+          gl.useProgram(gridProg);
+          gl.bindBuffer(gl.ARRAY_BUFFER,gridVB);
+          gl.bufferData(gl.ARRAY_BUFFER,verts,gl.DYNAMIC_DRAW);
+          gl.enableVertexAttribArray(gaPos);
+          gl.vertexAttribPointer(gaPos,3,gl.FLOAT,false,12,0);
+          gl.uniformMatrix4fv(guMVP,false,mat4Mul(P,V));
+          gl.disable(gl.DEPTH_TEST);
+          gl.drawArrays(gl.LINES,0,lineCount*2);
+          gl.enable(gl.DEPTH_TEST);
+          gl.useProgram(prog);
+        }
+      }
+    }
+
+    const mainAreaOn=document.getElementById('mainArea')?.checked; const showSectorsOn=document.getElementById('showSectors')?.checked;
+    if(mainAreaOn||showSectorsOn){ const MVPcam=mat4Mul(P,V); gl.useProgram(lineProg); gl.bindBuffer(gl.ARRAY_BUFFER,lineVB); gl.enableVertexAttribArray(laPos); gl.vertexAttribPointer(laPos,3,gl.FLOAT,false,12,0); gl.uniformMatrix4fv(luMVP,false,MVPcam); gl.uniform1f(luZ,0.25); gl.disable(gl.DEPTH_TEST); const spanX=terrainSpanX(), spanY=terrainSpanY(); function drawRect(offsetX, offsetY, scaleX, scaleY, color3){ gl.uniform3f(luColor,color3[0],color3[1],color3[2]); gl.uniform2f(luOffsetXY,offsetX,offsetY); gl.uniform2f(luScaleXY,scaleX,scaleY); gl.drawArrays(gl.LINES,0,8);} if(showSectorsOn){ for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++) drawRect(ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE,SECTOR_STRIDE,SECTOR_STRIDE,[0.2,0.8,1]); } if(mainAreaOn) drawRect(ox,oy,spanX,spanY,[1,0,0]); gl.enable(gl.DEPTH_TEST); gl.useProgram(prog); }
+    return draws; }
+
+  function drawItems(PV){
+    const items=getFilteredItems(); if(!items.length) return;
+    const verts=[]; for(const it of items) verts.push(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z'));
+    gl.useProgram(itemProg); gl.bindBuffer(gl.ARRAY_BUFFER,itemVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.DYNAMIC_DRAW); gl.enableVertexAttribArray(iaPos); gl.vertexAttribPointer(iaPos,3,gl.FLOAT,false,0,0); gl.uniformMatrix4fv(iuMVP,false,PV);
+    for(let i=0;i<items.length;i++){ const it=items[i], sel=(it.id===state.selectedId||state.multiSelectedIds.has(it.id)), wp=state.selectedWaypointMarkerIds.has(it.id); if(sel) gl.uniform4f(iuColor,0.35,0.45,0.95,1); else if(wp) gl.uniform4f(iuColor,1.0,0.8,0.2,1); else gl.uniform4f(iuColor,0.88,0.9,1.0,1); gl.uniform1f(iuPointSize,sel?11:8); gl.drawArrays(gl.POINTS,i,1); }
+    if(state.pastePlacementActive&&state.pastePreviewWorld&&state.itemClipboardItems.length){ const p=[]; for(const entry of state.itemClipboardItems) p.push(state.pastePreviewWorld.x+entry.dx,state.pastePreviewWorld.y+entry.dy,state.pastePreviewWorld.z||0); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(p),gl.DYNAMIC_DRAW); gl.uniform4f(iuColor,0.34,0.83,0.55,0.9); gl.uniform1f(iuPointSize,13); gl.drawArrays(gl.POINTS,0,p.length/3); }
+  }
+
+  function pickItemAt(sx,sy){ const items=getFilteredItems(); let best=null,bestD2=Infinity; for(const it of items){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
+
+  function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
+  async function listTerrainFilesFromEditorFolder(terrainName){
+    if (!state.editorFolderHandle) return null;
+    try{
+      const parts = ["resources", "terrains"];
+      let dir = state.editorFolderHandle;
+      for (const part of parts){
+        dir = await dir.getDirectoryHandle(part);
+      }
+
+      let matchedDir = null;
+      const wanted = String(terrainName || "").toLowerCase();
+      for await (const [name, handle] of dir.entries()){
+        if (handle.kind !== "directory") continue;
+        if (name.toLowerCase() === wanted){
+          matchedDir = { name, handle };
+          break;
+        }
+      }
+      if (!matchedDir) return null;
+
+      const files = [];
+      for await (const [name, handle] of matchedDir.handle.entries()){
+        if (handle.kind === "file") files.push(name);
+      }
+      return { folder: matchedDir.name, files };
+    } catch (err){
+      addLog(`[terrain] error listing terrain folder from editor folder: ${err?.message || err}`);
+      return null;
+    }
+  }
+
+  function findFileCaseInsensitive(files, wanted){
+    const low = String(wanted || "").toLowerCase();
+    return (files || []).find(f => String(f).toLowerCase() === low) || null;
+  }
+
+  const TERRAIN_FILE_INDEX={"CINE": ["CINE.TRN"], "DVD1": ["DVD1.TRN"], "dvd2": ["dvd2.trn"], "dvd3": ["dvd3.trn"], "DVD4": ["DVD4.TRN"], "dvd5": ["dvd5.trn"], "dvdg1": ["dvdg1.trn"], "DVDG2": ["DVDG2.TRN"], "dvg1": ["dvg1.trn"], "dvt1": ["dvt1.trn"], "Flat": ["Flat.TRN"], "MIS1": ["MIS1.TRN"], "mis10": ["mis10.trn"], "MIS11": ["MIS11.TRN"], "MIS13": ["MIS13.TRN"], "Mis14": ["Mis14.trn"], "MIS15": ["MIS15.TRN"], "MIS16": ["MIS16.TRN"], "MIS17": ["MIS17.TRN"], "MIS18": ["MIS18.TRN"], "MIS19B": ["MIS19B.TRN"], "MIS2": ["MIS2.TRN"], "MIS3": ["MIS3.TRN"], "MIS4": ["MIS4.TRN"], "MIS5": ["MIS5.TRN"], "MIS6": ["MIS6.TRN"], "MIS7": ["MIS7.TRN"], "MIS8": ["MIS8.TRN"], "MIS9": ["MIS9.TRN"], "MIST1": ["MIST1.TRN"], "MIST2": ["MIST2.TRN"], "rmp02b": ["rmp02b.trn"], "rmp03p": ["rmp03p.trn"], "rmp03r": ["rmp03r.trn"], "TKHR_04": ["TKHR_04.trn"], "ts_01": ["ts_01.trn"], "ts_02": ["ts_02.trn"], "TS_05": ["TS_05.trn"], "TS_09": ["TS_09.trn"], "ts_11": ["ts_11.trn"], "TSBHD_04": ["TSBHD_04.trn"], "TSBHD_06": ["TSBHD_06.trn"], "zoo": ["zoo.trn"]};
+  async function loadTerrainFromMis(){
+    const terrain=extractTerrainNameFromMis();
+    addLog(`[terrain] terrain key from MIS: ${terrain || "<empty>"}`);
+    if(!terrain){
+      loadedTrnName=null;
+      addLog("[terrain] MIS has no 'terrain' in general_information; terrain renderer disabled.");
+      return;
+    }
+
+    let folder = null;
+    let files = [];
+
+    if (state.isLocalRuntime && state.editorFolderHandle){
+      const localListing = await listTerrainFilesFromEditorFolder(terrain);
+      if (localListing){
+        folder = localListing.folder;
+        files = localListing.files;
+        addLog(`[terrain] folder matched from editor folder: ${folder} (files on disk: ${files.length})`);
+      } else {
+        addLog(`[terrain] no folder match on disk for '${terrain}' inside resources/terrains`);
+      }
+    }
+
+    if (!folder){
+      const folders=Object.keys(TERRAIN_FILE_INDEX);
+      folder=folders.find(n=>n.toLowerCase()===terrain.toLowerCase()) || null;
+      addLog(`[terrain] searching folder in static index for '${terrain}' (folders indexed: ${folders.length})`);
+      if(!folder){
+        loadedTrnName=null;
+        addLog(`[terrain] folder not found for '${terrain}'. First folders: ${folders.slice(0,20).join(', ')}`);
+        throw new Error(`Pasta de terreno não encontrada para terrain ${terrain}`);
+      }
+      files = TERRAIN_FILE_INDEX[folder] || [];
+      addLog(`[terrain] folder matched via static index: ${folder} (indexed files: ${files.length})`);
+    }
+
+    const trnFile=(files||[]).find(f=>/\.trn$/i.test(f));
+    if(!trnFile){
+      addLog(`[terrain] TRN not found in folder ${folder}. Files: ${files.join(', ') || '<none>'}`);
+      throw new Error(`Arquivo .trn ausente em ${folder}`);
+    }
+
+    loadedTrnName=trnFile;
+    const base=`resources/terrains/${folder}`;
+    addLog(`[terrain] loading TRN: ${base}/${trnFile}`);
+
+    const trnTxt = await loadTextResource(`${base}/${trnFile}`);
+    if(!trnTxt){
+      addLog(`[terrain] failed to read TRN file: ${base}/${trnFile}`);
+      throw new Error(`Falha ao ler TRN: ${base}/${trnFile}`);
+    }
+
+    function trnGetValue(re){ const mm=trnTxt.match(re); return mm?mm[1]:null; }
+    trnInfo.colormap=trnGetValue(/polytrn_colormap\s+"?([^\s"]+)/i);
+    trnInfo.detailmap=trnGetValue(/polytrn_detailmap\s+"?([^\s"]+)/i);
+    trnInfo.polydata=trnGetValue(/polytrn_polydata\s+"?([^\s"]+)/i);
+    trnInfo.tilestrip=trnGetValue(/polytrn_tilestrip\s+"?([^\s"]+)/i);
+    trnInfo.charmap=trnGetValue(/polytrn_charmap\s+"?([^\s"]+)/i);
+    trnInfo.foliagemap=trnGetValue(/polytrn_foliagemap\s+"?([^\s"]+)/i);
+    const whStr=trnGetValue(/water_height\s+([0-9\.\-]+)/i);
+    trnInfo.waterHeight=(whStr===null)?null:parseFloat(whStr);
+    addLog(`[terrain] TRN parsed: polydata=${trnInfo.polydata || '-'} colormap=${trnInfo.colormap || '-'} water_height=${trnInfo.waterHeight ?? '-'}`);
+
+    const scMatch=trnTxt.match(/polytrn_sectorcount\s+([0-9]+)/i);
+    sectorCount=scMatch?parseInt(scMatch[1],10):8;
+    const orgMatch=trnTxt.match(/polytrn_origin\s+(-?\d+)\s+(-?\d+)/i);
+    terrainOrigin=orgMatch?{x:parseInt(orgMatch[1],10),y:parseInt(orgMatch[2],10)}:{x:0,y:0};
+    const wxMatch=trnTxt.match(/polytrn_wrapx\s+([01])/i), wyMatch=trnTxt.match(/polytrn_wrapy\s+([01])/i);
+    wrapX=wxMatch?parseInt(wxMatch[1],10):1;
+    wrapY=wyMatch?parseInt(wyMatch[1],10):1;
+
+    const rows=[];
+    trnTxt.split(/\r\n|\r|\n/).forEach(line=>{
+      const cut=line.split(';')[0].trim();
+      const m=cut.match(/^polytrn_sectors\s+(.+)$/i);
+      if(!m) return;
+      const vals=m[1].trim().split(/\s+/).map(v=>parseInt(v,10)).filter(Number.isFinite);
+      if(vals.length) rows.push(vals);
+    });
+    if(rows.length){
+      const w=rows[0].length;
+      if(w!==sectorCount||rows.length!==sectorCount) sectorCount=w;
+      sectors=new Int32Array(sectorCount*sectorCount);
+      for(let y=0;y<sectorCount;y++) for(let x=0;x<sectorCount;x++) sectors[y*sectorCount+x]=(rows[y]||[])[x]||0;
+    } else {
+      sectors=new Int32Array(sectorCount*sectorCount);
+      sectors.fill(1);
+    }
+    addLog(`[terrain] sector layout ready: ${sectorCount}x${sectorCount}, origin=${terrainOrigin.x},${terrainOrigin.y}, wrap=${wrapX}/${wrapY}`);
+
+    const cptRef=(trnTxt.match(/polytrn_polydata\s+"?([^\s"]+)/i)||[])[1];
+    const tgaRef=(trnTxt.match(/polytrn_colormap\s+"?([^\s"]+)/i)||[])[1];
+    const cptFile=findFileCaseInsensitive(files, cptRef) || (files||[]).find(f=>/\.cpt$/i.test(f)) || null;
+    const resolvedColFile=findFileCaseInsensitive(files, tgaRef) || (files||[]).find(f=>/_c\.tga$/i.test(f)) || (files||[]).find(f=>/\.tga$/i.test(f)) || null;
+    addLog(`[terrain] CPT reference from TRN: ${cptRef || '<none>'}; resolved CPT: ${cptFile || '<none>'}; colormap ref: ${tgaRef || '<none>'}; resolved TGA: ${resolvedColFile || '<none>'}`);
+    if(!cptFile) throw new Error(`CPT ausente em ${folder}`);
+    if(!resolvedColFile) throw new Error(`TGA ausente em ${folder}`);
+
+    const cptPath=`${base}/${cptFile}`;
+    addLog(`[terrain] loading CPT: ${cptPath}`);
+    const cptBuf=await loadBinaryResource(cptPath);
+    if(!cptBuf) throw new Error(`Falha ao ler CPT: ${cptPath}`);
+
+    const dv=new DataView(cptBuf,0xA4);
+    const depth=new Uint16Array(DEPTH_W*DEPTH_H);
+    for(let i=0;i<depth.length;i++) depth[i]=dv.getUint16(i*2,true);
+    lastDepth=depth;
+
+    const tgaPath=`${base}/${resolvedColFile}`;
+    addLog(`[terrain] loading TGA: ${tgaPath}`);
+    const tgaBuf=await loadBinaryResource(tgaPath);
+    if(!tgaBuf) throw new Error(`Falha ao ler TGA: ${tgaPath}`);
+    lastImg=decodeTGA(tgaBuf);
+    addLog(`[terrain] TGA decoded: ${lastImg.w}x${lastImg.h}`);
+
+    rebuildTerrain();
+    addLog(`[terrain] terrain rebuild complete: ${folder}/${trnFile}`);
+  }
+
+
+
+  function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); gl.viewport(0,0,cv.width,cv.height); }
 
   function fitView(){
-    const items = state.items;
-    if (!items.length) return;
-    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
-    for (const it of items){
-      minX = Math.min(minX, it.x);
-      maxX = Math.max(maxX, it.x);
-      minY = Math.min(minY, it.y);
-      maxY = Math.max(maxY, it.y);
+    const items = state.items || [];
+    if (!items.length){
+      resetCamera();
+      state.camera.x = cam.pos.x;
+      state.camera.y = cam.pos.y;
+      state.camera.z = cam.pos.z;
+      state.camera.yaw = cam.yaw;
+      state.camera.pitch = cam.pitch;
+      return;
     }
-    const w = cv.getBoundingClientRect().width;
-    const h = cv.getBoundingClientRect().height;
-    const spanX = Math.max(1, maxX - minX);
-    const spanY = Math.max(1, maxY - minY);
-    const zoomX = (w * 0.85) / spanX;
-    const zoomY = (h * 0.85) / spanY;
-    state.view.zoom = Math.min(zoomX, zoomY);
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    state.view.ox = w / 2 - cx * state.view.zoom;
-    state.view.oy = h / 2 - cy * state.view.zoom;
-  }
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,maxZ=0;
+    for (const it of items){
+      minX=Math.min(minX,rawToWorld(it.x||0,'x')); maxX=Math.max(maxX,rawToWorld(it.x||0,'x'));
+      minY=Math.min(minY,rawToWorld(it.y||0,'y')); maxY=Math.max(maxY,rawToWorld(it.y||0,'y'));
+      maxZ=Math.max(maxZ,rawToWorld(it.z||0,'z'));
+    }
+    const cx=(minX+maxX)*0.5;
+    const cy=(minY+maxY)*0.5;
+    const span=Math.max(maxX-minX,maxY-minY,SECTOR_STRIDE*2);
+    cam.pos = vec3(cx, cy + span*0.8, Math.max(maxZ + span*0.4, 220));
+    cam.yaw = Math.PI;
+    cam.pitch = -0.25;
 
-  function worldToScreen(x,y){
-    const { zoom, ox, oy } = state.view;
-    return { sx: x*zoom + ox, sy: y*zoom + oy };
+    state.camera.x = cam.pos.x;
+    state.camera.y = cam.pos.y;
+    state.camera.z = cam.pos.z;
+    state.camera.yaw = cam.yaw;
+    state.camera.pitch = cam.pitch;
   }
-  function screenToWorld(sx,sy){
-    const { zoom, ox, oy } = state.view;
-    return { x: (sx-ox)/zoom, y: (sy-oy)/zoom };
-  }
+  window.addEventListener('resize',resizeCanvas); resizeCanvas();
 
+  let lastT=performance.now();
   function draw(){
-    const w = cv.getBoundingClientRect().width;
-    const h = cv.getBoundingClientRect().height;
-    ctx.clearRect(0,0,w,h);
+    const now=performance.now(), dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
+    const {forwardXY,right,forward}=cameraBasis(); let dir=vec3(0,0,0); if(move.w) dir=vec3Add(dir,forwardXY); if(move.s) dir=vec3Sub(dir,forwardXY); if(move.d) dir=vec3Add(dir,right); if(move.a) dir=vec3Sub(dir,right); if(move.e) dir=vec3Add(dir,vec3(0,0,1)); if(move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); if(dlen>0){ dir=vec3Scale(dir,1/dlen); const base=parseFloat(document.getElementById('speed')?.value||'300'); const spd=base*(move.shift?3:1); state.camera.speed=spd; cam.pos=vec3Add(cam.pos,vec3Scale(dir,spd*dt)); }
+    if(document.getElementById('ground')?.checked && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=parseFloat(document.getElementById('clear')?.value||'40'); if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
+    gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV);
+    const waterHeightLabel = (trnInfo.waterHeight===0 || trnInfo.waterHeight) ? trnInfo.waterHeight : '-';
+    const waterZUsedLabel = (trnInfo.waterHeight===0 || trnInfo.waterHeight) ? (trnInfo.waterHeight*0.5) : '-';
+    camDebugEl.textContent=
+`Loaded terrain: ${loadedTrnName||'none'}
 
-    ctx.globalAlpha = 0.25;
-    ctx.strokeStyle = "#2a2f3d";
-    ctx.lineWidth = 1;
-    const stepWorld = 200000;
-    const step = stepWorld * state.view.zoom;
-    if (step > 25){
-      const startX = ((0 - state.view.ox) % step + step) % step;
-      const startY = ((0 - state.view.oy) % step + step) % step;
-      for (let x = startX; x < w; x += step){
-        ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
-      }
-      for (let y = startY; y < h; y += step){
-        ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
-      }
-    }
-    ctx.globalAlpha = 1;
+polytrn_colormap      ${trnInfo.colormap || '-'}
+polytrn_detailmap     ${trnInfo.detailmap || '-'}
+polytrn_polydata      ${trnInfo.polydata || '-'}
+polytrn_tilestrip     ${trnInfo.tilestrip || '-'}
+polytrn_charmap       ${trnInfo.charmap || '-'}
+polytrn_foliagemap    ${trnInfo.foliagemap || '-'}
+water_height          ${waterHeightLabel}
+water_z_used          ${waterZUsedLabel}
 
-    const items = getFilteredItems();
-    for (const it of items){
-      const p = worldToScreen(it.x,it.y);
-      const isSel = it.id === state.selectedId || state.multiSelectedIds.has(it.id);
-      const isWpMarked = state.selectedWaypointMarkerIds.has(it.id);
-      ctx.fillStyle = isSel ? "#5865f2" : (isWpMarked ? "#ffcc33" : "#e0e3ff");
-      const r = isSel ? 5 : (isWpMarked ? 4 : 3);
-      ctx.beginPath();
-      ctx.arc(p.sx,p.sy,r,0,Math.PI*2);
-      ctx.fill();
-
-      if (isWpMarked && !isSel){
-        ctx.strokeStyle = "#ff8a00";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(p.sx,p.sy,r + 1.5,0,Math.PI*2);
-        ctx.stroke();
-      }
-    }
-
-    if (state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length){
-      ctx.save();
-      ctx.globalAlpha = 0.75;
-      for (const entry of state.itemClipboardItems){
-        const p = worldToScreen(state.pastePreviewWorld.x + entry.dx, state.pastePreviewWorld.y + entry.dy);
-        ctx.fillStyle = "#57d38c";
-        ctx.beginPath();
-        ctx.arc(p.sx, p.sy, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#9bf0bf";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(p.sx, p.sy, 10, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    if (state.boxSelecting && state.boxStart && state.boxCurrent){
-      const x = Math.min(state.boxStart.sx, state.boxCurrent.sx);
-      const y = Math.min(state.boxStart.sy, state.boxCurrent.sy);
-      const w = Math.abs(state.boxCurrent.sx - state.boxStart.sx);
-      const h = Math.abs(state.boxCurrent.sy - state.boxStart.sy);
-      ctx.save();
-      ctx.fillStyle = "rgba(88,101,242,0.18)";
-      ctx.strokeStyle = "#5865f2";
-      ctx.lineWidth = 1.5;
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeRect(x, y, w, h);
-      ctx.restore();
-    }
+Mode: ${renderMode==='C' ? 'Colormap' : (renderMode==='H' ? 'Heightmap' : 'Delta')}
+Grid: ${gridVisible ? formatGridValue(gridSizeMeters()) : 'off'}
+Top view lock: ${topViewLocked?'on':'off'}
+Draw calls: ${drawCalls}
+Wrap: x=${wrapX} y=${wrapY}
+Sectors: ${sectorCount}x${sectorCount} origin=${terrainOrigin.x},${terrainOrigin.y}
+Terrain size: ${terrainSpanX()} x ${terrainSpanY()}
+Cam: x=${cam.pos.x.toFixed(6)} y=${cam.pos.y.toFixed(6)} z=${cam.pos.z.toFixed(6)}
+Yaw: ${cam.yaw.toFixed(2)} Pitch: ${cam.pitch.toFixed(2)}
+PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
+    requestAnimationFrame(draw);
   }
+  requestAnimationFrame(draw);
 
-  function pickItemAt(sx,sy){
-    const items = getFilteredItems();
-    let best=null, bestD2=Infinity;
-    for (const it of items){
-      const p = worldToScreen(it.x,it.y);
-      const dx = p.sx - sx;
-      const dy = p.sy - sy;
-      const d2 = dx*dx + dy*dy;
-      if (d2 < bestD2){ bestD2=d2; best=it; }
-    }
-    if (best && bestD2 < 12*12) return best;
-    return null;
-  }
+  cv.addEventListener('click',()=>{ cv.focus(); if(document.pointerLockElement!==cv) cv.requestPointerLock(); });
+  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='g'){ gridVisible=!gridVisible; } if(k==='w') move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e') move.e=1; if(k==='shift') move.shift=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
+  addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); if(k==='w') move.w=0; if(k==='a') move.a=0; if(k==='s') move.s=0; if(k==='d') move.d=0; if(k==='q') move.q=0; if(k==='e') move.e=0; if(k==='shift') move.shift=0; state.keysDown.delete(e.code); });
+  addEventListener('mousemove',e=>{ if(document.pointerLockElement!==cv) return; if(topViewLocked) return; cam.yaw += e.movementX*0.002; cam.pitch -= e.movementY*0.002; cam.pitch=Math.max(-1.55,Math.min(1.55,cam.pitch)); });
+
+  document.getElementById('modeC')?.addEventListener('click',()=>setRenderMode('C'));
+  document.getElementById('modeH')?.addEventListener('click',()=>setRenderMode('H'));
+  document.getElementById('modeD')?.addEventListener('click',()=>setRenderMode('D'));
+  document.getElementById('gridPlus')?.addEventListener('click',()=>stepGridExponent(1));
+  document.getElementById('gridMinus')?.addEventListener('click',()=>stepGridExponent(-1));
+  document.getElementById('step')?.addEventListener('change',()=>rebuildTerrain());
+  updateGridUi();
+  setRenderMode('C');
 
   cv.addEventListener("mousedown", (e) => {
-    if (state.modalOpen) return;
-    closeItemContextMenu();
-
-    const rect = cv.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-
-    if (e.button === 2){
-      state.draggingItem = false;
-      state.boxSelecting = false;
-      state.draggingPan = true;
-      state.rightPanActive = true;
-      state.rightPanStart = { sx, sy };
-      state.suppressContextMenu = false;
-      state.lastMouse = { sx, sy };
-      return;
-    }
-
-    if (e.button !== 0) return;
-
-    if (state.pastePlacementActive){
-      applyPasteAtWorld(screenToWorld(sx, sy));
-      state.draggingItem = false;
-      state.draggingPan = false;
-      state.lastMouse = { sx, sy };
-      return;
-    }
-
+    if (state.modalOpen) return; closeItemContextMenu(); const rect = cv.getBoundingClientRect(); const sx = e.clientX - rect.left; const sy = e.clientY - rect.top; if (e.button !== 0) return;
+    if (state.pastePlacementActive){ applyPasteAtWorld(screenToWorld(sx, sy, state.pastePreviewWorld?.z || 0)); state.lastMouse = { sx, sy }; return; }
     const picked = pickItemAt(sx,sy);
-    if (picked){
-      if (e.ctrlKey){
-        if (state.multiSelectedIds.has(picked.id)){
-          state.multiSelectedIds.delete(picked.id);
-          if (state.selectedId === picked.id){
-            const next = state.multiSelectedIds.values().next();
-            state.selectedId = next.done ? null : next.value;
-          }
-        } else {
-          state.multiSelectedIds.add(picked.id);
-          state.selectedId = picked.id;
-        }
-        state.selectedWaypointMarkerIds.clear();
-        updateWaypointMarkerCount(0);
-        state.draggingItem = false;
-        renderList();
-        draw();
-      } else {
-        selectById(picked.id);
-        state.draggingItem = e.shiftKey;
-      }
-    } else {
-      state.draggingItem = false;
-      state.draggingPan = false;
-      state.boxSelecting = true;
-      state.boxSelectAdditive = e.ctrlKey;
-      state.boxStart = { sx, sy };
-      state.boxCurrent = { sx, sy };
-      if (!e.ctrlKey && (state.selectedId !== null || state.multiSelectedIds.size || state.selectedWaypointMarkerIds.size)){
-        state.selectedId = null;
-        state.multiSelectedIds.clear();
-        state.selectedWaypointMarkerIds.clear();
-        updateWaypointMarkerCount(0);
-      }
-      renderList();
-      draw();
-    }
-    state.draggingPan = !state.draggingItem && !state.boxSelecting && !e.ctrlKey;
-    state.lastMouse = { sx, sy };
+    if (picked){ if (e.ctrlKey){ if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id); else state.multiSelectedIds.add(picked.id); state.selectedId = picked.id; renderList(); } else selectById(picked.id); state.draggingItem = e.shiftKey; if (state.draggingItem) state.dragAnchor = screenToWorld(sx, sy, rawToWorld(picked.z||0,'z')); }
+    else { state.draggingItem=false; state.boxSelecting=true; state.boxSelectAdditive=e.ctrlKey; state.boxStart={sx,sy}; state.boxCurrent={sx,sy}; if(!e.ctrlKey){state.selectedId=null; state.multiSelectedIds.clear();} renderList(); }
+    state.lastMouse={sx,sy};
   });
+  cv.addEventListener("contextmenu", (e) => { e.preventDefault(); const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAt(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
+  cv.addEventListener("dblclick", (e) => { const rect=cv.getBoundingClientRect(); const picked=pickItemAt(e.clientX-rect.left,e.clientY-rect.top); if(picked){ selectById(picked.id); openModal(); } });
+  cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.pastePlacementActive){ const z=state.selectedId?rawToWorld(getSelected()?.z||0,'z'):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=rawToWorld((active[0]?.z)||0,'z'); const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; it.x=worldToRaw(rawToWorld(it.x,'x')+dx,'x'); it.y=worldToRaw(rawToWorld(it.y,'y')+dy,'y'); it.kv.position=`${it.x} ${it.y} ${it.z}`; } state.dragAnchor=nowW; renderList(); refreshLiveMisWindow(); } state.lastMouse={sx,sy}; });
+  function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; if(had){ const ids=[]; for(const it of getFilteredItems()){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); } }
+  cv.addEventListener('mouseup',stopDrag); cv.addEventListener('mouseleave',stopDrag);
+  cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const sp=document.getElementById('speed'); if(!sp) return; const cur=parseFloat(sp.value||'300'); const min=parseFloat(sp.min||'20'); const max=parseFloat(sp.max||'1200'); const step=parseFloat(sp.step||'10'); const next=Math.max(min, Math.min(max, cur*Math.exp(-e.deltaY*0.001))); const snapped=Math.round(next/step)*step; sp.value=String(Math.max(min,Math.min(max,snapped))); },{passive:false});
 
-  cv.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-    if (state.modalOpen) return;
-    if (state.suppressContextMenu){
-      state.suppressContextMenu = false;
-      return;
-    }
-
-    const rect = cv.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-    const picked = pickItemAt(sx, sy);
-    const hasSelection = state.selectedId !== null || state.multiSelectedIds.size > 0;
-
-    if (!picked){
-      if (hasSelection){
-        if (state.selectedId === null && state.multiSelectedIds.size){
-          state.selectedId = state.multiSelectedIds.values().next().value;
-          renderList();
-          draw();
-        }
-        showItemContextMenu(e.clientX, e.clientY);
-      } else if (state.itemClipboardItems.length){
-        showItemContextMenu(e.clientX, e.clientY, [
-          { label: "Paste", action: () => beginPastePlacementAtScreen(sx, sy) }
-        ]);
-      } else {
-        closeItemContextMenu();
-      }
-      return;
-    }
-
-    if (state.selectedId !== picked.id && !state.multiSelectedIds.has(picked.id)) selectById(picked.id);
-    showItemContextMenu(e.clientX, e.clientY);
-  });
-
-  cv.addEventListener("dblclick", (e) => {
-    if (state.modalOpen) return;
-    const rect = cv.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-    const picked = pickItemAt(sx,sy);
-    if (picked){
-      selectById(picked.id);
-      openModal();
-    }
-  });
-
-  cv.addEventListener("mousemove", (e) => {
-    if (state.modalOpen) return;
-
-    const rect = cv.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-
-    if (state.pastePlacementActive){
-      state.pastePreviewWorld = screenToWorld(sx, sy);
-      draw();
-    }
-
-    if (!state.lastMouse){
-      state.lastMouse = { sx, sy };
-      return;
-    }
-
-    const dx = sx - state.lastMouse.sx;
-    const dy = sy - state.lastMouse.sy;
-
-    if (state.rightPanActive && state.rightPanStart && !state.suppressContextMenu){
-      const movedX = Math.abs(sx - state.rightPanStart.sx);
-      const movedY = Math.abs(sy - state.rightPanStart.sy);
-      if (movedX > 3 || movedY > 3) state.suppressContextMenu = true;
-    }
-
-    if (state.boxSelecting && state.boxStart){
-      state.boxCurrent = { sx, sy };
-      draw();
-    } else if (state.draggingItem && state.selectedId){
-      const it = getSelected();
-      if (it && kvHas(it, "position")){
-        it.x += dx / state.view.zoom;
-        it.y += dy / state.view.zoom;
-        it.kv.position = `${it.x} ${it.y} ${it.z}`;
-        renderList();
-        draw();
-        refreshLiveMisWindow();
-      }
-    } else if (state.draggingPan){
-      state.view.ox += dx;
-      state.view.oy += dy;
-      draw();
-    }
-    state.lastMouse = { sx, sy };
-  });
-
-  function stopDrag(){
-    const hadBoxSelection = state.boxSelecting && state.boxStart && state.boxCurrent;
-    const x0 = hadBoxSelection ? Math.min(state.boxStart.sx, state.boxCurrent.sx) : 0;
-    const x1 = hadBoxSelection ? Math.max(state.boxStart.sx, state.boxCurrent.sx) : 0;
-    const y0 = hadBoxSelection ? Math.min(state.boxStart.sy, state.boxCurrent.sy) : 0;
-    const y1 = hadBoxSelection ? Math.max(state.boxStart.sy, state.boxCurrent.sy) : 0;
-    const additiveSelection = state.boxSelectAdditive;
-
-    state.draggingPan = false;
-    state.draggingItem = false;
-    state.boxSelecting = false;
-    state.boxSelectAdditive = false;
-    state.boxStart = null;
-    state.boxCurrent = null;
-    state.rightPanActive = false;
-    state.rightPanStart = null;
-    state.lastMouse = null;
-
-    if (hadBoxSelection){
-      const minSize = 3;
-      if ((x1 - x0) >= minSize || (y1 - y0) >= minSize){
-        const boxIds = [];
-        for (const it of getFilteredItems()){
-          const p = worldToScreen(it.x, it.y);
-          if (p.sx >= x0 && p.sx <= x1 && p.sy >= y0 && p.sy <= y1){
-            boxIds.push(it.id);
-          }
-        }
-        if (!additiveSelection){
-          state.multiSelectedIds.clear();
-        }
-        for (const id of boxIds) state.multiSelectedIds.add(id);
-        state.selectedId = state.multiSelectedIds.size ? Array.from(state.multiSelectedIds).at(-1) : null;
-        state.selectedWaypointMarkerIds.clear();
-        updateWaypointMarkerCount(0);
-      }
-      renderList();
-      draw();
-    }
-  }
-  cv.addEventListener("mouseup", stopDrag);
-  cv.addEventListener("mouseleave", stopDrag);
-
-  cv.addEventListener("wheel", (e) => {
-    if (state.modalOpen) return;
-    e.preventDefault();
-    const rect = cv.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-
-    const before = screenToWorld(sx,sy);
-    const factor = Math.exp(-e.deltaY * 0.001);
-    state.view.zoom *= factor;
-    state.view.zoom = Math.max(1e-12, Math.min(10, state.view.zoom));
-    const after = screenToWorld(sx,sy);
-
-    state.view.ox += (after.x - before.x) * state.view.zoom;
-    state.view.oy += (after.y - before.y) * state.view.zoom;
-
-    draw();
-  }, { passive:false });
+  const _origLoadMisFile = loadMisFile;
+  loadMisFile = async function(file, fileHandle = null){
+    await _origLoadMisFile(file, fileHandle);
+    try{ await loadTerrainFromMis(); }catch(err){ addLog(`[terrain] load error: ${err?.message || err}`); camDebugEl.textContent = `Falha ao carregar terreno: ${err.message||err}`; }
+  };
 
   function applyTheme(theme){
     const normalized = theme && theme !== "default" ? theme : "";
