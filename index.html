@@ -4688,10 +4688,30 @@
     if(document.getElementById('ground')?.checked && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=parseFloat(document.getElementById('clear')?.value||'40'); if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
     gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
     const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV);
-    camDebugEl.textContent=`Loaded terrain: ${loadedTrnName||'none'}
+    const waterHeightLabel = (trnInfo.waterHeight===0 || trnInfo.waterHeight) ? trnInfo.waterHeight : '-';
+    const waterZUsedLabel = (trnInfo.waterHeight===0 || trnInfo.waterHeight) ? (trnInfo.waterHeight*0.5) : '-';
+    camDebugEl.textContent=
+`Loaded terrain: ${loadedTrnName||'none'}
+
+polytrn_colormap      ${trnInfo.colormap || '-'}
+polytrn_detailmap     ${trnInfo.detailmap || '-'}
+polytrn_polydata      ${trnInfo.polydata || '-'}
+polytrn_tilestrip     ${trnInfo.tilestrip || '-'}
+polytrn_charmap       ${trnInfo.charmap || '-'}
+polytrn_foliagemap    ${trnInfo.foliagemap || '-'}
+water_height          ${waterHeightLabel}
+water_z_used          ${waterZUsedLabel}
+
+Mode: ${renderMode==='C' ? 'Colormap' : (renderMode==='H' ? 'Heightmap' : 'Delta')}
+Grid: ${formatGridValue(gridSizeMeters())}
+Top view lock: ${topViewLocked?'on':'off'}
+Draw calls: ${drawCalls}
+Wrap: x=${wrapX} y=${wrapY}
+Sectors: ${sectorCount}x${sectorCount} origin=${terrainOrigin.x},${terrainOrigin.y}
+Terrain size: ${terrainSpanX()} x ${terrainSpanY()}
 Cam: x=${cam.pos.x.toFixed(6)} y=${cam.pos.y.toFixed(6)} z=${cam.pos.z.toFixed(6)}
 Yaw: ${cam.yaw.toFixed(2)} Pitch: ${cam.pitch.toFixed(2)}
-PointerLock: ${document.pointerLockElement===cv?'on':'off'} TopView: ${topViewLocked?'on':'off'} Draw calls: ${drawCalls}`;
+PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     requestAnimationFrame(draw);
   }
   requestAnimationFrame(draw);
