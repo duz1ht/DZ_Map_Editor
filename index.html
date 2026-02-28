@@ -1213,15 +1213,13 @@
       x: 0,
       y: 0,
       z: 400000,
-      yaw: 0,
-      pitch: -0.7,
+      yaw: Math.PI,
+      pitch: -0.25,
       fovDeg: 60,
       speed: 260000,
       sprintMult: 3,
-      pitchLimit: 1.52,
+      pitchLimit: 1.55,
       pointerLocked: false,
-      lookDeltaYaw: 0,
-      lookDeltaPitch: 0,
       keys: { w:false, a:false, s:false, d:false, q:false, e:false, shift:false }
     },
     draggingPan: false,
@@ -4614,13 +4612,19 @@
     const cam = state.camera;
     const keys = cam.keys;
     const speed = cam.speed * (keys.shift ? cam.sprintMult : 1);
+
+    const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+    const forwardXY = normalize3({ x: sy, y: cy, z: 0 });
+    const right = normalize3({ x: forwardXY.y, y: -forwardXY.x, z: 0 });
+
     let dir = { x: 0, y: 0, z: 0 };
-    if (keys.w) dir.y += 1;
-    if (keys.s) dir.y -= 1;
-    if (keys.d) dir.x += 1;
-    if (keys.a) dir.x -= 1;
+    if (keys.w) { dir.x += forwardXY.x; dir.y += forwardXY.y; }
+    if (keys.s) { dir.x -= forwardXY.x; dir.y -= forwardXY.y; }
+    if (keys.d) { dir.x += right.x; dir.y += right.y; }
+    if (keys.a) { dir.x -= right.x; dir.y -= right.y; }
     if (keys.e) dir.z += 1;
     if (keys.q) dir.z -= 1;
+
     const n = normalize3(dir);
     if (Math.hypot(dir.x, dir.y, dir.z) > 0){
       cam.x += n.x * speed * dt;
@@ -4642,34 +4646,9 @@
 
   function updateMovementAxesHud(){
     if (!movementAxesHudEl) return;
-    const keys = state.camera.keys;
     const cam = state.camera;
-    const yawDeg = cam.yaw * (180 / Math.PI);
-    const pitchDeg = cam.pitch * (180 / Math.PI);
-    const dYawDeg = cam.lookDeltaYaw * (180 / Math.PI);
-    const dPitchDeg = cam.lookDeltaPitch * (180 / Math.PI);
-
-    let dir = { x: 0, y: 0, z: 0 };
-    if (keys.w) dir.y += 1;
-    if (keys.s) dir.y -= 1;
-    if (keys.d) dir.x += 1;
-    if (keys.a) dir.x -= 1;
-    if (keys.e) dir.z += 1;
-    if (keys.q) dir.z -= 1;
-
-    const moving = Math.hypot(dir.x, dir.y, dir.z) > 0.0001;
-    const speed = cam.speed * (keys.shift ? cam.sprintMult : 1);
-    if (!moving){
-      movementAxesHudEl.innerHTML = `<b>Eixos</b>: parado<br><b>Pos</b> X: ${Math.round(cam.x)} | Y: ${Math.round(cam.y)} | Z: ${Math.round(cam.z)}<br><b>Look</b> ΔYaw: ${dYawDeg.toFixed(2)}° | ΔPitch: ${dPitchDeg.toFixed(2)}°<br><b>Look</b> Yaw: ${yawDeg.toFixed(1)}° | Pitch: ${pitchDeg.toFixed(1)}°<br>X: 0 | Y: 0 | Z: 0<br>Velocidade: 0`;
-      cam.lookDeltaYaw = 0;
-      cam.lookDeltaPitch = 0;
-      return;
-    }
-    const n = normalize3(dir);
-    const axisLabel = (v, pos, neg) => v > 0.05 ? pos : (v < -0.05 ? neg : "0");
-    movementAxesHudEl.innerHTML = `<b>Eixos</b>: X ${axisLabel(n.x,'+','-')} | Y ${axisLabel(n.y,'+','-')} | Z ${axisLabel(n.z,'+','-')}<br><b>Pos</b> X: ${Math.round(cam.x)} | Y: ${Math.round(cam.y)} | Z: ${Math.round(cam.z)}<br><b>Look</b> ΔYaw: ${dYawDeg.toFixed(2)}° | ΔPitch: ${dPitchDeg.toFixed(2)}°<br><b>Look</b> Yaw: ${yawDeg.toFixed(1)}° | Pitch: ${pitchDeg.toFixed(1)}°<br>X: ${n.x.toFixed(2)} | Y: ${n.y.toFixed(2)} | Z: ${n.z.toFixed(2)}<br>Velocidade: ${Math.round(speed)}`;
-    cam.lookDeltaYaw = 0;
-    cam.lookDeltaPitch = 0;
+    const pointer = document.pointerLockElement === cv ? "on" : "off";
+    movementAxesHudEl.innerHTML = `Cam: x=${cam.x.toFixed(6)} y=${cam.y.toFixed(6)} z=${cam.z.toFixed(6)}<br>Yaw: ${cam.yaw.toFixed(2)} Pitch: ${cam.pitch.toFixed(2)}<br>PointerLock: ${pointer}`;
   }
 
   function isTypingTarget(target){
@@ -4705,10 +4684,10 @@
     }
     const span = Math.max(maxX-minX, maxY-minY, 1);
     state.camera.x = (minX + maxX) / 2;
-    state.camera.y = (minY + maxY) / 2 - span * 1.1;
-    state.camera.z = maxZ + span * 0.9 + 200000;
-    state.camera.yaw = Math.PI / 2;
-    state.camera.pitch = -0.58;
+    state.camera.y = (minY + maxY) / 2 + span * 0.65;
+    state.camera.z = maxZ + 220;
+    state.camera.yaw = Math.PI;
+    state.camera.pitch = -0.25;
   }
 
   function draw(){ renderer.renderNow(); }
@@ -4885,13 +4864,11 @@
     if (state.modalOpen) return;
 
     if (state.camera.pointerLocked){
-      const dyaw = e.movementX * 0.0023;
+      const dyaw = e.movementX * 0.002;
       const prevPitch = state.camera.pitch;
-      const nextPitch = clamp(prevPitch - e.movementY * 0.0023, -state.camera.pitchLimit, state.camera.pitchLimit);
+      const nextPitch = clamp(prevPitch - e.movementY * 0.002, -state.camera.pitchLimit, state.camera.pitchLimit);
       state.camera.yaw += dyaw;
       state.camera.pitch = nextPitch;
-      state.camera.lookDeltaYaw += dyaw;
-      state.camera.lookDeltaPitch += (nextPitch - prevPitch);
       return;
     }
 
