@@ -4415,13 +4415,147 @@
   });
   // Canvas
   const cv = document.getElementById("cv");
-  const ctx = cv.getContext("2d");
+  const gl = cv.getContext("webgl", { antialias: true, alpha: false });
+  const interactionCanvas = document.createElement("canvas");
+  const ctx = interactionCanvas.getContext("2d");
+
+  const glState = {
+    ready: false,
+    prog: null,
+    aPos: null,
+    uView: null,
+    uScale: null,
+    uColor: null,
+    bufItems: null,
+    bufGrid: null,
+    gridCount: 0,
+    itemCount: 0,
+  };
+
+  function initWebGlRenderer(){
+    if (!gl || glState.ready) return;
+    const vs = `
+      attribute vec3 aPos;
+      uniform vec4 uView; // zoom, ox, oy, zScale
+      uniform vec2 uScale; // width,height
+      void main(){
+        float zoom = uView.x;
+        float ox = uView.y;
+        float oy = uView.z;
+        float zScale = uView.w;
+        float sx = aPos.x * zoom + ox;
+        float sy = aPos.y * zoom + oy - (aPos.z * zoom * zScale);
+        float cx = (sx / uScale.x) * 2.0 - 1.0;
+        float cy = 1.0 - (sy / uScale.y) * 2.0;
+        gl_Position = vec4(cx, cy, 0.0, 1.0);
+        gl_PointSize = 7.0;
+      }
+    `;
+    const fs = `
+      precision mediump float;
+      uniform vec4 uColor;
+      void main(){ gl_FragColor = uColor; }
+    `;
+
+    function compile(type, src){
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || "shader compile failed");
+      return s;
+    }
+
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || "link failed");
+
+    glState.prog = prog;
+    glState.aPos = gl.getAttribLocation(prog, "aPos");
+    glState.uView = gl.getUniformLocation(prog, "uView");
+    glState.uScale = gl.getUniformLocation(prog, "uScale");
+    glState.uColor = gl.getUniformLocation(prog, "uColor");
+    glState.bufItems = gl.createBuffer();
+    glState.bufGrid = gl.createBuffer();
+    glState.ready = true;
+    addLog("WebGL renderer initialized for main canvas (items now rendered in 3D projection). ");
+  }
+
+  function buildWebGlGrid(){
+    if (!glState.ready) return;
+    const w = cv.getBoundingClientRect().width;
+    const h = cv.getBoundingClientRect().height;
+    const stepWorld = 200000;
+    const step = stepWorld * state.view.zoom;
+    if (step <= 25){
+      glState.gridCount = 0;
+      return;
+    }
+    const verts = [];
+    const startX = ((0 - state.view.ox) % step + step) % step;
+    const startY = ((0 - state.view.oy) % step + step) % step;
+    for (let x = startX; x < w; x += step){
+      const wx = (x - state.view.ox) / state.view.zoom;
+      const y0 = (0 - state.view.oy) / state.view.zoom;
+      const y1 = (h - state.view.oy) / state.view.zoom;
+      verts.push(wx, y0, 0, wx, y1, 0);
+    }
+    for (let y = startY; y < h; y += step){
+      const wy = (y - state.view.oy) / state.view.zoom;
+      const x0 = (0 - state.view.ox) / state.view.zoom;
+      const x1 = (w - state.view.ox) / state.view.zoom;
+      verts.push(x0, wy, 0, x1, wy, 0);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, glState.bufGrid);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.DYNAMIC_DRAW);
+    glState.gridCount = verts.length / 3;
+  }
+
+  function renderWebGlScene(){
+    if (!gl){
+      statusEl.textContent = "WebGL unavailable in this browser.";
+      return;
+    }
+    initWebGlRenderer();
+    if (!glState.ready) return;
+
+    const w = cv.getBoundingClientRect().width;
+    const h = cv.getBoundingClientRect().height;
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.clearColor(0.05, 0.06, 0.08, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.useProgram(glState.prog);
+    gl.uniform4f(glState.uView, state.view.zoom, state.view.ox, state.view.oy, 0.2);
+    gl.uniform2f(glState.uScale, w, h);
+    gl.enableVertexAttribArray(glState.aPos);
+
+    buildWebGlGrid();
+    if (glState.gridCount > 0){
+      gl.bindBuffer(gl.ARRAY_BUFFER, glState.bufGrid);
+      gl.vertexAttribPointer(glState.aPos, 3, gl.FLOAT, false, 0, 0);
+      gl.uniform4f(glState.uColor, 0.16, 0.19, 0.27, 0.8);
+      gl.drawArrays(gl.LINES, 0, glState.gridCount);
+    }
+
+    const items = getFilteredItems();
+    const verts = [];
+    for (const it of items) verts.push(it.x, it.y, it.z || 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, glState.bufItems);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.DYNAMIC_DRAW);
+    gl.vertexAttribPointer(glState.aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform4f(glState.uColor, 0.88, 0.9, 1.0, 1.0);
+    gl.drawArrays(gl.POINTS, 0, items.length);
+  }
 
   function resizeCanvas(){
     const r = cv.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     cv.width = Math.floor(r.width * dpr);
     cv.height = Math.floor(r.height * dpr);
+    interactionCanvas.width = cv.width;
+    interactionCanvas.height = cv.height;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     draw();
   }
@@ -4533,6 +4667,8 @@
       ctx.strokeRect(x, y, w, h);
       ctx.restore();
     }
+
+    renderWebGlScene();
   }
 
   function pickItemAt(sx,sy){
