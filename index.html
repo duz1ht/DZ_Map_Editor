@@ -4465,7 +4465,7 @@
   const prog=gl.createProgram(); gl.attachShader(prog,compile(gl.VERTEX_SHADER,vsSrc)); gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fsSrc)); gl.linkProgram(prog);
   if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog)||'link failed');
   const aPos=gl.getAttribLocation(prog,'aPos'), aUV=gl.getAttribLocation(prog,'aUV');
-  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV');
+  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex');
 
   const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; }`;
   const itemFs=`precision mediump float; uniform vec4 uColor; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; gl_FragColor=uColor; }`;
@@ -4494,6 +4494,15 @@
   const lineVB=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,lineVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,0,1,0,0,1,0,0,1,1,0,1,1,0,0,1,0,0,1,0,0,0,0]),gl.STATIC_DRAW);
 
   function mat4Identity(){ return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]); }
+  const MAX_ATTRIBS = gl.getParameter(gl.MAX_VERTEX_ATTRIBS) || 8;
+  function resetFixedGlState(){
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.disable(gl.BLEND);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    for(let i=0;i<MAX_ATTRIBS;i++) gl.disableVertexAttribArray(i);
+  }
   function mat4Mul(a,b){ const o=new Float32Array(16); for(let c=0;c<4;c++) for(let r=0;r<4;r++) o[c*4+r]=a[0*4+r]*b[c*4+0]+a[1*4+r]*b[c*4+1]+a[2*4+r]*b[c*4+2]+a[3*4+r]*b[c*4+3]; return o; }
   function mat4Perspective(fovy,aspect,near,far){ const f=1/Math.tan(fovy/2), nf=1/(near-far); const o=new Float32Array(16); o[0]=f/aspect;o[5]=f;o[10]=(far+near)*nf;o[11]=-1;o[14]=(2*far*near)*nf; return o; }
   function mat4Translate(x,y,z){ const o=mat4Identity(); o[12]=x;o[13]=y;o[14]=z; return o; }
@@ -4632,7 +4641,7 @@
   function screenToWorld(sx,sy,zPlane=0){ const ray=screenRay(sx,sy), dz=ray.dir.z; if(Math.abs(dz)<1e-6) return {x:ray.origin.x,y:ray.origin.y,z:zPlane}; const t=(zPlane-ray.origin.z)/dz; return {x:ray.origin.x+ray.dir.x*Math.max(t,0), y:ray.origin.y+ray.dir.y*Math.max(t,0), z:zPlane}; }
 
   function bindMesh(m){ gl.bindBuffer(gl.ARRAY_BUFFER,m.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib); gl.enableVertexAttribArray(aPos); gl.enableVertexAttribArray(aUV); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,20,0); gl.vertexAttribPointer(aUV,2,gl.FLOAT,false,20,12); }
-  function drawTerrain(P,V,forward){ const tex=activeTerrainTexture(); if(!(tex&&sectors&&meshSector[1])) return 0; gl.useProgram(prog); gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0); gl.bindTexture(gl.TEXTURE_2D,tex); const ox=originWorldX(),oy=originWorldY(),radius=parseFloat(document.getElementById('radius')?.value||'12288')||12288; const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1,j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1; let draws=0; for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ const srcX=mapSrcIdx(gx,wrapX), srcY=mapSrcIdx(TERRAIN_BASE_FLIP_Y?(sectorCount-1-gy):gy,wrapY), sectorIndex=sectors[srcY*sectorCount+srcX]|0; if(sectorIndex<=0) continue; const m=meshSector[sectorIndex]; if(!m||!m.indexCount) continue; const MVP=mat4Mul(P, mat4Mul(V, mat4Translate(ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE,0))); gl.uniformMatrix4fv(uMVP,false,MVP); bindMesh(m); gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0); draws++; }
+  function drawTerrain(P,V,forward){ const tex=activeTerrainTexture(); if(!(tex&&sectors&&meshSector[1])) return 0; gl.useProgram(prog); gl.activeTexture(gl.TEXTURE0); gl.uniform1i(uTex,0); gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0); gl.bindTexture(gl.TEXTURE_2D,tex); const ox=originWorldX(),oy=originWorldY(),radius=parseFloat(document.getElementById('radius')?.value||'12288')||12288; const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1,j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1; let draws=0; for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ const srcX=mapSrcIdx(gx,wrapX), srcY=mapSrcIdx(TERRAIN_BASE_FLIP_Y?(sectorCount-1-gy):gy,wrapY), sectorIndex=sectors[srcY*sectorCount+srcX]|0; if(sectorIndex<=0) continue; const m=meshSector[sectorIndex]; if(!m||!m.indexCount) continue; const MVP=mat4Mul(P, mat4Mul(V, mat4Translate(ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE,0))); gl.uniformMatrix4fv(uMVP,false,MVP); bindMesh(m); gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0); draws++; }
     const waterRender = getRenderWaterHeightRaw();
     if(waterRender.raw!==null&&Number.isFinite(waterRender.raw)){ gl.useProgram(waterProg); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.enableVertexAttribArray(waPos); gl.vertexAttribPointer(waPos,3,gl.FLOAT,false,12,0); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.uniformMatrix4fv(wuMVP,false,mat4Mul(P,V)); gl.uniform3f(wuColor,0.55,0.85,1.0); gl.uniform1f(wuAlpha,0.28); gl.uniform1f(wuZ,waterRender.raw*0.5); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ gl.uniform2f(wuOffsetXY,ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE); gl.uniform2f(wuScaleXY,SECTOR_STRIDE,SECTOR_STRIDE); gl.drawElements(gl.TRIANGLES,6,gl.UNSIGNED_SHORT,0); } gl.depthMask(true); gl.disable(gl.BLEND); }
     if(gridVisible){
@@ -4875,6 +4884,7 @@
 
     renderer.resetState();
     renderer.render(scene, camera);
+    renderer.resetState();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
@@ -5091,6 +5101,7 @@
     const now=performance.now(), dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
     const {forwardXY,right,forward}=cameraBasis(); let dir=vec3(0,0,0); if(move.w) dir=vec3Add(dir,forwardXY); if(move.s) dir=vec3Sub(dir,forwardXY); if(move.d) dir=vec3Add(dir,right); if(move.a) dir=vec3Sub(dir,right); if(move.e) dir=vec3Add(dir,vec3(0,0,1)); if(move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); if(dlen>0){ dir=vec3Scale(dir,1/dlen); const base=parseFloat(document.getElementById('speed')?.value||'300'); const spd=base*(move.shift?3:1); state.camera.speed=spd; cam.pos=vec3Add(cam.pos,vec3Scale(dir,spd*dt)); }
     if(document.getElementById('ground')?.checked && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=parseFloat(document.getElementById('clear')?.value||'40'); if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
+    resetFixedGlState();
     gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
     const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
     const waterRender = getRenderWaterHeightRaw();
