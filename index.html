@@ -806,7 +806,7 @@
       <select id="typeFilter">
         <option value="">All types</option>
       </select>
-      <button id="exportBtn" disabled>Export .mis</button>
+      <button id="exportBtn">Go to</button>
     </div>
 
     <div id="misRealtimePanel">
@@ -3850,8 +3850,20 @@
   ui.delBtn.addEventListener("click", deleteSelectedItem);
 
   exportBtn.addEventListener("click", () => {
-    const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
-    downloadText("edited.mis", out);
+    const current = `${Math.round(state.camera.x)} ${Math.round(state.camera.y)} ${Math.round(state.camera.z)}`;
+    const raw = window.prompt("Go to (X Y Z):", current);
+    if (raw === null) return;
+    const nums = raw.trim().split(/[\s,;]+/).map(Number).filter(Number.isFinite);
+    if (nums.length < 3){
+      statusEl.textContent = "Go to cancelado: informe X Y Z.";
+      return;
+    }
+    const [x,y,z] = nums;
+    cam.pos = vec3(x,y,z);
+    state.camera.x = x;
+    state.camera.y = y;
+    state.camera.z = z;
+    statusEl.textContent = `Camera movida para X=${x.toFixed(2)} Y=${y.toFixed(2)} Z=${z.toFixed(2)}`;
   });
 
   searchEl.addEventListener("input", () => { renderList(); draw(); });
@@ -3979,7 +3991,6 @@
     state.itemClipboardItems = [];
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
-    exportBtn.disabled = true;
     fileMisEl.value = "";
     renderList();
     draw();
@@ -4306,7 +4317,6 @@
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
 
-    exportBtn.disabled = state.items.length === 0;
 
     buildLayerOptions();
     buildWaypointList();
