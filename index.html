@@ -2679,7 +2679,7 @@
           if (!t || t.startsWith("//")) continue;
           const m = t.match(/^([A-Za-z0-9_]+)\s+(.*)$/);
           if (!m) continue;
-          const key = m[1];
+          const key = m[1].toLowerCase();
           let val = m[2].trim();
           if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
           kv[key] = val;
@@ -3646,7 +3646,8 @@
     renderAIAttrs(it);
   }
 
-  function commitFromWindow(){
+  function commitFromWindow(options = {}){
+    const applyOrientation = !!options.applyOrientation;
     if (!state.modalOpen) return;
     const it = getSelected();
     if (!it) return;
@@ -3677,11 +3678,11 @@
     if (kvHas(it, "height_lock")) it.kv.height_lock = ui.lock.checked ? "1" : "0";
     if (kvHas(it, "absolute_height")) it.kv.absolute_height = ui.absHeight.checked ? "1" : "0";
 
-    if (kvHas(it, "facing")){
+    if (applyOrientation && kvHas(it, "facing")){
       it.heading = parseFloatSafe(ui.heading.value);
       it.pitch = parseFloatSafe(ui.pitch.value);
       it.kv.facing = `${it.heading} ${it.pitch}`;
-    } else if (kvHas(it, "rot")){
+    } else if (applyOrientation && kvHas(it, "rot")){
       it.heading = parseFloatSafe(ui.heading.value);
       it.kv.rot = String(it.heading);
     }
@@ -3755,8 +3756,8 @@
     ui.wpList, ui.wpNumber, ui.wpName, ui.wpDistance, ui.advEvent, ui.navWp,
   ];
   for (const el of inputsToCommit){
-    el.addEventListener("input", commitFromWindow);
-    el.addEventListener("change", commitFromWindow);
+    el.addEventListener("input", () => commitFromWindow({ applyOrientation: false }));
+    el.addEventListener("change", () => commitFromWindow({ applyOrientation: false }));
   }
 
   function openModal(){
@@ -3789,6 +3790,7 @@
   }
 
   function closeModalOk(){
+    commitFromWindow({ applyOrientation: true });
     state.modalSnapshot = null;
     state.modalOpen = false;
 
