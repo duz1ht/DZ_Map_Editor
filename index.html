@@ -4355,6 +4355,12 @@
   const lineProg=gl.createProgram(); gl.attachShader(lineProg,compile(gl.VERTEX_SHADER,lineVs)); gl.attachShader(lineProg,compile(gl.FRAGMENT_SHADER,lineFs)); gl.linkProgram(lineProg);
   const laPos=gl.getAttribLocation(lineProg,'aPos'), luMVP=gl.getUniformLocation(lineProg,'uMVP'), luOffsetXY=gl.getUniformLocation(lineProg,'uOffsetXY'), luScaleXY=gl.getUniformLocation(lineProg,'uScaleXY'), luZ=gl.getUniformLocation(lineProg,'uZ'), luColor=gl.getUniformLocation(lineProg,'uColor');
 
+  const gridVs=`attribute vec3 aPos; uniform mat4 uMVP; void main(){ gl_Position=uMVP*vec4(aPos,1.0); }`;
+  const gridFs=`precision mediump float; void main(){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); }`;
+  const gridProg=gl.createProgram(); gl.attachShader(gridProg,compile(gl.VERTEX_SHADER,gridVs)); gl.attachShader(gridProg,compile(gl.FRAGMENT_SHADER,gridFs)); gl.linkProgram(gridProg);
+  const gaPos=gl.getAttribLocation(gridProg,'aPos'), guMVP=gl.getUniformLocation(gridProg,'uMVP');
+  const gridVB=gl.createBuffer();
+
   const waterVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
   const waterFs=`precision mediump float; uniform vec3 uColor; uniform float uAlpha; void main(){ gl_FragColor=vec4(uColor,uAlpha); }`;
   const waterProg=gl.createProgram(); gl.attachShader(waterProg,compile(gl.VERTEX_SHADER,waterVs)); gl.attachShader(waterProg,compile(gl.FRAGMENT_SHADER,waterFs)); gl.linkProgram(waterProg);
@@ -4378,6 +4384,8 @@
   let texColor=null, texHeight=null, texDelta=null; let meshSector=[null,null,null,null,null];
   let cam={pos:vec3(0,1500,400), yaw:Math.PI, pitch:-0.25}, move={w:0,a:0,s:0,d:0,q:0,e:0,shift:0};
   let renderMode='C';
+  let gridVisible=true;
+  const MAX_GRID_LINES_PER_AXIS=1024;
   let topViewLocked=false;
   let topViewRestore={yaw:Math.PI,pitch:-0.25};
   let gridExponent=9;
@@ -4474,6 +4482,61 @@
   function bindMesh(m){ gl.bindBuffer(gl.ARRAY_BUFFER,m.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib); gl.enableVertexAttribArray(aPos); gl.enableVertexAttribArray(aUV); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,20,0); gl.vertexAttribPointer(aUV,2,gl.FLOAT,false,20,12); }
   function drawTerrain(P,V,forward){ const tex=activeTerrainTexture(); if(!(tex&&sectors&&meshSector[1])) return 0; gl.useProgram(prog); gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0); gl.bindTexture(gl.TEXTURE_2D,tex); const ox=originWorldX(),oy=originWorldY(),radius=parseFloat(document.getElementById('radius')?.value||'12288')||12288; const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1,j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1; let draws=0; for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ const srcX=mapSrcIdx(gx,wrapX), srcY=mapSrcIdx(gy,wrapY), sectorIndex=sectors[srcY*sectorCount+srcX]|0; if(sectorIndex<=0) continue; const m=meshSector[sectorIndex]; if(!m||!m.indexCount) continue; const MVP=mat4Mul(P, mat4Mul(V, mat4Translate(ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE,0))); gl.uniformMatrix4fv(uMVP,false,MVP); bindMesh(m); gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0); draws++; }
     if(trnInfo.waterHeight!==null&&Number.isFinite(trnInfo.waterHeight)){ gl.useProgram(waterProg); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.enableVertexAttribArray(waPos); gl.vertexAttribPointer(waPos,3,gl.FLOAT,false,12,0); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.uniformMatrix4fv(wuMVP,false,mat4Mul(P,V)); gl.uniform3f(wuColor,0.55,0.85,1.0); gl.uniform1f(wuAlpha,0.28); gl.uniform1f(wuZ,trnInfo.waterHeight*0.5); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ gl.uniform2f(wuOffsetXY,ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE); gl.uniform2f(wuScaleXY,SECTOR_STRIDE,SECTOR_STRIDE); gl.drawElements(gl.TRIANGLES,6,gl.UNSIGNED_SHORT,0); } gl.depthMask(true); gl.disable(gl.BLEND); }
+    if(gridVisible){
+      const gridSize=gridSizeMeters();
+      if(gridSize>0){
+        const spanVisibleX=(i1-i0+1)*SECTOR_STRIDE;
+        const spanVisibleY=(j1-j0+1)*SECTOR_STRIDE;
+        let gridMinX=ox + i0*SECTOR_STRIDE;
+        let gridMaxX=gridMinX + spanVisibleX;
+        let gridMinY=oy + j0*SECTOR_STRIDE;
+        let gridMaxY=gridMinY + spanVisibleY;
+
+        const maxSpan=gridSize*MAX_GRID_LINES_PER_AXIS;
+        if((gridMaxX-gridMinX)>maxSpan){
+          const cx=cam.pos.x;
+          gridMinX=Math.max(gridMinX, cx-maxSpan*0.5);
+          gridMaxX=Math.min(gridMaxX, cx+maxSpan*0.5);
+        }
+        if((gridMaxY-gridMinY)>maxSpan){
+          const cy=cam.pos.y;
+          gridMinY=Math.max(gridMinY, cy-maxSpan*0.5);
+          gridMaxY=Math.min(gridMaxY, cy+maxSpan*0.5);
+        }
+
+        const firstX=ox + Math.ceil((gridMinX-ox)/gridSize)*gridSize;
+        const firstY=oy + Math.ceil((gridMinY-oy)/gridSize)*gridSize;
+        const countX=Math.max(0, Math.floor((gridMaxX-firstX)/gridSize)+1);
+        const countY=Math.max(0, Math.floor((gridMaxY-firstY)/gridSize)+1);
+
+        if(countX>0 || countY>0){
+          const lineCount=countX+countY;
+          const verts=new Float32Array(lineCount*2*3);
+          let ptr=0;
+          for(let i=0;i<countX;i++){
+            const x=firstX+i*gridSize;
+            verts[ptr++]=x; verts[ptr++]=gridMinY; verts[ptr++]=0.2;
+            verts[ptr++]=x; verts[ptr++]=gridMaxY; verts[ptr++]=0.2;
+          }
+          for(let i=0;i<countY;i++){
+            const y=firstY+i*gridSize;
+            verts[ptr++]=gridMinX; verts[ptr++]=y; verts[ptr++]=0.2;
+            verts[ptr++]=gridMaxX; verts[ptr++]=y; verts[ptr++]=0.2;
+          }
+          gl.useProgram(gridProg);
+          gl.bindBuffer(gl.ARRAY_BUFFER,gridVB);
+          gl.bufferData(gl.ARRAY_BUFFER,verts,gl.DYNAMIC_DRAW);
+          gl.enableVertexAttribArray(gaPos);
+          gl.vertexAttribPointer(gaPos,3,gl.FLOAT,false,12,0);
+          gl.uniformMatrix4fv(guMVP,false,mat4Mul(P,V));
+          gl.disable(gl.DEPTH_TEST);
+          gl.drawArrays(gl.LINES,0,lineCount*2);
+          gl.enable(gl.DEPTH_TEST);
+          gl.useProgram(prog);
+        }
+      }
+    }
+
     const mainAreaOn=document.getElementById('mainArea')?.checked; const showSectorsOn=document.getElementById('showSectors')?.checked;
     if(mainAreaOn||showSectorsOn){ const MVPcam=mat4Mul(P,V); gl.useProgram(lineProg); gl.bindBuffer(gl.ARRAY_BUFFER,lineVB); gl.enableVertexAttribArray(laPos); gl.vertexAttribPointer(laPos,3,gl.FLOAT,false,12,0); gl.uniformMatrix4fv(luMVP,false,MVPcam); gl.uniform1f(luZ,0.25); gl.disable(gl.DEPTH_TEST); const spanX=terrainSpanX(), spanY=terrainSpanY(); function drawRect(offsetX, offsetY, scaleX, scaleY, color3){ gl.uniform3f(luColor,color3[0],color3[1],color3[2]); gl.uniform2f(luOffsetXY,offsetX,offsetY); gl.uniform2f(luScaleXY,scaleX,scaleY); gl.drawArrays(gl.LINES,0,8);} if(showSectorsOn){ for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++) drawRect(ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE,SECTOR_STRIDE,SECTOR_STRIDE,[0.2,0.8,1]); } if(mainAreaOn) drawRect(ox,oy,spanX,spanY,[1,0,0]); gl.enable(gl.DEPTH_TEST); gl.useProgram(prog); }
     return draws; }
@@ -4703,7 +4766,7 @@ water_height          ${waterHeightLabel}
 water_z_used          ${waterZUsedLabel}
 
 Mode: ${renderMode==='C' ? 'Colormap' : (renderMode==='H' ? 'Heightmap' : 'Delta')}
-Grid: ${formatGridValue(gridSizeMeters())}
+Grid: ${gridVisible ? formatGridValue(gridSizeMeters()) : 'off'}
 Top view lock: ${topViewLocked?'on':'off'}
 Draw calls: ${drawCalls}
 Wrap: x=${wrapX} y=${wrapY}
@@ -4717,7 +4780,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   requestAnimationFrame(draw);
 
   cv.addEventListener('click',()=>{ cv.focus(); if(document.pointerLockElement!==cv) cv.requestPointerLock(); });
-  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='w') move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e') move.e=1; if(k==='shift') move.shift=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
+  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='g'){ gridVisible=!gridVisible; } if(k==='w') move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e') move.e=1; if(k==='shift') move.shift=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
   addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); if(k==='w') move.w=0; if(k==='a') move.a=0; if(k==='s') move.s=0; if(k==='d') move.d=0; if(k==='q') move.q=0; if(k==='e') move.e=0; if(k==='shift') move.shift=0; state.keysDown.delete(e.code); });
   addEventListener('mousemove',e=>{ if(document.pointerLockElement!==cv) return; if(topViewLocked) return; cam.yaw += e.movementX*0.002; cam.pitch -= e.movementY*0.002; cam.pitch=Math.max(-1.55,Math.min(1.55,cam.pitch)); });
 
