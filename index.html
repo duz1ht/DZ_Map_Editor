@@ -4348,14 +4348,23 @@
     const sp = Math.sin(pitch);
     const cy = Math.cos(yaw);
     const sy = Math.sin(yaw);
-    const forward = { x: cp * cy, y: cp * sy, z: sp };
-    const right = { x: -sy, y: cy, z: 0 };
-    const up = {
+
+    // Keep exact terrain-viewer convention:
+    // forward = (sin(yaw)*cos(pitch), cos(yaw)*cos(pitch), sin(pitch))
+    const forward = normalize3({ x: sy * cp, y: cy * cp, z: sp });
+
+    // right = cross(forwardXY, +Z)
+    const forwardXY = normalize3({ x: sy, y: cy, z: 0 });
+    const right = normalize3({ x: forwardXY.y, y: -forwardXY.x, z: 0 });
+
+    // up = cross(right, forward)
+    const up = normalize3({
       x: right.y * forward.z - right.z * forward.y,
       y: right.z * forward.x - right.x * forward.z,
       z: right.x * forward.y - right.y * forward.x
-    };
-    return { forward: normalize3(forward), right: normalize3(right), up: normalize3(up) };
+    });
+
+    return { forward, right, up };
   }
 
   function projectWorldToScreen(x, y, z, width, height){
