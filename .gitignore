@@ -1,4 +1,5 @@
 resources/3d_items/*.glb
+!resources/3d_items/.gitkeep
 resources/terrains/**/*.cpt
 resources/terrains/**/*.tga
 source_codes/
