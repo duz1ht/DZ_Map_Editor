@@ -4725,7 +4725,8 @@
       rawToWorld(it.z||0,'z')
     );
     const yawRad = (Number(it.heading) || 0) * Math.PI / 180;
-    const pitchRad = (Number(it.pitch) || 0) * Math.PI / 180;
+    const pitchCalibratedDeg = (Number(it.pitch) || 0) - 90;
+    const pitchRad = pitchCalibratedDeg * Math.PI / 180;
     obj.rotation.order = "ZYX";
     obj.rotation.z = yawRad;
     obj.rotation.y = pitchRad;
