@@ -205,6 +205,7 @@
       display:flex;
       gap:10px;
       align-items:center;
+      flex-wrap:wrap;
       min-width: 0;
     }
     #status{
@@ -225,6 +226,16 @@
       height:100%;
       display:block;
       background:var(--canvas);
+    }
+    .modeBtn{min-width:26px;height:22px;padding:0 8px;border:1px solid var(--line-strong);background:var(--surface);color:var(--text);border-radius:6px;cursor:pointer}
+    .modeBtn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+    .gridCtl{display:flex;align-items:center;gap:4px;flex:0 0 auto}
+    .gridVal{min-width:64px;display:inline-block;text-align:left}
+    #terrainDbg{
+      position:absolute;left:10px;bottom:10px;z-index:8;
+      background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.12);
+      padding:8px 10px;border-radius:10px;font-size:12px;max-width:60vw;white-space:pre-wrap;
+      color:#e6e6e6;pointer-events:none;
     }
 
     .hint{
@@ -797,14 +808,27 @@
 
   <div id="main">
     <div id="topbar">
-      <div class="hint">
-        Double-click: open Item Attributes. Esc: close.
-      </div>
+      <label class="small gridCtl">Grid
+        <button id="gridPlus" type="button" class="modeBtn" title="Increase grid size">+</button>
+        <button id="gridMinus" type="button" class="modeBtn" title="Decrease grid size">-</button>
+        <span id="gridValue" class="gridVal">512m</span>
+      </label>
+      <button id="modeC" class="modeBtn active" title="Colormap (R)">C</button>
+      <button id="modeH" class="modeBtn" title="Heightmap (R)">H</button>
+      <button id="modeD" class="modeBtn" title="Delta/Variation (R)">D</button>
+      <label class="small"><input id="ground" type="checkbox" checked> Ground clamp</label>
+      <label class="small">Speed <input id="speed" type="range" min="20" max="1200" step="10" value="300"></label>
+      <label class="small">Clearance <input id="clear" type="range" min="1" max="200" step="1" value="40"></label>
+      <label class="small">Draw radius <input id="radius" type="range" min="512" max="65536" step="256" value="12288"></label>
+      <label class="small"><input id="mainArea" type="checkbox"> Main area</label>
+      <label class="small"><input id="showSectors" type="checkbox"> Show Sectors</label>
+      <label class="small">Mesh step <select id="step"><option>1</option><option>2</option><option>4</option><option selected>8</option><option>16</option></select></label>
       <div id="status">No file loaded.</div>
     </div>
 
     <div id="canvasWrap">
       <canvas id="cv"></canvas>
+      <div id="terrainDbg">Loaded: no</div>
 
       <div id="sectionOverlay" aria-hidden="true">
         <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
