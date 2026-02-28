@@ -1273,6 +1273,21 @@
     editorFolderHandle: null,
     currentMisFileHandle: null,
     generalTerrainNames: [],
+
+    glb: {
+      THREE: null,
+      GLTFLoader: null,
+      renderer: null,
+      scene: null,
+      camera: null,
+      loader: null,
+      templateByGraphic: new Map(),
+      missingGraphics: new Set(),
+      itemInstances: new Map(),
+      syncPromise: null,
+      initPromise: null,
+      ready: false,
+    },
   };
 
   // UI refs
@@ -4489,6 +4504,8 @@
   const DEPTH_W=1024, DEPTH_H=1024, SECTOR_SIZE=512, SECTOR_STRIDE=SECTOR_SIZE, SECTOR_MESH_MAX=SECTOR_SIZE;
   const TERRAIN_BASE_FLIP_Y=true;
   const MIS_POS_SCALE=65536;
+  const THREE_MODULE_URL = "https://unpkg.com/three@0.160.0/build/three.module.js";
+  const GLTF_LOADER_URL = "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
   function mainAreaCenterX(){ return originWorldX() + terrainSpanX()*0.5; }
   function mainAreaCenterY(){ return originWorldY() + terrainSpanY()*0.5; }
   function rawToWorld(v, axis='z'){
@@ -4683,6 +4700,174 @@
     gl.useProgram(itemProg); gl.bindBuffer(gl.ARRAY_BUFFER,itemVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.DYNAMIC_DRAW); gl.enableVertexAttribArray(iaPos); gl.vertexAttribPointer(iaPos,3,gl.FLOAT,false,0,0); gl.uniformMatrix4fv(iuMVP,false,PV);
     for(let i=0;i<items.length;i++){ const it=items[i], sel=(it.id===state.selectedId||state.multiSelectedIds.has(it.id)), wp=state.selectedWaypointMarkerIds.has(it.id); if(sel) gl.uniform4f(iuColor,0.35,0.45,0.95,1); else if(wp) gl.uniform4f(iuColor,1.0,0.8,0.2,1); else gl.uniform4f(iuColor,0.88,0.9,1.0,1); gl.uniform1f(iuPointSize,sel?11:8); gl.drawArrays(gl.POINTS,i,1); }
     if(state.pastePlacementActive&&state.pastePreviewWorld&&state.itemClipboardItems.length){ const p=[]; for(const entry of state.itemClipboardItems) p.push(state.pastePreviewWorld.x+entry.dx,state.pastePreviewWorld.y+entry.dy,state.pastePreviewWorld.z||0); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(p),gl.DYNAMIC_DRAW); gl.uniform4f(iuColor,0.34,0.83,0.55,0.9); gl.uniform1f(iuPointSize,13); gl.drawArrays(gl.POINTS,0,p.length/3); }
+  }
+
+  function resolveItemGraphic(it){
+    const def = getDefForItem(it);
+    const graphic = String(def?.graphic || it?.kv?.graphic || "").trim();
+    return graphic;
+  }
+
+  function applyItemTransformToObject(obj, it){
+    if (!obj || !it) return;
+    obj.position.set(
+      rawToWorld(it.x,'x'),
+      rawToWorld(it.y,'y'),
+      rawToWorld(it.z||0,'z')
+    );
+    const yawRad = (Number(it.heading) || 0) * Math.PI / 180;
+    const pitchRad = (Number(it.pitch) || 0) * Math.PI / 180;
+    obj.rotation.order = "ZYX";
+    obj.rotation.z = yawRad;
+    obj.rotation.y = pitchRad;
+  }
+
+  async function ensureGlbRendererReady(){
+    if (state.glb.ready) return true;
+    if (state.glb.initPromise) return state.glb.initPromise;
+
+    state.glb.initPromise = (async () => {
+      try {
+        const THREE = await import(THREE_MODULE_URL);
+        const { GLTFLoader } = await import(GLTF_LOADER_URL);
+        const renderer = new THREE.WebGLRenderer({ canvas: cv, context: gl, antialias: true, alpha: false });
+        renderer.autoClear = false;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+
+        const scene3d = new THREE.Scene();
+        scene3d.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.65));
+        const dir1 = new THREE.DirectionalLight(0xffffff, 1.1); dir1.position.set(5, 8, 6); scene3d.add(dir1);
+        const dir2 = new THREE.DirectionalLight(0xffffff, 0.6); dir2.position.set(-6, 3, -5); scene3d.add(dir2);
+
+        const camera3d = new THREE.PerspectiveCamera(60, 1, 0.01, 20000);
+        camera3d.matrixAutoUpdate = false;
+
+        state.glb.THREE = THREE;
+        state.glb.GLTFLoader = GLTFLoader;
+        state.glb.renderer = renderer;
+        state.glb.scene = scene3d;
+        state.glb.camera = camera3d;
+        state.glb.loader = new GLTFLoader();
+        state.glb.ready = true;
+      } catch (err) {
+        addLog(`[3d_items] erro ao iniciar renderer GLB: ${err?.message || err}`);
+        state.glb.ready = false;
+      }
+      return state.glb.ready;
+    })();
+
+    return state.glb.initPromise;
+  }
+
+  function clearGlbItemInstances(){
+    if (!state.glb.ready || !state.glb.scene) return;
+    for (const obj of state.glb.itemInstances.values()){
+      state.glb.scene.remove(obj);
+    }
+    state.glb.itemInstances.clear();
+  }
+
+  async function loadGraphicTemplate(graphic){
+    const key = String(graphic || "").trim();
+    if (!key) return null;
+    if (state.glb.templateByGraphic.has(key)) return state.glb.templateByGraphic.get(key);
+
+    const path = `resources/3d_items/${key}.glb`;
+    try {
+      const gltf = await state.glb.loader.loadAsync(path);
+      const root = gltf.scene || gltf.scenes?.[0] || null;
+      if (!root) return null;
+
+      root.traverse((obj) => {
+        if (!obj.isMesh) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const m of mats){
+          if (!m) continue;
+          if (m.map) m.map.colorSpace = state.glb.THREE.SRGBColorSpace;
+          if (m.emissiveMap) m.emissiveMap.colorSpace = state.glb.THREE.SRGBColorSpace;
+          m.needsUpdate = true;
+        }
+      });
+
+      state.glb.templateByGraphic.set(key, root);
+      return root;
+    } catch (err) {
+      if (!state.glb.missingGraphics.has(key)){
+        state.glb.missingGraphics.add(key);
+        addLog(`[3d_items] GLB ausente ou inválido: ${path}`);
+      }
+      return null;
+    }
+  }
+
+  async function syncGlbItems(){
+    const ready = await ensureGlbRendererReady();
+    if (!ready || state.glb.syncPromise) return;
+
+    state.glb.syncPromise = (async () => {
+      clearGlbItemInstances();
+      const items = state.items || [];
+      for (const it of items){
+        const graphic = resolveItemGraphic(it);
+        if (!graphic) continue;
+
+        const template = await loadGraphicTemplate(graphic);
+        if (!template) continue;
+
+        const instance = template.clone(true);
+        instance.userData.itemId = it.id;
+        instance.userData.graphic = graphic;
+        applyItemTransformToObject(instance, it);
+        state.glb.scene.add(instance);
+        state.glb.itemInstances.set(it.id, instance);
+      }
+    })();
+
+    try {
+      await state.glb.syncPromise;
+    } finally {
+      state.glb.syncPromise = null;
+    }
+  }
+
+  function updateGlbTransformsFromState(){
+    if (!state.glb.ready) return;
+    let needsResync = state.glb.itemInstances.size !== state.items.length;
+    for (const it of state.items){
+      const instance = state.glb.itemInstances.get(it.id);
+      const graphic = resolveItemGraphic(it);
+      if (!instance || instance.userData.graphic !== graphic){
+        needsResync = true;
+        break;
+      }
+      applyItemTransformToObject(instance, it);
+    }
+    if (needsResync) syncGlbItems();
+  }
+
+  function drawGlbItems(P, V){
+    if (!state.glb.ready){
+      ensureGlbRendererReady().then((ready) => {
+        if (ready) syncGlbItems();
+      });
+      return;
+    }
+    updateGlbTransformsFromState();
+
+    const { THREE, camera, renderer, scene } = state.glb;
+    const projection = new THREE.Matrix4().fromArray(P);
+    const view = new THREE.Matrix4().fromArray(V);
+
+    camera.projectionMatrix.copy(projection);
+    camera.projectionMatrixInverse.copy(projection).invert();
+    camera.matrixWorldInverse.copy(view);
+    camera.matrixWorld.copy(view).invert();
+
+    renderer.resetState();
+    renderer.render(scene, camera);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   function pickItemAt(sx,sy){ const items=getFilteredItems(); let best=null,bestD2=Infinity; for(const it of items){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
@@ -4899,7 +5084,7 @@
     const {forwardXY,right,forward}=cameraBasis(); let dir=vec3(0,0,0); if(move.w) dir=vec3Add(dir,forwardXY); if(move.s) dir=vec3Sub(dir,forwardXY); if(move.d) dir=vec3Add(dir,right); if(move.a) dir=vec3Sub(dir,right); if(move.e) dir=vec3Add(dir,vec3(0,0,1)); if(move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); if(dlen>0){ dir=vec3Scale(dir,1/dlen); const base=parseFloat(document.getElementById('speed')?.value||'300'); const spd=base*(move.shift?3:1); state.camera.speed=spd; cam.pos=vec3Add(cam.pos,vec3Scale(dir,spd*dt)); }
     if(document.getElementById('ground')?.checked && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=parseFloat(document.getElementById('clear')?.value||'40'); if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
     gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV);
+    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
     const waterZUsedLabel = (waterRender.raw===0 || waterRender.raw) ? (waterRender.raw*0.5) : '-';
