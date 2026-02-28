@@ -4757,9 +4757,9 @@
     const yawRad = (Number(it.heading) || 0) * Math.PI / 180;
     const pitchCalibratedDeg = (Number(it.pitch) || 0) - 90;
     const pitchRad = pitchCalibratedDeg * Math.PI / 180;
-    obj.rotation.order = "ZYX";
+    obj.rotation.order = "ZXY";
     obj.rotation.z = yawRad;
-    obj.rotation.y = pitchRad;
+    obj.rotation.x = pitchRad;
   }
 
   async function ensureGlbRendererReady(){
