@@ -3702,7 +3702,7 @@
       if (ui.group.value) it.kv.group_id = ui.group.value;
       else if (kvHas(it, "group_id")) it.kv.group_id = "";
     }
-    it.kv.team = ui.team.value;
+    if (kvHas(it, "team")) it.kv.team = ui.team.value;
 
     if (kvHas(it, "waccuracy1")) it.kv.waccuracy1 = String(parseFloatSafe(ui.wacc1.value));
     if (kvHas(it, "waccuracy2")) it.kv.waccuracy2 = String(parseFloatSafe(ui.wacc2.value));
@@ -3710,21 +3710,25 @@
     const wpPauseKey = kvFindKey(it, ["wp_pause", "wppause"]);
     if (wpPauseKey) it.kv[wpPauseKey] = String(parseFloatSafe(ui.wpPause.value));
     if (kvHas(it, "max_attack_distance")) it.kv.max_attack_distance = String(parseFloatSafe(ui.maxAttack.value));
-    if (kvHas(it, "edistances")) it.kv.edistances = String(parseFloatSafe(ui.maxEngage.value));
+    if (kvHas(it, "edistances")) it.kv.edistances = ui.maxEngage.value;
     if (kvHas(it, "perception2")) it.kv.perception2 = String(parseFloatSafe(ui.minEngage.value));
 
     if (kvHas(it, "mission_critical")) it.kv.mission_critical = ui.missionCritical.checked ? "1" : "0";
 
     const hasWaypointRef = !!ui.wpList.value;
-    if (hasWaypointRef) it.kv.waypoint_id = ui.wpList.value;
-    else delete it.kv.waypoint_id;
+    if (kvHas(it, "waypoint_id")){
+      if (hasWaypointRef) it.kv.waypoint_id = ui.wpList.value;
+      else delete it.kv.waypoint_id;
+    }
 
     const wpNum = Math.trunc(Number(ui.wpNumber.value));
-    if (hasWaypointRef && Number.isFinite(wpNum) && wpNum > 0) it.kv.wpnumber = String(wpNum);
-    else delete it.kv.wpnumber;
+    if (kvHas(it, "wpnumber")){
+      if (hasWaypointRef && Number.isFinite(wpNum) && wpNum > 0) it.kv.wpnumber = String(wpNum);
+      else delete it.kv.wpnumber;
+    }
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
-    if (state.wpNames.length){
+    if (state.wpNames.length && kvHas(it, "ttoolindex")){
       const idx = Math.trunc(Number(ui.wpName.value));
       if (Number.isFinite(idx) && idx >= 0) it.kv.ttoolindex = String(idx);
     }
@@ -3744,23 +3748,7 @@
     if (state.modalOpen) renderItemWindow(); // atualiza Type/Graphic/Title se DEF mudou
   }
 
-  const inputsToCommit = [
-    ui.subtype, ui.layer,
-    ui.posx, ui.posy, ui.posz,
-    ui.absHeight, ui.lock,
-    ui.heading, ui.pitch,
-    ui.lessThan, ui.moreThan, ui.multiplayerOnly,
-    ui.spinmapColor,
-    ui.activeArea, ui.aiTextfile, ui.group, ui.team,
-    ui.wacc1, ui.wacc2, ui.fireTimer, ui.wpPause,
-    ui.maxAttack, ui.maxEngage, ui.minEngage,
-    ui.missionCritical,
-    ui.wpList, ui.wpNumber, ui.wpName, ui.wpDistance, ui.advEvent, ui.navWp,
-  ];
-  for (const el of inputsToCommit){
-    el.addEventListener("input", () => commitFromWindow({ applyOrientation: false }));
-    el.addEventListener("change", () => commitFromWindow({ applyOrientation: false }));
-  }
+  // Edição fica pendente na janela e só é aplicada em OK.
 
   function openModal(){
     const it = getSelected();
