@@ -4403,8 +4403,8 @@
   async function initModelLayer(){
     if (!cvModels) return;
     try {
-      const THREE = await import("https://esm.sh/three@0.160.0");
-      const { GLTFLoader } = await import("https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js");
+      const THREE = await import("https://unpkg.com/three@0.160.0/build/three.module.js?module");
+      const { GLTFLoader } = await import("https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js?module");
       modelState.THREE = THREE;
       modelState.renderer = new THREE.WebGLRenderer({ canvas: cvModels, antialias: true, alpha: true });
       modelState.renderer.setClearColor(0x000000, 0);
