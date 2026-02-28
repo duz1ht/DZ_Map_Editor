@@ -4431,6 +4431,19 @@
     THREE: null
   };
 
+  function makeTemplateDescriptor(root, graphic){
+    const THREE = modelState.THREE;
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
+    const targetMaxDim = 35000;
+    const baseScale = targetMaxDim / maxDim;
+    const safeScale = Number.isFinite(baseScale) ? Math.max(1, Math.min(baseScale, 200000)) : 1;
+    addLog(`GLB normalized: ${graphic}.glb maxDim=${maxDim.toFixed(3)} scale=${safeScale.toFixed(2)}`);
+    return { root, scale: safeScale };
+  }
+
   function rebuildModelDefsIndex(){
     modelState.defsByName.clear();
     for (const def of state.defsSorted || []){
@@ -4448,14 +4461,15 @@
       modelState.THREE = THREE;
       modelState.renderer = new THREE.WebGLRenderer({ canvas: cvModels, antialias: true, alpha: true });
       modelState.renderer.setClearColor(0x000000, 0);
+      modelState.renderer.outputColorSpace = THREE.SRGBColorSpace;
       modelState.scene = new THREE.Scene();
       modelState.camera = new THREE.PerspectiveCamera(state.camera.fovDeg, 1, 1, 100000000);
       modelState.camera.up.set(0, 0, 1);
-      modelState.scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.7));
-      const d1 = new THREE.DirectionalLight(0xffffff, 0.9);
+      modelState.scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.2));
+      const d1 = new THREE.DirectionalLight(0xffffff, 1.6);
       d1.position.set(1, 1, 2);
       modelState.scene.add(d1);
-      const d2 = new THREE.DirectionalLight(0xffffff, 0.45);
+      const d2 = new THREE.DirectionalLight(0xffffff, 1.0);
       d2.position.set(-1, -0.4, 1.2);
       modelState.scene.add(d2);
       modelState.loader = new GLTFLoader();
@@ -4521,7 +4535,7 @@
 
       if (!loadedRoot) throw new Error(`no readable GLB for '${graphic}' in 3d_items or 3d items`);
 
-      modelState.templateByGraphic.set(graphic, loadedRoot);
+      modelState.templateByGraphic.set(graphic, makeTemplateDescriptor(loadedRoot, graphic));
       addLog(`GLB loaded: ${graphic}.glb (${loadedPath})`);
     } catch (err){
       modelState.templateByGraphic.set(graphic, null);
@@ -4550,7 +4564,15 @@
 
       let obj = modelState.itemObjById.get(it.id);
       if (!obj){
-        obj = template.clone(true);
+        obj = template.root.clone(true);
+        obj.scale.setScalar(template.scale);
+        obj.traverse((n) => {
+          if (n.isMesh) {
+            n.castShadow = false;
+            n.receiveShadow = false;
+            n.frustumCulled = false;
+          }
+        });
         modelState.scene.add(obj);
         modelState.itemObjById.set(it.id, obj);
         addLog(`GLB attached: item #${it.id} -> ${graphic}.glb`);
