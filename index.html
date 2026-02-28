@@ -4697,7 +4697,11 @@
       const w=rows[0].length;
       if(w!==sectorCount||rows.length!==sectorCount) sectorCount=w;
       sectors=new Int32Array(sectorCount*sectorCount);
-      for(let y=0;y<sectorCount;y++) for(let x=0;x<sectorCount;x++) sectors[y*sectorCount+x]=(rows[y]||[])[x]||0;
+      for(let y=0;y<sectorCount;y++){
+        const srcRow=sectorCount-1-y;
+        for(let x=0;x<sectorCount;x++) sectors[y*sectorCount+x]=(rows[srcRow]||[])[x]||0;
+      }
+      addLog('[terrain] applied vertical flip to polytrn_sectors rows (TRN top row -> world north).');
     } else {
       sectors=new Int32Array(sectorCount*sectorCount);
       sectors.fill(1);
