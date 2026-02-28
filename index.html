@@ -244,6 +244,14 @@
       display:block;
       background:var(--canvas);
     }
+    #cvModels{
+      position:absolute;
+      inset:0;
+      z-index:2;
+      pointer-events:none;
+      background:transparent;
+    }
+    #cv{ position:relative; z-index:1; }
 
     .hint{
       color:var(--text-muted);
@@ -824,6 +832,7 @@
 
     <div id="canvasWrap">
       <canvas id="cv"></canvas>
+      <canvas id="cvModels"></canvas>
       <div id="movementAxesHud">Eixos: parado</div>
 
       <div id="sectionOverlay" aria-hidden="true">
@@ -4282,6 +4291,7 @@
   });
   // Canvas (WebGL)
   const cv = document.getElementById("cv");
+  const cvModels = document.getElementById("cvModels");
   const camSpeedEl = document.getElementById("camSpeed");
   const movementAxesHudEl = document.getElementById("movementAxesHud");
 
@@ -4364,6 +4374,157 @@
     const r = cv.getBoundingClientRect();
     const p = projectWorldToScreen(x, y, z, r.width, r.height);
     return p ? { sx: p.sx, sy: p.sy } : { sx: -1e9, sy: -1e9 };
+  }
+
+  const modelState = {
+    ready: false,
+    defsByName: new Map(),
+    templateByGraphic: new Map(),
+    itemObjById: new Map(),
+    loadingGraphic: new Set(),
+    missingGraphicLogged: new Set(),
+    missingGlbLogged: new Set(),
+    scene: null,
+    camera: null,
+    renderer: null,
+    loader: null,
+    THREE: null
+  };
+
+  function rebuildModelDefsIndex(){
+    modelState.defsByName.clear();
+    for (const def of state.defsSorted || []){
+      const name = String(def?.name || "").trim().toLowerCase();
+      const graphic = String(def?.graphic || "").trim();
+      if (name && graphic && !modelState.defsByName.has(name)) modelState.defsByName.set(name, graphic);
+    }
+  }
+
+  async function initModelLayer(){
+    if (!cvModels) return;
+    try {
+      const THREE = await import("https://unpkg.com/three@0.160.0/build/three.module.js");
+      const { GLTFLoader } = await import("https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js");
+      modelState.THREE = THREE;
+      modelState.renderer = new THREE.WebGLRenderer({ canvas: cvModels, antialias: true, alpha: true });
+      modelState.renderer.setClearColor(0x000000, 0);
+      modelState.scene = new THREE.Scene();
+      modelState.camera = new THREE.PerspectiveCamera(state.camera.fovDeg, 1, 1, 100000000);
+      modelState.camera.up.set(0, 0, 1);
+      modelState.scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.7));
+      const d1 = new THREE.DirectionalLight(0xffffff, 0.9);
+      d1.position.set(1, 1, 2);
+      modelState.scene.add(d1);
+      const d2 = new THREE.DirectionalLight(0xffffff, 0.45);
+      d2.position.set(-1, -0.4, 1.2);
+      modelState.scene.add(d2);
+      modelState.loader = new GLTFLoader();
+      modelState.ready = true;
+      addLog("3D item layer initialized (Three.js + GLTFLoader).");
+    } catch (err){
+      addLog(`WARNING: 3D item layer unavailable: ${err?.message || err}`);
+    }
+  }
+
+  function resolveItemGraphic(it){
+    if (!modelState.defsByName.size) rebuildModelDefsIndex();
+    const name = String(it?.kv?.name || it?.kv?.iai_name || "").trim();
+    if (name){
+      const graphicByName = modelState.defsByName.get(name.toLowerCase());
+      if (graphicByName) return graphicByName;
+    }
+    const def = getDefForItem(it);
+    const fallbackGraphic = String(def?.graphic || "").trim();
+    if (fallbackGraphic) return fallbackGraphic;
+    if (!modelState.missingGraphicLogged.has(it.id)){
+      modelState.missingGraphicLogged.add(it.id);
+      addLog(`Item #${it.id}: no graphic resolved for name='${name || "(empty)"}', keeping anchor point only.`);
+    }
+    return "";
+  }
+
+  async function ensureGraphicTemplateLoaded(graphic){
+    if (!modelState.ready) return;
+    if (modelState.templateByGraphic.has(graphic) || modelState.loadingGraphic.has(graphic)) return;
+    modelState.loadingGraphic.add(graphic);
+    try {
+      const url = `resources/3d_items/${graphic}.glb`;
+      const gltf = await modelState.loader.loadAsync(url);
+      const root = gltf.scene || gltf.scenes?.[0] || null;
+      if (!root) throw new Error("GLTF scene missing");
+      modelState.templateByGraphic.set(graphic, root);
+      addLog(`GLB loaded: ${graphic}.glb`);
+    } catch (err){
+      modelState.templateByGraphic.set(graphic, null);
+      if (!modelState.missingGlbLogged.has(graphic)){
+        modelState.missingGlbLogged.add(graphic);
+        addLog(`GLB not loaded for graphic '${graphic}' (${graphic}.glb): ${err?.message || err}. Keeping anchor point only.`);
+      }
+    } finally {
+      modelState.loadingGraphic.delete(graphic);
+    }
+  }
+
+  function syncItemModelInstances(){
+    if (!modelState.ready) return;
+    const keep = new Set();
+    const visible = getFilteredItems();
+    for (const it of visible){
+      const graphic = resolveItemGraphic(it);
+      if (!graphic) continue;
+      if (!modelState.templateByGraphic.has(graphic)){
+        ensureGraphicTemplateLoaded(graphic);
+        continue;
+      }
+      const template = modelState.templateByGraphic.get(graphic);
+      if (!template) continue;
+
+      let obj = modelState.itemObjById.get(it.id);
+      if (!obj){
+        obj = template.clone(true);
+        modelState.scene.add(obj);
+        modelState.itemObjById.set(it.id, obj);
+        addLog(`GLB attached: item #${it.id} -> ${graphic}.glb`);
+      }
+      obj.position.set(it.x, it.y, it.z || 0);
+      keep.add(it.id);
+    }
+
+    for (const [id, obj] of modelState.itemObjById){
+      if (keep.has(id)) continue;
+      modelState.scene.remove(obj);
+      modelState.itemObjById.delete(id);
+    }
+  }
+
+  function renderItemModelLayer(){
+    if (!modelState.ready) return;
+    const rect = cv.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.floor(rect.width * dpr));
+    const h = Math.max(1, Math.floor(rect.height * dpr));
+    if (cvModels.width !== w || cvModels.height !== h){
+      cvModels.width = w;
+      cvModels.height = h;
+      modelState.renderer.setPixelRatio(dpr);
+      modelState.renderer.setSize(rect.width, rect.height, false);
+    }
+
+    syncItemModelInstances();
+
+    const cam = state.camera;
+    const basis = getCameraBasis();
+    const tcam = modelState.camera;
+    tcam.fov = cam.fovDeg;
+    tcam.aspect = rect.width / Math.max(1, rect.height);
+    tcam.near = 1;
+    tcam.far = 100000000;
+    tcam.position.set(cam.x, cam.y, cam.z);
+    tcam.up.set(0, 0, 1);
+    tcam.lookAt(cam.x + basis.forward.x, cam.y + basis.forward.y, cam.z + basis.forward.z);
+    tcam.updateProjectionMatrix();
+
+    modelState.renderer.render(modelState.scene, tcam);
   }
 
   function createWebGLRenderer(canvas){
@@ -4593,6 +4754,7 @@
 
       renderRects(plainRects, width, height);
       renderCircles(circles, width, height);
+      renderItemModelLayer();
     }
 
     let prev = performance.now();
@@ -4658,6 +4820,7 @@
   }
 
   const renderer = createWebGLRenderer(cv);
+  initModelLayer();
 
   function resizeCanvas(){ renderer.resize(); }
   window.addEventListener("resize", resizeCanvas);
