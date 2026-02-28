@@ -1323,6 +1323,10 @@
       itemInstances: new Map(),
       syncPromise: null,
       initPromise: null,
+      structureDirty: true,
+      lastSyncSignature: "",
+      syncCount: 0,
+      lastSyncMs: 0,
       ready: false,
     },
   };
@@ -4808,6 +4812,20 @@
     state.glb.itemInstances.clear();
   }
 
+  function getRenderableGlbEntries(){
+    const out = [];
+    for (const it of state.items || []){
+      const graphic = resolveItemGraphic(it);
+      if (!graphic) continue;
+      out.push({ it, graphic });
+    }
+    return out;
+  }
+
+  function buildGlbSyncSignature(entries){
+    return entries.map(({ it, graphic }) => `${it.id}:${graphic}`).join("|");
+  }
+
   async function loadGraphicTemplate(graphic){
     const key = String(graphic || "").trim();
     if (!key) return null;
@@ -4900,22 +4918,42 @@
     if (!ready || state.glb.syncPromise) return;
 
     state.glb.syncPromise = (async () => {
-      clearGlbItemInstances();
-      const items = state.items || [];
-      for (const it of items){
-        const graphic = resolveItemGraphic(it);
-        if (!graphic) continue;
+      const started = performance.now();
+      const entries = getRenderableGlbEntries();
+      const signature = buildGlbSyncSignature(entries);
+      const wantedIds = new Set(entries.map(x => x.it.id));
 
-        const template = await loadGraphicTemplate(graphic);
-        if (!template) continue;
-
-        const instance = template.clone(true);
-        instance.userData.itemId = it.id;
-        instance.userData.graphic = graphic;
-        applyItemTransformToObject(instance, it);
-        state.glb.scene.add(instance);
-        state.glb.itemInstances.set(it.id, instance);
+      for (const [itemId, obj] of state.glb.itemInstances.entries()){
+        if (wantedIds.has(itemId)) continue;
+        state.glb.scene.remove(obj);
+        state.glb.itemInstances.delete(itemId);
       }
+
+      for (const { it, graphic } of entries){
+        let instance = state.glb.itemInstances.get(it.id) || null;
+        if (instance && instance.userData.graphic !== graphic){
+          state.glb.scene.remove(instance);
+          state.glb.itemInstances.delete(it.id);
+          instance = null;
+        }
+
+        if (!instance){
+          const template = await loadGraphicTemplate(graphic);
+          if (!template) continue;
+          instance = template.clone(true);
+          instance.userData.itemId = it.id;
+          instance.userData.graphic = graphic;
+          state.glb.scene.add(instance);
+          state.glb.itemInstances.set(it.id, instance);
+        }
+
+        applyItemTransformToObject(instance, it);
+      }
+
+      state.glb.lastSyncSignature = signature;
+      state.glb.structureDirty = false;
+      state.glb.syncCount += 1;
+      state.glb.lastSyncMs = performance.now() - started;
     })();
 
     try {
@@ -4927,17 +4965,16 @@
 
   function updateGlbTransformsFromState(){
     if (!state.glb.ready) return;
-    let needsResync = state.glb.itemInstances.size !== state.items.length;
-    for (const it of state.items){
+    const entries = getRenderableGlbEntries();
+    const signature = buildGlbSyncSignature(entries);
+    if (signature !== state.glb.lastSyncSignature) state.glb.structureDirty = true;
+
+    for (const { it, graphic } of entries){
       const instance = state.glb.itemInstances.get(it.id);
-      const graphic = resolveItemGraphic(it);
-      if (!instance || instance.userData.graphic !== graphic){
-        needsResync = true;
-        break;
-      }
+      if (!instance || instance.userData.graphic !== graphic) continue;
       applyItemTransformToObject(instance, it);
     }
-    if (needsResync) syncGlbItems();
+    if (state.glb.structureDirty && !state.glb.syncPromise) syncGlbItems();
   }
 
   function drawGlbItems(P, V){
@@ -5236,6 +5273,8 @@ Mode: ${renderMode==='C' ? 'Colormap' : (renderMode==='H' ? 'Heightmap' : 'Delta
 Grid: ${gridVisible ? formatGridValue(gridSizeMeters()) : 'off'}
 Top view lock: ${topViewLocked?'on':'off'}
 Draw calls: ${drawCalls}
+GLB instances: ${state.glb.itemInstances.size}
+GLB sync: #${state.glb.syncCount} (${state.glb.lastSyncMs.toFixed(2)} ms)
 Wrap: x=${wrapX} y=${wrapY}
 Sectors: ${sectorCount}x${sectorCount} origin=${terrainOrigin.x},${terrainOrigin.y}
 Terrain size: ${terrainSpanX()} x ${terrainSpanY()}
