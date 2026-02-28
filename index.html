@@ -4386,6 +4386,37 @@
   }
 
   function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); gl.viewport(0,0,cv.width,cv.height); }
+
+  function fitView(){
+    const items = state.items || [];
+    if (!items.length){
+      resetCamera();
+      state.camera.x = cam.pos.x;
+      state.camera.y = cam.pos.y;
+      state.camera.z = cam.pos.z;
+      state.camera.yaw = cam.yaw;
+      state.camera.pitch = cam.pitch;
+      return;
+    }
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,maxZ=0;
+    for (const it of items){
+      minX=Math.min(minX,it.x||0); maxX=Math.max(maxX,it.x||0);
+      minY=Math.min(minY,it.y||0); maxY=Math.max(maxY,it.y||0);
+      maxZ=Math.max(maxZ,it.z||0);
+    }
+    const cx=(minX+maxX)*0.5;
+    const cy=(minY+maxY)*0.5;
+    const span=Math.max(maxX-minX,maxY-minY,SECTOR_STRIDE*2);
+    cam.pos = vec3(cx, cy + span*0.8, Math.max(maxZ + span*0.4, 220));
+    cam.yaw = Math.PI;
+    cam.pitch = -0.25;
+
+    state.camera.x = cam.pos.x;
+    state.camera.y = cam.pos.y;
+    state.camera.z = cam.pos.z;
+    state.camera.yaw = cam.yaw;
+    state.camera.pitch = cam.pitch;
+  }
   window.addEventListener('resize',resizeCanvas); resizeCanvas();
 
   let lastT=performance.now();
