@@ -205,8 +205,17 @@
       display:flex;
       gap:10px;
       align-items:center;
+      flex-wrap:wrap;
       min-width: 0;
     }
+
+    .modeBtn{min-width:26px;height:22px;padding:0 8px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:6px;cursor:pointer}
+    .modeBtn.active{background:#2c7be5;border-color:#67a2ff;color:#fff}
+    .gridCtl{display:flex;align-items:center;gap:4px}
+    .gridVal{min-width:64px;display:inline-block;text-align:left}
+    .tbCtl{font-size:12px; display:flex; align-items:center; gap:4px}
+    #topbar input[type="range"]{ width:120px; }
+
     #status{
       margin-left:auto;
       color:var(--text-muted);
@@ -811,9 +820,22 @@
 
   <div id="main">
     <div id="topbar">
-      <div class="hint">
-        Double-click: open Item Attributes. Esc: close.
-      </div>
+      <div class="hint">Double-click: open Item Attributes. Esc: close.</div>
+      <label class="tbCtl gridCtl">Grid
+        <button id="gridPlus" type="button" class="modeBtn" title="Increase grid size">+</button>
+        <button id="gridMinus" type="button" class="modeBtn" title="Decrease grid size">-</button>
+        <span id="gridValue" class="gridVal">512m</span>
+      </label>
+      <button id="modeC" class="modeBtn active" title="Colormap (R)">C</button>
+      <button id="modeH" class="modeBtn" title="Heightmap (R)">H</button>
+      <button id="modeD" class="modeBtn" title="Delta/Variation (R)">D</button>
+      <label class="tbCtl"><input id="ground" type="checkbox" checked> Ground clamp</label>
+      <label class="tbCtl">Speed <input id="speed" type="range" min="20" max="1200" step="10" value="300"></label>
+      <label class="tbCtl">Clearance <input id="clear" type="range" min="1" max="200" step="1" value="40"></label>
+      <label class="tbCtl">Draw radius <input id="radius" type="range" min="512" max="65536" step="256" value="12288"></label>
+      <label class="tbCtl"><input id="mainArea" type="checkbox"> Main area</label>
+      <label class="tbCtl"><input id="showSectors" type="checkbox"> Show Sectors</label>
+      <label class="tbCtl">Mesh step <select id="step"><option>1</option><option>2</option><option>4</option><option selected>8</option><option>16</option></select></label>
       <div id="status">No file loaded.</div>
     </div>
 
@@ -4356,6 +4378,13 @@
   let texColor=null, texHeight=null, texDelta=null; let meshSector=[null,null,null,null,null];
   let cam={pos:vec3(0,1500,400), yaw:Math.PI, pitch:-0.25}, move={w:0,a:0,s:0,d:0,q:0,e:0,shift:0};
   let renderMode='C';
+  let gridExponent=9;
+  const GRID_EXP_MIN=-8, GRID_EXP_MAX=12;
+  function gridSizeMeters(){ return Math.pow(2, gridExponent); }
+  function formatGridValue(m){ if(m<1) return (m*100).toFixed(3)+'cm'; if(m>=1024) return m.toFixed(0)+'m'; if(Number.isInteger(m)) return m.toFixed(0)+'m'; return m.toFixed(3)+'m'; }
+  function updateGridUi(){ const el=document.getElementById('gridValue'); if(el) el.textContent=formatGridValue(gridSizeMeters()); const p=document.getElementById('gridPlus'); const n=document.getElementById('gridMinus'); if(p) p.disabled=gridExponent>=GRID_EXP_MAX; if(n) n.disabled=gridExponent<=GRID_EXP_MIN; }
+  function stepGridExponent(d){ gridExponent=Math.max(GRID_EXP_MIN,Math.min(GRID_EXP_MAX,gridExponent+d)); updateGridUi(); }
+  function setRenderMode(mode){ if(!['C','H','D'].includes(mode)) return; renderMode=mode; const c=document.getElementById('modeC'),h=document.getElementById('modeH'),d=document.getElementById('modeD'); if(c)c.classList.toggle('active',mode==='C'); if(h)h.classList.toggle('active',mode==='H'); if(d)d.classList.toggle('active',mode==='D'); }
   function terrainSpanX(){ return sectorCount*SECTOR_STRIDE; } function terrainSpanY(){ return sectorCount*SECTOR_STRIDE; } function originWorldX(){ return terrainOrigin.x*SECTOR_STRIDE; } function originWorldY(){ return terrainOrigin.y*SECTOR_STRIDE; }
   function resetCamera(){ const spanX=terrainSpanX(),spanY=terrainSpanY(), cx=originWorldX()+spanX*0.5, cy=originWorldY()+spanY*0.5, span=Math.max(spanX,spanY); cam.pos=vec3(cx,cy+span*0.65,220); cam.yaw=Math.PI; cam.pitch=-0.25; }
 
@@ -4369,9 +4398,10 @@
   function activeTerrainTexture(){ if(renderMode==='H') return texHeight||texColor||texDelta; if(renderMode==='D') return texDelta||texColor||texHeight; return texColor||texHeight||texDelta; }
   function Mesh(){ this.vb=null; this.ib=null; this.indexCount=0; this.indexType=gl.UNSIGNED_INT; }
   Mesh.prototype.upload=function(mesh){ this.vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.vb); gl.bufferData(gl.ARRAY_BUFFER,mesh.verts,gl.STATIC_DRAW); this.ib=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,mesh.idx,gl.STATIC_DRAW); this.indexCount=mesh.idx.length; this.indexType=(mesh.idx instanceof Uint32Array)?gl.UNSIGNED_INT:gl.UNSIGNED_SHORT; if(this.indexType===gl.UNSIGNED_INT&&!extUInt) throw new Error('OES_element_index_uint not supported'); };
-  function rebuildTerrain(){ if(!lastDepth||!lastImg||!sectors) return; const step=8, hmul=1.0; for(let s=1;s<=4;s++){ const m=new Mesh(); m.upload(buildMeshSingleSector(s,step,hmul)); meshSector[s]=m; } texColor=createTextureFromPixels(lastImg.w,lastImg.h,lastImg.pixels); texHeight=createHeightmapTextureFromSectors(); texDelta=createDeltaTextureFromSectors(); resetCamera(); }
+  function rebuildTerrain(){ if(!lastDepth||!lastImg||!sectors) return; const step=parseInt(document.getElementById('step')?.value||'8',10)||8, hmul=1.0; for(let s=1;s<=4;s++){ const m=new Mesh(); m.upload(buildMeshSingleSector(s,step,hmul)); meshSector[s]=m; } texColor=createTextureFromPixels(lastImg.w,lastImg.h,lastImg.pixels); texHeight=createHeightmapTextureFromSectors(); texDelta=createDeltaTextureFromSectors(); resetCamera(); }
 
   function mapSrcIdx(g,wrap){ if(wrap===1) return posMod(g,sectorCount); if(g<0) return 0; if(g>=sectorCount) return sectorCount-1; return g; }
+  function heightAtWorld(x,y,heightMul){ if(!lastDepth||!sectors) return -1e9; const spanX=terrainSpanX(), spanY=terrainSpanY(); let lxw=x-originWorldX(), lyw=y-originWorldY(); if(wrapX===1) lxw=posMod(lxw,spanX); if(wrapY===1) lyw=posMod(lyw,spanY); let sx=Math.floor(lxw/SECTOR_STRIDE), sy=Math.floor(lyw/SECTOR_STRIDE); if(sx<0||sy<0||sx>=sectorCount||sy>=sectorCount) return -1e9; const sectorIndex=sectors[sy*sectorCount+sx]|0; if(sectorIndex<=0) return -1e9; let lx=lxw-sx*SECTOR_STRIDE, ly=lyw-sy*SECTOR_STRIDE; let x0=Math.floor(lx), y0=Math.floor(ly); if(x0>0&&(x0%512)===0) x0--; if(y0>0&&(y0%512)===0) y0--; let x1=Math.min(SECTOR_SIZE-1,x0+1), y1=Math.min(SECTOR_SIZE-1,y0+1); const tx=lx-x0, ty=ly-y0; const h00=heightSample(sectorIndex,x0,y0), h10=heightSample(sectorIndex,x1,y0), h01=heightSample(sectorIndex,x0,y1), h11=heightSample(sectorIndex,x1,y1); const h0=h00*(1-tx)+h10*tx, h1=h01*(1-tx)+h11*tx; return (h0*(1-ty)+h1*ty)*heightMul; }
   function cameraBasis(){ const cy=Math.cos(cam.yaw), sy=Math.sin(cam.yaw), cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch); const forward=vec3(sy*cp, cy*cp, sp), forwardXY=vec3Norm(vec3(sy,cy,0)), right=vec3Norm(vec3Cross(forwardXY,vec3(0,0,1))); return {forward,forwardXY,right}; }
   function currentPV(){ const {forward,forwardXY}=cameraBasis(); const P=mat4Perspective(Math.PI/3, cv.width/cv.height, 1.0, 1000000.0); const V=mat4LookAt(cam.pos, vec3Add(cam.pos,forward), (Math.abs(forward.z)>0.999)?forwardXY:vec3(0,0,1)); return {P,V,PV:mat4Mul(P,V)}; }
   function worldToScreen(x,y,z=0){ const {PV}=currentPV(); const px=PV[0]*x+PV[4]*y+PV[8]*z+PV[12], py=PV[1]*x+PV[5]*y+PV[9]*z+PV[13], pw=PV[3]*x+PV[7]*y+PV[11]*z+PV[15]; if(pw<=0) return {sx:-999,sy:-999,visible:false}; const nx=px/pw, ny=py/pw, r=cv.getBoundingClientRect(); return {sx:(nx*0.5+0.5)*r.width, sy:(1-(ny*0.5+0.5))*r.height, visible:true}; }
@@ -4379,8 +4409,10 @@
   function screenToWorld(sx,sy,zPlane=0){ const ray=screenRay(sx,sy), dz=ray.dir.z; if(Math.abs(dz)<1e-6) return {x:ray.origin.x,y:ray.origin.y,z:zPlane}; const t=(zPlane-ray.origin.z)/dz; return {x:ray.origin.x+ray.dir.x*Math.max(t,0), y:ray.origin.y+ray.dir.y*Math.max(t,0), z:zPlane}; }
 
   function bindMesh(m){ gl.bindBuffer(gl.ARRAY_BUFFER,m.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib); gl.enableVertexAttribArray(aPos); gl.enableVertexAttribArray(aUV); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,20,0); gl.vertexAttribPointer(aUV,2,gl.FLOAT,false,20,12); }
-  function drawTerrain(P,V,forward){ const tex=activeTerrainTexture(); if(!(tex&&sectors&&meshSector[1])) return 0; gl.useProgram(prog); gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0); gl.bindTexture(gl.TEXTURE_2D,tex); const ox=originWorldX(),oy=originWorldY(),radius=12288; const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1,j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1; let draws=0; for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ const srcX=mapSrcIdx(gx,wrapX), srcY=mapSrcIdx(gy,wrapY), sectorIndex=sectors[srcY*sectorCount+srcX]|0; if(sectorIndex<=0) continue; const m=meshSector[sectorIndex]; if(!m||!m.indexCount) continue; const MVP=mat4Mul(P, mat4Mul(V, mat4Translate(ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE,0))); gl.uniformMatrix4fv(uMVP,false,MVP); bindMesh(m); gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0); draws++; }
+  function drawTerrain(P,V,forward){ const tex=activeTerrainTexture(); if(!(tex&&sectors&&meshSector[1])) return 0; gl.useProgram(prog); gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0); gl.bindTexture(gl.TEXTURE_2D,tex); const ox=originWorldX(),oy=originWorldY(),radius=parseFloat(document.getElementById('radius')?.value||'12288')||12288; const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1,j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1; let draws=0; for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ const srcX=mapSrcIdx(gx,wrapX), srcY=mapSrcIdx(gy,wrapY), sectorIndex=sectors[srcY*sectorCount+srcX]|0; if(sectorIndex<=0) continue; const m=meshSector[sectorIndex]; if(!m||!m.indexCount) continue; const MVP=mat4Mul(P, mat4Mul(V, mat4Translate(ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE,0))); gl.uniformMatrix4fv(uMVP,false,MVP); bindMesh(m); gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0); draws++; }
     if(trnInfo.waterHeight!==null&&Number.isFinite(trnInfo.waterHeight)){ gl.useProgram(waterProg); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.enableVertexAttribArray(waPos); gl.vertexAttribPointer(waPos,3,gl.FLOAT,false,12,0); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.uniformMatrix4fv(wuMVP,false,mat4Mul(P,V)); gl.uniform3f(wuColor,0.55,0.85,1.0); gl.uniform1f(wuAlpha,0.28); gl.uniform1f(wuZ,trnInfo.waterHeight*0.5); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ gl.uniform2f(wuOffsetXY,ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE); gl.uniform2f(wuScaleXY,SECTOR_STRIDE,SECTOR_STRIDE); gl.drawElements(gl.TRIANGLES,6,gl.UNSIGNED_SHORT,0); } gl.depthMask(true); gl.disable(gl.BLEND); }
+    const mainAreaOn=document.getElementById('mainArea')?.checked; const showSectorsOn=document.getElementById('showSectors')?.checked;
+    if(mainAreaOn||showSectorsOn){ const MVPcam=mat4Mul(P,V); gl.useProgram(lineProg); gl.bindBuffer(gl.ARRAY_BUFFER,lineVB); gl.enableVertexAttribArray(laPos); gl.vertexAttribPointer(laPos,3,gl.FLOAT,false,12,0); gl.uniformMatrix4fv(luMVP,false,MVPcam); gl.uniform1f(luZ,0.25); gl.disable(gl.DEPTH_TEST); const spanX=terrainSpanX(), spanY=terrainSpanY(); function drawRect(offsetX, offsetY, scaleX, scaleY, color3){ gl.uniform3f(luColor,color3[0],color3[1],color3[2]); gl.uniform2f(luOffsetXY,offsetX,offsetY); gl.uniform2f(luScaleXY,scaleX,scaleY); gl.drawArrays(gl.LINES,0,8);} if(showSectorsOn){ for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++) drawRect(ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE,SECTOR_STRIDE,SECTOR_STRIDE,[0.2,0.8,1]); } if(mainAreaOn) drawRect(ox,oy,spanX,spanY,[1,0,0]); gl.enable(gl.DEPTH_TEST); gl.useProgram(prog); }
     return draws; }
 
   function drawItems(PV){
@@ -4589,7 +4621,8 @@
   let lastT=performance.now();
   function draw(){
     const now=performance.now(), dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
-    const {forwardXY,right,forward}=cameraBasis(); let dir=vec3(0,0,0); if(move.w) dir=vec3Add(dir,forwardXY); if(move.s) dir=vec3Sub(dir,forwardXY); if(move.d) dir=vec3Add(dir,right); if(move.a) dir=vec3Sub(dir,right); if(move.e) dir=vec3Add(dir,vec3(0,0,1)); if(move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); if(dlen>0){ dir=vec3Scale(dir,1/dlen); const spd=state.camera.speed*(move.shift?3:1); cam.pos=vec3Add(cam.pos,vec3Scale(dir,spd*dt)); }
+    const {forwardXY,right,forward}=cameraBasis(); let dir=vec3(0,0,0); if(move.w) dir=vec3Add(dir,forwardXY); if(move.s) dir=vec3Sub(dir,forwardXY); if(move.d) dir=vec3Add(dir,right); if(move.a) dir=vec3Sub(dir,right); if(move.e) dir=vec3Add(dir,vec3(0,0,1)); if(move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); if(dlen>0){ dir=vec3Scale(dir,1/dlen); const base=parseFloat(document.getElementById('speed')?.value||'300'); const spd=(base*10000)*(move.shift?3:1); state.camera.speed=spd; cam.pos=vec3Add(cam.pos,vec3Scale(dir,spd*dt)); }
+    if(document.getElementById('ground')?.checked && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=parseFloat(document.getElementById('clear')?.value||'40'); if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
     gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
     const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV);
     camDebugEl.textContent=`Loaded terrain: ${loadedTrnName||'none'}
@@ -4601,9 +4634,18 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'} Draw calls: ${drawCa
   requestAnimationFrame(draw);
 
   cv.addEventListener('click',()=>{ cv.focus(); if(document.pointerLockElement!==cv) cv.requestPointerLock(); });
-  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='w') move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e') move.e=1; if(k==='shift') move.shift=1; if(k==='r') renderMode=renderMode==='C'?'H':(renderMode==='H'?'D':'C'); state.keysDown.add(e.code); });
+  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='w') move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e') move.e=1; if(k==='shift') move.shift=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
   addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); if(k==='w') move.w=0; if(k==='a') move.a=0; if(k==='s') move.s=0; if(k==='d') move.d=0; if(k==='q') move.q=0; if(k==='e') move.e=0; if(k==='shift') move.shift=0; state.keysDown.delete(e.code); });
   addEventListener('mousemove',e=>{ if(document.pointerLockElement!==cv) return; cam.yaw += e.movementX*0.002; cam.pitch -= e.movementY*0.002; cam.pitch=Math.max(-1.55,Math.min(1.55,cam.pitch)); });
+
+  document.getElementById('modeC')?.addEventListener('click',()=>setRenderMode('C'));
+  document.getElementById('modeH')?.addEventListener('click',()=>setRenderMode('H'));
+  document.getElementById('modeD')?.addEventListener('click',()=>setRenderMode('D'));
+  document.getElementById('gridPlus')?.addEventListener('click',()=>stepGridExponent(1));
+  document.getElementById('gridMinus')?.addEventListener('click',()=>stepGridExponent(-1));
+  document.getElementById('step')?.addEventListener('change',()=>rebuildTerrain());
+  updateGridUi();
+  setRenderMode('C');
 
   cv.addEventListener("mousedown", (e) => {
     if (state.modalOpen) return; closeItemContextMenu(); const rect = cv.getBoundingClientRect(); const sx = e.clientX - rect.left; const sy = e.clientY - rect.top; if (e.button !== 0) return;
