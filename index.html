@@ -2002,9 +2002,14 @@
     return entries;
   }
 
-  function ensureSelectOptions(selectEl, options, currentValue){
+  function ensureSelectOptions(selectEl, options, currentValue, { caseInsensitive = false } = {}){
     const vals = options.map(o => typeof o === "string" ? { value:o, label:o } : o);
-    if (currentValue !== undefined && currentValue !== null && currentValue !== "" && !vals.some(o => String(o.value) === String(currentValue))){
+    const normalize = v => {
+      const str = String(v);
+      return caseInsensitive ? str.toLowerCase() : str;
+    };
+
+    if (currentValue !== undefined && currentValue !== null && currentValue !== "" && !vals.some(o => normalize(o.value) === normalize(currentValue))){
       vals.push({ value:String(currentValue), label:String(currentValue) });
     }
     selectEl.innerHTML = vals.map(o => `<option value="${escapeHtml(String(o.value))}">${escapeHtml(String(o.label))}</option>`).join("");
@@ -2012,8 +2017,10 @@
     const desired = currentValue !== undefined && currentValue !== null && currentValue !== ""
       ? String(currentValue)
       : String(selectEl.value || "");
-    if (vals.some(o => String(o.value) === desired)){
-      selectEl.value = desired;
+    const desiredNorm = normalize(desired);
+    const matched = vals.find(o => normalize(o.value) === desiredNorm);
+    if (matched){
+      selectEl.value = String(matched.value);
     } else if (vals.length){
       selectEl.value = String(vals[0].value);
     }
@@ -2098,7 +2105,7 @@
 
     if (state.sectionEditorOpen && state.sectionKind === "general_information"){
       const currentValue = giTerrain.value || extractTerrainNameFromMis() || "dvd1";
-      ensureSelectOptions(giTerrain, names.map(v => ({ value: v, label: v })), currentValue);
+      ensureSelectOptions(giTerrain, names.map(v => ({ value: v, label: v })), currentValue, { caseInsensitive: true });
     }
   }
 
@@ -2319,7 +2326,7 @@
   function fillGeneralInfoEditor(sec){
     const kv = sec?.kv || {};
     const terrainOptions = state.generalTerrainNames || [];
-    ensureSelectOptions(giTerrain, terrainOptions.map(v=>({ value:v, label:v })), kv.terrain || "dvd1");
+    ensureSelectOptions(giTerrain, terrainOptions.map(v=>({ value:v, label:v })), kv.terrain || "dvd1", { caseInsensitive: true });
     ensureSelectOptions(giTiles, GENERAL_TILES.map(v=>({ value:v, label:v })), kv.terrain_tile_tga || "trntile11");
     const playerTypeRaw = String(kv.player_type ?? "1");
     ensureSelectOptions(
