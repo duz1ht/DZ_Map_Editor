@@ -3153,7 +3153,7 @@
     return kv;
   }
 
-  function applySectionBlock(){
+  async function applySectionBlock(){
     if (state.sectionKind === 'group'){
       const n = state.groupSelectedNumber || 1;
       let sec = getGroupSectionByNumber(n);
@@ -3195,9 +3195,19 @@
     if (state.sectionKind === 'general_information'){
       const sec = state.sectionBlocks.find(s => s.id === state.sectionSelectedId);
       if (!sec) return;
+      const prevTerrain = String(sec?.kv?.terrain || "").trim().toLowerCase();
       applyGeneralInfoSection(sec);
       renderSectionList();
       refreshLiveMisWindow();
+      const nextTerrain = String(sec?.kv?.terrain || "").trim().toLowerCase();
+      if (hasMisLoaded() && nextTerrain && nextTerrain !== prevTerrain){
+        try{
+          await loadTerrainFromMis(sec.kv.terrain);
+        } catch (err){
+          addLog(`[terrain] load error after General Information OK: ${err?.message || err}`);
+          camDebugEl.textContent = `Falha ao carregar terreno: ${err.message||err}`;
+        }
+      }
       closeSectionEditor();
       return;
     }
@@ -3975,16 +3985,7 @@
   giEnvironment.addEventListener("change", applyEnvironmentFogToInputs);
   giFogDistEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   giFogColorEnabled.addEventListener("change", applyEnvironmentFogToInputs);
-  giTerrain.addEventListener("change", async () => {
-    await applyTerrainWaterToInput();
-    if (!hasMisLoaded()) return;
-    try{
-      await loadTerrainFromMis(giTerrain.value);
-    } catch (err){
-      addLog(`[terrain] load error after Mission Terrain change: ${err?.message || err}`);
-      camDebugEl.textContent = `Falha ao carregar terreno: ${err.message||err}`;
-    }
-  });
+  giTerrain.addEventListener("change", applyTerrainWaterToInput);
   giWaterEnabled.addEventListener("change", applyTerrainWaterToInput);
   wpSelectMarkersBtn.addEventListener("click", selectWaypointMarkers);
   wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
