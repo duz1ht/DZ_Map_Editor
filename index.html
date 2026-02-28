@@ -4612,13 +4612,11 @@
     const cam = state.camera;
     const keys = cam.keys;
     const speed = cam.speed * (keys.shift ? cam.sprintMult : 1);
-    const yawForward = { x: Math.cos(cam.yaw), y: Math.sin(cam.yaw), z: 0 };
-    const yawRight = { x: -Math.sin(cam.yaw), y: Math.cos(cam.yaw), z: 0 };
     let dir = { x: 0, y: 0, z: 0 };
-    if (keys.w) { dir.x += yawForward.x; dir.y += yawForward.y; }
-    if (keys.s) { dir.x -= yawForward.x; dir.y -= yawForward.y; }
-    if (keys.d) { dir.x += yawRight.x; dir.y += yawRight.y; }
-    if (keys.a) { dir.x -= yawRight.x; dir.y -= yawRight.y; }
+    if (keys.w) dir.y += 1;
+    if (keys.s) dir.y -= 1;
+    if (keys.d) dir.x += 1;
+    if (keys.a) dir.x -= 1;
     if (keys.e) dir.z += 1;
     if (keys.q) dir.z -= 1;
     const n = normalize3(dir);
@@ -4644,14 +4642,12 @@
     if (!movementAxesHudEl) return;
     const keys = state.camera.keys;
     const cam = state.camera;
-    const yawForward = { x: Math.cos(cam.yaw), y: Math.sin(cam.yaw), z: 0 };
-    const yawRight = { x: -Math.sin(cam.yaw), y: Math.cos(cam.yaw), z: 0 };
 
     let dir = { x: 0, y: 0, z: 0 };
-    if (keys.w) { dir.x += yawForward.x; dir.y += yawForward.y; }
-    if (keys.s) { dir.x -= yawForward.x; dir.y -= yawForward.y; }
-    if (keys.d) { dir.x += yawRight.x; dir.y += yawRight.y; }
-    if (keys.a) { dir.x -= yawRight.x; dir.y -= yawRight.y; }
+    if (keys.w) dir.y += 1;
+    if (keys.s) dir.y -= 1;
+    if (keys.d) dir.x += 1;
+    if (keys.a) dir.x -= 1;
     if (keys.e) dir.z += 1;
     if (keys.q) dir.z -= 1;
 
