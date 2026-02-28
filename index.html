@@ -4444,18 +4444,11 @@
     const THREE = modelState.THREE;
     root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root);
-    const size = new THREE.Vector3();
     const center = new THREE.Vector3();
-    box.getSize(size);
     box.getCenter(center);
 
-    const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
-    const targetMaxDim = 35000;
-    const baseScale = targetMaxDim / maxDim;
-    const safeScale = Number.isFinite(baseScale) ? Math.max(1, Math.min(baseScale, 200000)) : 1;
-
-    addLog(`GLB normalized: ${graphic}.glb maxDim=${maxDim.toFixed(3)} scale=${safeScale.toFixed(2)} center=(${center.x.toFixed(3)}, ${center.y.toFixed(3)}, ${center.z.toFixed(3)})`);
-    return { root, scale: safeScale, center };
+    addLog(`GLB centered: ${graphic}.glb center=(${center.x.toFixed(3)}, ${center.y.toFixed(3)}, ${center.z.toFixed(3)})`);
+    return { root, center };
   }
 
   function rebuildModelDefsIndex(){
@@ -4475,15 +4468,14 @@
       modelState.THREE = THREE;
       modelState.renderer = new THREE.WebGLRenderer({ canvas: cvModels, antialias: true, alpha: true });
       modelState.renderer.setClearColor(0x000000, 0);
-      modelState.renderer.outputColorSpace = THREE.SRGBColorSpace;
       modelState.scene = new THREE.Scene();
       modelState.camera = new THREE.PerspectiveCamera(state.camera.fovDeg, 1, 1, 100000000);
       modelState.camera.up.set(0, 0, 1);
-      modelState.scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.2));
-      const d1 = new THREE.DirectionalLight(0xffffff, 1.6);
+      modelState.scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.7));
+      const d1 = new THREE.DirectionalLight(0xffffff, 0.9);
       d1.position.set(1, 1, 2);
       modelState.scene.add(d1);
-      const d2 = new THREE.DirectionalLight(0xffffff, 1.0);
+      const d2 = new THREE.DirectionalLight(0xffffff, 0.45);
       d2.position.set(-1, -0.4, 1.2);
       modelState.scene.add(d2);
       modelState.loader = new GLTFLoader();
@@ -4580,15 +4572,7 @@
       if (!obj){
         const model = template.root.clone(true);
         const wrapper = new modelState.THREE.Group();
-        model.scale.setScalar(template.scale);
-        model.position.set(-template.center.x * template.scale, -template.center.y * template.scale, -template.center.z * template.scale);
-        model.traverse((n) => {
-          if (n.isMesh) {
-            n.castShadow = false;
-            n.receiveShadow = false;
-            n.frustumCulled = false;
-          }
-        });
+        model.position.set(-template.center.x, -template.center.y, -template.center.z);
         wrapper.add(model);
         modelState.scene.add(wrapper);
         modelState.itemObjById.set(it.id, wrapper);
@@ -4596,6 +4580,11 @@
         addLog(`GLB attached: item #${it.id} -> ${graphic}.glb`);
       }
       obj.position.set(it.x, it.y, it.z || 0);
+      const headingDeg = Number.isFinite(it.heading) ? it.heading : parseFloatSafe((it?.kv?.facing || "").split(/\s+/)[0]);
+      const pitchDeg = Number.isFinite(it.pitch) ? it.pitch : parseFloatSafe((it?.kv?.facing || "").split(/\s+/)[1]);
+      const yawRad = (Number.isFinite(headingDeg) ? headingDeg : 0) * Math.PI / 180;
+      const pitchRad = (Number.isFinite(pitchDeg) ? pitchDeg : 0) * Math.PI / 180;
+      obj.rotation.set(pitchRad, 0, yawRad, "ZYX");
       keep.add(it.id);
     }
 
