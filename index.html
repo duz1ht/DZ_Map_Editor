@@ -4401,7 +4401,68 @@
   function rebuildTerrain(){ if(!lastDepth||!lastImg||!sectors) return; const step=parseInt(document.getElementById('step')?.value||'8',10)||8, hmul=1.0; for(let s=1;s<=4;s++){ const m=new Mesh(); m.upload(buildMeshSingleSector(s,step,hmul)); meshSector[s]=m; } texColor=createTextureFromPixels(lastImg.w,lastImg.h,lastImg.pixels); texHeight=createHeightmapTextureFromSectors(); texDelta=createDeltaTextureFromSectors(); resetCamera(); }
 
   function mapSrcIdx(g,wrap){ if(wrap===1) return posMod(g,sectorCount); if(g<0) return 0; if(g>=sectorCount) return sectorCount-1; return g; }
-  function heightAtWorld(x,y,heightMul){ if(!lastDepth||!sectors) return -1e9; const spanX=terrainSpanX(), spanY=terrainSpanY(); let lxw=x-originWorldX(), lyw=y-originWorldY(); if(wrapX===1) lxw=posMod(lxw,spanX); if(wrapY===1) lyw=posMod(lyw,spanY); let sx=Math.floor(lxw/SECTOR_STRIDE), sy=Math.floor(lyw/SECTOR_STRIDE); if(sx<0||sy<0||sx>=sectorCount||sy>=sectorCount) return -1e9; const sectorIndex=sectors[sy*sectorCount+sx]|0; if(sectorIndex<=0) return -1e9; let lx=lxw-sx*SECTOR_STRIDE, ly=lyw-sy*SECTOR_STRIDE; let x0=Math.floor(lx), y0=Math.floor(ly); if(x0>0&&(x0%512)===0) x0--; if(y0>0&&(y0%512)===0) y0--; let x1=Math.min(SECTOR_SIZE-1,x0+1), y1=Math.min(SECTOR_SIZE-1,y0+1); const tx=lx-x0, ty=ly-y0; const h00=heightSample(sectorIndex,x0,y0), h10=heightSample(sectorIndex,x1,y0), h01=heightSample(sectorIndex,x0,y1), h11=heightSample(sectorIndex,x1,y1); const h0=h00*(1-tx)+h10*tx, h1=h01*(1-tx)+h11*tx; return (h0*(1-ty)+h1*ty)*heightMul; }
+  function heightAtWorld(x,y,heightMul){
+    if(!lastDepth || !sectors) return -1e9;
+
+    const spanX=terrainSpanX();
+    const spanY=terrainSpanY();
+
+    let lxw = x - originWorldX();
+    let lyw = y - originWorldY();
+
+    if(wrapX===1) lxw = posMod(lxw, spanX);
+    if(wrapY===1) lyw = posMod(lyw, spanY);
+
+    let sx = Math.floor(lxw / SECTOR_STRIDE);
+    let sy = Math.floor(lyw / SECTOR_STRIDE);
+    let lx = lxw - sx*SECTOR_STRIDE;
+    let ly = lyw - sy*SECTOR_STRIDE;
+
+    if(wrapX===0){
+      if(sx < 0){
+        sx = 0;
+        lx = posMod(lxw, SECTOR_STRIDE);
+      } else if(sx >= sectorCount){
+        sx = sectorCount - 1;
+        lx = posMod(lxw, SECTOR_STRIDE);
+      }
+    }
+    if(wrapY===0){
+      if(sy < 0){
+        sy = 0;
+        ly = posMod(lyw, SECTOR_STRIDE);
+      } else if(sy >= sectorCount){
+        sy = sectorCount - 1;
+        ly = posMod(lyw, SECTOR_STRIDE);
+      }
+    }
+
+    if(sx<0 || sy<0 || sx>=sectorCount || sy>=sectorCount) return -1e9;
+    const sectorIndex = sectors[sy*sectorCount + sx] | 0;
+    if(sectorIndex<=0) return -1e9;
+
+    let x0 = Math.floor(lx);
+    let y0 = Math.floor(ly);
+
+    if(x0>0 && (x0 % 512)===0) x0 = x0 - 1;
+    if(y0>0 && (y0 % 512)===0) y0 = y0 - 1;
+
+    let x1 = Math.min(SECTOR_SIZE-1, x0+1);
+    let y1 = Math.min(SECTOR_SIZE-1, y0+1);
+
+    const tx = lx - x0;
+    const ty = ly - y0;
+
+    const h00 = heightSample(sectorIndex, x0, y0);
+    const h10 = heightSample(sectorIndex, x1, y0);
+    const h01 = heightSample(sectorIndex, x0, y1);
+    const h11 = heightSample(sectorIndex, x1, y1);
+
+    const h0 = h00*(1-tx) + h10*tx;
+    const h1 = h01*(1-tx) + h11*tx;
+    return (h0*(1-ty) + h1*ty) * heightMul;
+  }
+
   function cameraBasis(){ const cy=Math.cos(cam.yaw), sy=Math.sin(cam.yaw), cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch); const forward=vec3(sy*cp, cy*cp, sp), forwardXY=vec3Norm(vec3(sy,cy,0)), right=vec3Norm(vec3Cross(forwardXY,vec3(0,0,1))); return {forward,forwardXY,right}; }
   function currentPV(){ const {forward,forwardXY}=cameraBasis(); const P=mat4Perspective(Math.PI/3, cv.width/cv.height, 1.0, 1000000.0); const V=mat4LookAt(cam.pos, vec3Add(cam.pos,forward), (Math.abs(forward.z)>0.999)?forwardXY:vec3(0,0,1)); return {P,V,PV:mat4Mul(P,V)}; }
   function worldToScreen(x,y,z=0){ const {PV}=currentPV(); const px=PV[0]*x+PV[4]*y+PV[8]*z+PV[12], py=PV[1]*x+PV[5]*y+PV[9]*z+PV[13], pw=PV[3]*x+PV[7]*y+PV[11]*z+PV[15]; if(pw<=0) return {sx:-999,sy:-999,visible:false}; const nx=px/pw, ny=py/pw, r=cv.getBoundingClientRect(); return {sx:(nx*0.5+0.5)*r.width, sy:(1-(ny*0.5+0.5))*r.height, visible:true}; }
@@ -4621,7 +4682,7 @@
   let lastT=performance.now();
   function draw(){
     const now=performance.now(), dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
-    const {forwardXY,right,forward}=cameraBasis(); let dir=vec3(0,0,0); if(move.w) dir=vec3Add(dir,forwardXY); if(move.s) dir=vec3Sub(dir,forwardXY); if(move.d) dir=vec3Add(dir,right); if(move.a) dir=vec3Sub(dir,right); if(move.e) dir=vec3Add(dir,vec3(0,0,1)); if(move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); if(dlen>0){ dir=vec3Scale(dir,1/dlen); const base=parseFloat(document.getElementById('speed')?.value||'300'); const spd=(base*10000)*(move.shift?3:1); state.camera.speed=spd; cam.pos=vec3Add(cam.pos,vec3Scale(dir,spd*dt)); }
+    const {forwardXY,right,forward}=cameraBasis(); let dir=vec3(0,0,0); if(move.w) dir=vec3Add(dir,forwardXY); if(move.s) dir=vec3Sub(dir,forwardXY); if(move.d) dir=vec3Add(dir,right); if(move.a) dir=vec3Sub(dir,right); if(move.e) dir=vec3Add(dir,vec3(0,0,1)); if(move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); if(dlen>0){ dir=vec3Scale(dir,1/dlen); const base=parseFloat(document.getElementById('speed')?.value||'300'); const spd=base*(move.shift?3:1); state.camera.speed=spd; cam.pos=vec3Add(cam.pos,vec3Scale(dir,spd*dt)); }
     if(document.getElementById('ground')?.checked && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=parseFloat(document.getElementById('clear')?.value||'40'); if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
     gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
     const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV);
@@ -4660,7 +4721,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'} Draw calls: ${drawCa
   cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.pastePlacementActive){ const z=state.selectedId?(getSelected()?.z||0):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=(active[0]?.z)||0; const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; it.x+=dx; it.y+=dy; it.kv.position=`${it.x} ${it.y} ${it.z}`; } state.dragAnchor=nowW; renderList(); refreshLiveMisWindow(); } state.lastMouse={sx,sy}; });
   function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; if(had){ const ids=[]; for(const it of getFilteredItems()){ const p=worldToScreen(it.x,it.y,it.z||0); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); } }
   cv.addEventListener('mouseup',stopDrag); cv.addEventListener('mouseleave',stopDrag);
-  cv.addEventListener('wheel',(e)=>{ e.preventDefault(); state.camera.speed*=Math.exp(-e.deltaY*0.001); state.camera.speed=Math.max(50000,Math.min(20000000,state.camera.speed)); },{passive:false});
+  cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const sp=document.getElementById('speed'); if(!sp) return; const cur=parseFloat(sp.value||'300'); const next=Math.max(parseFloat(sp.min||'20'), Math.min(parseFloat(sp.max||'1200'), cur*Math.exp(-e.deltaY*0.001))); sp.value=String(Math.round(next/10)*10); },{passive:false});
 
   const _origLoadMisFile = loadMisFile;
   loadMisFile = async function(file, fileHandle = null){
