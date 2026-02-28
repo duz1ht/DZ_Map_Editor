@@ -1262,6 +1262,7 @@
     isLocalRuntime: window.location.protocol === "file:",
     editorFolderHandle: null,
     currentMisFileHandle: null,
+    terrainProbeToken: 0,
   };
 
   // UI refs
@@ -1329,6 +1330,7 @@
   const giNvgAvailable = document.getElementById("giNvgAvailable");
   const giNvgStartOn = document.getElementById("giNvgStartOn");
   const giTerrainType = document.getElementById("giTerrainType");
+  const terrainDbgEl = document.getElementById("terrainDbg");
   const giRotate180 = document.getElementById("giRotate180");
 
   const modalOverlay = document.getElementById("modalOverlay");
@@ -1482,6 +1484,141 @@
     state.logs.unshift(`[${stamp}] ${msg}`);
     if (state.logs.length > 500) state.logs.length = 500;
     if (state.logsOpen) renderLogsWindow();
+  }
+
+  function setTerrainDbg(lines){
+    if (!terrainDbgEl) return;
+    terrainDbgEl.textContent = Array.isArray(lines) ? lines.join("\n") : String(lines || "");
+  }
+
+  function getTerrainFromMis(){
+    const sec = state.sectionBlocks.find(s => s.kind === "general_information");
+    if (!sec) return "";
+    return String(sec.kv?.terrain || "").trim();
+  }
+
+  function parseTrnReference(rawText, key){
+    const m = String(rawText || "").match(new RegExp(`^${key}\\s+\\"?([^\\s\\\"]+)`, "im"));
+    return m ? String(m[1] || "").trim() : "";
+  }
+
+  async function loadArrayBufferResource(path){
+    if (state.isLocalRuntime){
+      if (!state.editorFolderHandle) return null;
+      try{
+        const parts = String(path || "").split("/").filter(Boolean);
+        let dir = state.editorFolderHandle;
+        for (let i = 0; i < parts.length - 1; i++) dir = await dir.getDirectoryHandle(parts[i]);
+        const fileHandle = await dir.getFileHandle(parts[parts.length - 1]);
+        const file = await fileHandle.getFile();
+        return await file.arrayBuffer();
+      } catch (_err) {
+        return null;
+      }
+    }
+    try{
+      const res = await fetch(path);
+      if (!res.ok) return null;
+      return await res.arrayBuffer();
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  async function probeTerrainViewerAssets(reason = "unknown"){
+    const token = ++state.terrainProbeToken;
+    const terrainRaw = getTerrainFromMis();
+    const terrain = terrainRaw.trim();
+    const started = performance.now();
+
+    if (!terrain){
+      addLog(`[terrain] Probe skipped (${reason}): no 'terrain' found in .mis general_information.`);
+      setTerrainDbg([
+        "Loaded: no",
+        "No terrain set in .mis",
+      ]);
+      return;
+    }
+
+    addLog(`[terrain] Probe start (${reason}) terrain='${terrain}'.`);
+    setTerrainDbg([
+      `Loaded: probing (${terrain})`,
+      "Checking TRN/CPT/colormap files...",
+    ]);
+
+    const key = terrain.toLowerCase();
+    const folderUpper = key.toUpperCase();
+    const folderTitle = key.charAt(0).toUpperCase() + key.slice(1);
+    const trnCandidates = [
+      `resources/terrains/${key}/${key}.trn`,
+      `resources/terrains/${key}/${key}.TRN`,
+      `resources/terrains/${key}/${folderUpper}.TRN`,
+      `resources/terrains/${folderUpper}/${folderUpper}.TRN`,
+      `resources/terrains/${folderUpper}/${key}.trn`,
+      `resources/terrains/${folderTitle}/${folderTitle}.trn`,
+      `resources/terrains/${folderTitle}/${folderTitle}.TRN`,
+    ];
+
+    let trnPath = "";
+    let trnText = null;
+    for (const path of trnCandidates){
+      if (token !== state.terrainProbeToken) return;
+      const t0 = performance.now();
+      trnText = await loadTextResource(path);
+      const ms = Math.round(performance.now() - t0);
+      addLog(`[terrain] ${trnText ? "OK" : "MISS"} TRN candidate: ${path} (${ms}ms).`);
+      if (trnText){
+        trnPath = path;
+        break;
+      }
+    }
+
+    if (!trnText){
+      const total = Math.round(performance.now() - started);
+      addLog(`[terrain] Probe failed: TRN not found for terrain='${terrain}' (${total}ms).`);
+      setTerrainDbg([
+        `Loaded: no (${terrain})`,
+        "TRN not found",
+      ]);
+      return;
+    }
+
+    const trnFolder = trnPath.split("/").slice(0, -1).join("/");
+    const cptRef = parseTrnReference(trnText, "polytrn_polydata");
+    const colormapRef = parseTrnReference(trnText, "polytrn_colormap");
+    const detailRef = parseTrnReference(trnText, "polytrn_detailmap");
+    const waterHeight = parseTerrainWaterHeight(trnText);
+
+    async function probeBinary(label, relPath){
+      if (!relPath) {
+        addLog(`[terrain] ${label}: reference missing in TRN.`);
+        return false;
+      }
+      const normalized = relPath.replace(/\\\\/g, "/").replace(/^\.\//, "");
+      const fullPath = `${trnFolder}/${normalized}`;
+      const t0 = performance.now();
+      const buf = await loadArrayBufferResource(fullPath);
+      const ms = Math.round(performance.now() - t0);
+      addLog(`[terrain] ${buf ? "OK" : "MISS"} ${label}: ${fullPath} (${ms}ms).`);
+      return Boolean(buf);
+    }
+
+    const cptOk = await probeBinary("CPT", cptRef);
+    const colormapOk = await probeBinary("COLORMAP", colormapRef);
+    const detailOk = await probeBinary("DETAILMAP", detailRef);
+    if (token !== state.terrainProbeToken) return;
+
+    const total = Math.round(performance.now() - started);
+    const allOk = cptOk && colormapOk;
+
+    addLog(`[terrain] Probe finished terrain='${terrain}' ok=${allOk} total=${total}ms.`);
+    setTerrainDbg([
+      `Loaded terrain: ${terrain}`,
+      `TRN: ${trnPath.split('/').slice(-2).join('/')}`,
+      `CPT: ${cptOk ? "ok" : "missing"}  COL: ${colormapOk ? "ok" : "missing"}  DTL: ${detailOk ? "ok" : "missing"}`,
+      `water_height: ${waterHeight}`,
+      `Probe: ${total}ms (${reason})`,
+    ]);
   }
 
   function renderLogsWindow(){
@@ -3823,7 +3960,10 @@
   giEnvironment.addEventListener("change", applyEnvironmentFogToInputs);
   giFogDistEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   giFogColorEnabled.addEventListener("change", applyEnvironmentFogToInputs);
-  giTerrain.addEventListener("change", applyTerrainWaterToInput);
+  giTerrain.addEventListener("change", () => {
+    applyTerrainWaterToInput();
+    probeTerrainViewerAssets("general-info-terrain-change");
+  });
   giWaterEnabled.addEventListener("change", applyTerrainWaterToInput);
   wpSelectMarkersBtn.addEventListener("click", selectWaypointMarkers);
   wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
@@ -3926,6 +4066,7 @@
     state.itemClipboardItems = [];
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
+    setTerrainDbg(["Loaded: no", "No terrain set in .mis"]);
     exportBtn.disabled = true;
     fileMisEl.value = "";
     renderList();
@@ -4264,6 +4405,7 @@
     fitView();
     renderList();
     draw();
+    probeTerrainViewerAssets("mis-loaded");
     refreshLiveMisWindow(true);
   }
 
