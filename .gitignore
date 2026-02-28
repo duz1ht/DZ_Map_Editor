@@ -1,4 +1,4 @@
-resources/3d_items/
+resources/3d_items/**/*.glp
 resources/terrains/**/*.cpt
 resources/terrains/**/*.tga
 source_codes/
