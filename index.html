@@ -220,6 +220,24 @@
       position:relative;
       min-height: 0;
     }
+    #movementAxesHud{
+      position:absolute;
+      left:10px;
+      bottom:10px;
+      z-index:5;
+      min-width:170px;
+      padding:8px 10px;
+      border:1px solid var(--line);
+      border-radius:10px;
+      background:rgba(10, 14, 22, 0.78);
+      color:#dfe8ff;
+      font-size:12px;
+      line-height:1.3;
+      pointer-events:none;
+      box-shadow:0 4px 14px rgba(0,0,0,0.25);
+      backdrop-filter: blur(2px);
+    }
+    #movementAxesHud b{ color:#9ec1ff; }
     canvas{
       width:100%;
       height:100%;
@@ -806,6 +824,7 @@
 
     <div id="canvasWrap">
       <canvas id="cv"></canvas>
+      <div id="movementAxesHud">Eixos: parado</div>
 
       <div id="sectionOverlay" aria-hidden="true">
         <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
@@ -4264,6 +4283,7 @@
   // Canvas (WebGL)
   const cv = document.getElementById("cv");
   const camSpeedEl = document.getElementById("camSpeed");
+  const movementAxesHudEl = document.getElementById("movementAxesHud");
 
   function clamp(v, mn, mx){ return Math.max(mn, Math.min(mx, v)); }
   function normalize3(v){
@@ -4499,6 +4519,7 @@
       gl.clear(gl.COLOR_BUFFER_BIT);
 
       updateFlyCamera(dt);
+      updateMovementAxesHud();
 
       if (state.pastePlacementActive && state.camera.pointerLocked){
         const center = screenToWorld(width / 2, height / 2, 0, width, height);
@@ -4619,6 +4640,32 @@
     else if (key === "shift") keys.shift = down;
   }
 
+  function updateMovementAxesHud(){
+    if (!movementAxesHudEl) return;
+    const keys = state.camera.keys;
+    const cam = state.camera;
+    const yawForward = { x: Math.cos(cam.yaw), y: Math.sin(cam.yaw), z: 0 };
+    const yawRight = { x: -Math.sin(cam.yaw), y: Math.cos(cam.yaw), z: 0 };
+
+    let dir = { x: 0, y: 0, z: 0 };
+    if (keys.w) { dir.x += yawForward.x; dir.y += yawForward.y; }
+    if (keys.s) { dir.x -= yawForward.x; dir.y -= yawForward.y; }
+    if (keys.d) { dir.x += yawRight.x; dir.y += yawRight.y; }
+    if (keys.a) { dir.x -= yawRight.x; dir.y -= yawRight.y; }
+    if (keys.e) dir.z += 1;
+    if (keys.q) dir.z -= 1;
+
+    const moving = Math.hypot(dir.x, dir.y, dir.z) > 0.0001;
+    const speed = cam.speed * (keys.shift ? cam.sprintMult : 1);
+    if (!moving){
+      movementAxesHudEl.innerHTML = `<b>Eixos</b>: parado<br>X: 0 | Y: 0 | Z: 0<br>Velocidade: 0`;
+      return;
+    }
+    const n = normalize3(dir);
+    const axisLabel = (v, pos, neg) => v > 0.05 ? pos : (v < -0.05 ? neg : "0");
+    movementAxesHudEl.innerHTML = `<b>Eixos</b>: X ${axisLabel(n.x,'+','-')} | Y ${axisLabel(n.y,'+','-')} | Z ${axisLabel(n.z,'+','-')}<br>X: ${n.x.toFixed(2)} | Y: ${n.y.toFixed(2)} | Z: ${n.z.toFixed(2)}<br>Velocidade: ${Math.round(speed)}`;
+  }
+
   function isTypingTarget(target){
     if (!target) return false;
     const tag = (target.tagName || "").toLowerCase();
@@ -4638,6 +4685,8 @@
       statusEl.textContent = `Fly speed: ${Math.round(state.camera.speed)}`;
     });
   }
+
+  updateMovementAxesHud();
 
   function fitView(){
     const items = state.items;
