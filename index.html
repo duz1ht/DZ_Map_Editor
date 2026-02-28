@@ -1593,6 +1593,44 @@
     }
   }
 
+  async function readBinaryFromEditorFolder(path){
+    if (!state.editorFolderHandle) return null;
+    try{
+      const parts = String(path || "").split("/").filter(Boolean);
+      let dir = state.editorFolderHandle;
+      for (let i = 0; i < parts.length - 1; i++){
+        dir = await dir.getDirectoryHandle(parts[i]);
+      }
+      const fileHandle = await dir.getFileHandle(parts[parts.length - 1]);
+      const file = await fileHandle.getFile();
+      const buf = await file.arrayBuffer();
+      addLog(`Loaded binary resource via editor folder: ${path}`);
+      return buf;
+    } catch (err){
+      addLog(`ERROR loading binary resource via editor folder: ${path} (${err?.message || "read failed"})`);
+      return null;
+    }
+  }
+
+  async function loadBinaryResource(path){
+    if (state.isLocalRuntime){
+      return readBinaryFromEditorFolder(path);
+    }
+    try{
+      const res = await fetch(path);
+      if (!res.ok){
+        addLog(`ERROR loading binary resource via fetch: ${path} (HTTP ${res.status})`);
+        return null;
+      }
+      const buf = await res.arrayBuffer();
+      addLog(`Loaded binary resource via fetch: ${path}`);
+      return buf;
+    } catch (err){
+      addLog(`ERROR loading binary resource via fetch: ${path} (${err?.message || "fetch failed"})`);
+      return null;
+    }
+  }
+
   async function loadTextResource(path){
     if (state.isLocalRuntime){
       return readTextFromEditorFolder(path);
@@ -4447,13 +4485,42 @@
     if (!modelState.ready) return;
     if (modelState.templateByGraphic.has(graphic) || modelState.loadingGraphic.has(graphic)) return;
     modelState.loadingGraphic.add(graphic);
+
+    const candidates = [
+      `resources/3d_items/${graphic}.glb`,
+      `resources/3d items/${graphic}.glb`
+    ];
+
     try {
-      const url = `resources/3d_items/${graphic}.glb`;
-      const gltf = await modelState.loader.loadAsync(url);
-      const root = gltf.scene || gltf.scenes?.[0] || null;
-      if (!root) throw new Error("GLTF scene missing");
-      modelState.templateByGraphic.set(graphic, root);
-      addLog(`GLB loaded: ${graphic}.glb`);
+      let loadedRoot = null;
+      let loadedPath = "";
+
+      for (const path of candidates){
+        try {
+          if (state.isLocalRuntime){
+            const buf = await loadBinaryResource(path);
+            if (!buf) continue;
+            const gltf = await new Promise((resolve, reject) => {
+              modelState.loader.parse(buf, "", resolve, reject);
+            });
+            loadedRoot = gltf.scene || gltf.scenes?.[0] || null;
+          } else {
+            const gltf = await modelState.loader.loadAsync(path);
+            loadedRoot = gltf.scene || gltf.scenes?.[0] || null;
+          }
+          if (loadedRoot){
+            loadedPath = path;
+            break;
+          }
+        } catch (_err) {
+          // try next candidate
+        }
+      }
+
+      if (!loadedRoot) throw new Error(`no readable GLB for '${graphic}' in 3d_items or 3d items`);
+
+      modelState.templateByGraphic.set(graphic, loadedRoot);
+      addLog(`GLB loaded: ${graphic}.glb (${loadedPath})`);
     } catch (err){
       modelState.templateByGraphic.set(graphic, null);
       if (!modelState.missingGlbLogged.has(graphic)){
