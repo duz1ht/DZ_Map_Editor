@@ -769,8 +769,9 @@
     <input id="fileMis" type="file" accept=".mis,.txt" style="display:none;" />
 
     <div class="hint">
-      Controls: Zoom <span class="kbd">wheel</span> Pan <span class="kbd">drag</span> Select <span class="kbd">click</span> Move item <span class="kbd">Shift</span> + drag
-      <br>Double-click an item to open Item Attributes.
+      Controls: Click canvas (pointer lock), look with mouse, move with <span class="kbd">WASD</span>, <span class="kbd">Q/E</span> up/down, <span class="kbd">Shift</span> sprint.
+      <br>Select <span class="kbd">click</span>, Move item <span class="kbd">Shift</span> + drag, Double-click opens Item Attributes.
+      <br>Fly speed <input id="camSpeed" type="range" min="50000" max="1200000" step="10000" value="260000" style="width:180px; vertical-align:middle;" />
     </div>
 
 <div class="hint" id="defStatus" style="margin-top:6px;">Item catalog loaded (embedded ITEMS.DEF).</div>
@@ -1189,6 +1190,19 @@
     selectedId: null,
     multiSelectedIds: new Set(),
     view: { zoom: 0.00002, ox: 0, oy: 0 },
+    camera: {
+      x: 0,
+      y: 0,
+      z: 400000,
+      yaw: 0,
+      pitch: -0.7,
+      fovDeg: 60,
+      speed: 260000,
+      sprintMult: 3,
+      pitchLimit: 1.52,
+      pointerLocked: false,
+      keys: { w:false, a:false, s:false, d:false, q:false, e:false, shift:false }
+    },
     draggingPan: false,
     draggingItem: false,
     boxSelecting: false,
@@ -4249,6 +4263,88 @@
   });
   // Canvas (WebGL)
   const cv = document.getElementById("cv");
+  const camSpeedEl = document.getElementById("camSpeed");
+
+  function clamp(v, mn, mx){ return Math.max(mn, Math.min(mx, v)); }
+  function normalize3(v){
+    const len = Math.hypot(v.x, v.y, v.z) || 1;
+    return { x: v.x / len, y: v.y / len, z: v.z / len };
+  }
+
+  function getCameraBasis(){
+    const yaw = state.camera.yaw;
+    const pitch = state.camera.pitch;
+    const cp = Math.cos(pitch);
+    const sp = Math.sin(pitch);
+    const cy = Math.cos(yaw);
+    const sy = Math.sin(yaw);
+    const forward = { x: cp * cy, y: cp * sy, z: sp };
+    const right = { x: -sy, y: cy, z: 0 };
+    const up = {
+      x: right.y * forward.z - right.z * forward.y,
+      y: right.z * forward.x - right.x * forward.z,
+      z: right.x * forward.y - right.y * forward.x
+    };
+    return { forward: normalize3(forward), right: normalize3(right), up: normalize3(up) };
+  }
+
+  function projectWorldToScreen(x, y, z, width, height){
+    const cam = state.camera;
+    const basis = getCameraBasis();
+    const dx = x - cam.x;
+    const dy = y - cam.y;
+    const dz = z - cam.z;
+    const xCam = dx * basis.right.x + dy * basis.right.y + dz * basis.right.z;
+    const yCam = dx * basis.up.x + dy * basis.up.y + dz * basis.up.z;
+    const zCam = dx * basis.forward.x + dy * basis.forward.y + dz * basis.forward.z;
+    if (zCam <= 1) return null;
+    const tanHalf = Math.tan((cam.fovDeg * Math.PI / 180) * 0.5);
+    const aspect = width / Math.max(1, height);
+    const ndcX = xCam / (zCam * tanHalf * aspect);
+    const ndcY = yCam / (zCam * tanHalf);
+    if (Math.abs(ndcX) > 3 || Math.abs(ndcY) > 3) return null;
+    return {
+      sx: (ndcX * 0.5 + 0.5) * width,
+      sy: (1 - (ndcY * 0.5 + 0.5)) * height,
+      depth: zCam
+    };
+  }
+
+  function screenRay(sx, sy, width, height){
+    const cam = state.camera;
+    const basis = getCameraBasis();
+    const tanHalf = Math.tan((cam.fovDeg * Math.PI / 180) * 0.5);
+    const aspect = width / Math.max(1, height);
+    const ndcX = (sx / Math.max(1, width)) * 2 - 1;
+    const ndcY = 1 - (sy / Math.max(1, height)) * 2;
+    const dirCam = normalize3({
+      x: ndcX * tanHalf * aspect,
+      y: ndcY * tanHalf,
+      z: 1
+    });
+    return normalize3({
+      x: basis.right.x * dirCam.x + basis.up.x * dirCam.y + basis.forward.x * dirCam.z,
+      y: basis.right.y * dirCam.x + basis.up.y * dirCam.y + basis.forward.y * dirCam.z,
+      z: basis.right.z * dirCam.x + basis.up.z * dirCam.y + basis.forward.z * dirCam.z
+    });
+  }
+
+  function screenToWorld(sx, sy, planeZ = 0, width = null, height = null){
+    const w = width ?? cv.getBoundingClientRect().width;
+    const h = height ?? cv.getBoundingClientRect().height;
+    const cam = state.camera;
+    const dir = screenRay(sx, sy, w, h);
+    if (Math.abs(dir.z) < 1e-6) return null;
+    const t = (planeZ - cam.z) / dir.z;
+    if (t <= 0) return null;
+    return { x: cam.x + dir.x * t, y: cam.y + dir.y * t, z: planeZ };
+  }
+
+  function worldToScreen(x, y, z = 0){
+    const r = cv.getBoundingClientRect();
+    const p = projectWorldToScreen(x, y, z, r.width, r.height);
+    return p ? { sx: p.sx, sy: p.sy } : { sx: -1e9, sy: -1e9 };
+  }
 
   function createWebGLRenderer(canvas){
     const gl = canvas.getContext("webgl", { antialias: true, alpha: false });
@@ -4284,44 +4380,13 @@
     }
 
     const circleProgram = createProgram(
-      `attribute vec2 a_corner;
-       attribute vec2 a_center;
-       attribute float a_radius;
-       attribute vec4 a_color;
-       uniform vec2 u_resolution;
-       varying vec2 v_corner;
-       varying vec4 v_color;
-       void main(){
-         vec2 px = a_center + a_corner * a_radius;
-         vec2 clip = (px / u_resolution) * 2.0 - 1.0;
-         clip.y = -clip.y;
-         gl_Position = vec4(clip, 0.0, 1.0);
-         v_corner = a_corner;
-         v_color = a_color;
-       }`,
-      `precision mediump float;
-       varying vec2 v_corner;
-       varying vec4 v_color;
-       void main(){
-         if (dot(v_corner, v_corner) > 1.0) discard;
-         gl_FragColor = v_color;
-       }`
+      `attribute vec2 a_corner;attribute vec2 a_center;attribute float a_radius;attribute vec4 a_color;uniform vec2 u_resolution;varying vec2 v_corner;varying vec4 v_color;void main(){vec2 px=a_center+a_corner*a_radius;vec2 clip=(px/u_resolution)*2.0-1.0;clip.y=-clip.y;gl_Position=vec4(clip,0.0,1.0);v_corner=a_corner;v_color=a_color;}`,
+      `precision mediump float;varying vec2 v_corner;varying vec4 v_color;void main(){if(dot(v_corner,v_corner)>1.0) discard;gl_FragColor=v_color;}`
     );
 
     const rectProgram = createProgram(
-      `attribute vec2 a_pos;
-       attribute vec4 a_color;
-       uniform vec2 u_resolution;
-       varying vec4 v_color;
-       void main(){
-         vec2 clip = (a_pos / u_resolution) * 2.0 - 1.0;
-         clip.y = -clip.y;
-         gl_Position = vec4(clip, 0.0, 1.0);
-         v_color = a_color;
-       }`,
-      `precision mediump float;
-       varying vec4 v_color;
-       void main(){ gl_FragColor = v_color; }`
+      `attribute vec2 a_pos;attribute vec4 a_color;uniform vec2 u_resolution;varying vec4 v_color;void main(){vec2 clip=(a_pos/u_resolution)*2.0-1.0;clip.y=-clip.y;gl_Position=vec4(clip,0.0,1.0);v_color=a_color;}`,
+      `precision mediump float;varying vec4 v_color;void main(){gl_FragColor=v_color;}`
     );
 
     const circleBuffer = gl.createBuffer();
@@ -4336,7 +4401,6 @@
       color: gl.getAttribLocation(circleProgram, "a_color"),
       resolution: gl.getUniformLocation(circleProgram, "u_resolution")
     };
-
     const rectLoc = {
       pos: gl.getAttribLocation(rectProgram, "a_pos"),
       color: gl.getAttribLocation(rectProgram, "a_color"),
@@ -4344,8 +4408,7 @@
     };
 
     function hexToColor(hex, alpha = 1){
-      const h = hex.replace("#", "");
-      const n = parseInt(h, 16);
+      const n = parseInt(hex.replace("#", ""), 16);
       return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, alpha];
     }
 
@@ -4359,56 +4422,40 @@
 
     function renderCircles(circles, width, height){
       if (!circles.length) return;
-      const maxBatch = 12000;
       gl.useProgram(circleProgram);
       gl.uniform2f(circleLoc.resolution, width, height);
       gl.bindBuffer(gl.ARRAY_BUFFER, circleBuffer);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, circleIndexBuffer);
-
-      for (let off = 0; off < circles.length; off += maxBatch){
-        const batch = circles.slice(off, off + maxBatch);
-        const verts = new Float32Array(batch.length * 4 * 9);
-        const inds = new Uint16Array(batch.length * 6);
-        let v = 0;
-        let ii = 0;
-        for (let i = 0; i < batch.length; i++){
-          const c = batch[i];
-          const corners = [[-1,-1],[1,-1],[1,1],[-1,1]];
-          for (let k = 0; k < 4; k++){
-            const [cx, cy] = corners[k];
-            verts[v++] = cx;
-            verts[v++] = cy;
-            verts[v++] = c.sx;
-            verts[v++] = c.sy;
-            verts[v++] = c.r;
-            verts[v++] = c.color[0];
-            verts[v++] = c.color[1];
-            verts[v++] = c.color[2];
-            verts[v++] = c.color[3];
-          }
-          const b = i * 4;
-          inds[ii++] = b;
-          inds[ii++] = b + 1;
-          inds[ii++] = b + 2;
-          inds[ii++] = b;
-          inds[ii++] = b + 2;
-          inds[ii++] = b + 3;
+      const verts = new Float32Array(circles.length * 4 * 9);
+      const inds = new Uint16Array(circles.length * 6);
+      let v = 0, ii = 0;
+      for (let i = 0; i < circles.length; i++){
+        const c = circles[i];
+        const corners = [[-1,-1],[1,-1],[1,1],[-1,1]];
+        for (let k = 0; k < 4; k++){
+          const corner = corners[k];
+          const cx = corner[0];
+          const cy = corner[1];
+          verts[v++] = cx; verts[v++] = cy;
+          verts[v++] = c.sx; verts[v++] = c.sy;
+          verts[v++] = c.r;
+          verts[v++] = c.color[0]; verts[v++] = c.color[1]; verts[v++] = c.color[2]; verts[v++] = c.color[3];
         }
-
-        gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, inds, gl.DYNAMIC_DRAW);
-        const stride = 9 * 4;
-        gl.enableVertexAttribArray(circleLoc.corner);
-        gl.vertexAttribPointer(circleLoc.corner, 2, gl.FLOAT, false, stride, 0);
-        gl.enableVertexAttribArray(circleLoc.center);
-        gl.vertexAttribPointer(circleLoc.center, 2, gl.FLOAT, false, stride, 2 * 4);
-        gl.enableVertexAttribArray(circleLoc.radius);
-        gl.vertexAttribPointer(circleLoc.radius, 1, gl.FLOAT, false, stride, 4 * 4);
-        gl.enableVertexAttribArray(circleLoc.color);
-        gl.vertexAttribPointer(circleLoc.color, 4, gl.FLOAT, false, stride, 5 * 4);
-
-        gl.drawElements(gl.TRIANGLES, inds.length, gl.UNSIGNED_SHORT, 0);
+        const b = i * 4;
+        inds[ii++] = b; inds[ii++] = b + 1; inds[ii++] = b + 2; inds[ii++] = b; inds[ii++] = b + 2; inds[ii++] = b + 3;
       }
+      gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, inds, gl.DYNAMIC_DRAW);
+      const stride = 9 * 4;
+      gl.enableVertexAttribArray(circleLoc.corner);
+      gl.vertexAttribPointer(circleLoc.corner, 2, gl.FLOAT, false, stride, 0);
+      gl.enableVertexAttribArray(circleLoc.center);
+      gl.vertexAttribPointer(circleLoc.center, 2, gl.FLOAT, false, stride, 2 * 4);
+      gl.enableVertexAttribArray(circleLoc.radius);
+      gl.vertexAttribPointer(circleLoc.radius, 1, gl.FLOAT, false, stride, 4 * 4);
+      gl.enableVertexAttribArray(circleLoc.color);
+      gl.vertexAttribPointer(circleLoc.color, 4, gl.FLOAT, false, stride, 5 * 4);
+      gl.drawElements(gl.TRIANGLES, inds.length, gl.UNSIGNED_SHORT, 0);
     }
 
     function renderRects(rects, width, height){
@@ -4417,33 +4464,19 @@
       gl.uniform2f(rectLoc.resolution, width, height);
       const verts = new Float32Array(rects.length * 4 * 6);
       const inds = new Uint16Array(rects.length * 6);
-      let v = 0;
-      let ii = 0;
+      let v = 0, ii = 0;
       for (let i = 0; i < rects.length; i++){
         const r = rects[i];
-        const pts = [
-          [r.x, r.y],
-          [r.x + r.w, r.y],
-          [r.x + r.w, r.y + r.h],
-          [r.x, r.y + r.h]
-        ];
-        for (const [px, py] of pts){
-          verts[v++] = px;
-          verts[v++] = py;
-          verts[v++] = r.color[0];
-          verts[v++] = r.color[1];
-          verts[v++] = r.color[2];
-          verts[v++] = r.color[3];
+        const pts = [[r.x, r.y],[r.x + r.w, r.y],[r.x + r.w, r.y + r.h],[r.x, r.y + r.h]];
+        for (const pt of pts){
+          const px = pt[0];
+          const py = pt[1];
+          verts[v++] = px; verts[v++] = py;
+          verts[v++] = r.color[0]; verts[v++] = r.color[1]; verts[v++] = r.color[2]; verts[v++] = r.color[3];
         }
         const b = i * 4;
-        inds[ii++] = b;
-        inds[ii++] = b + 1;
-        inds[ii++] = b + 2;
-        inds[ii++] = b;
-        inds[ii++] = b + 2;
-        inds[ii++] = b + 3;
+        inds[ii++] = b; inds[ii++] = b + 1; inds[ii++] = b + 2; inds[ii++] = b; inds[ii++] = b + 2; inds[ii++] = b + 3;
       }
-
       gl.bindBuffer(gl.ARRAY_BUFFER, rectBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, rectIndexBuffer);
@@ -4456,7 +4489,7 @@
       gl.drawElements(gl.TRIANGLES, inds.length, gl.UNSIGNED_SHORT, 0);
     }
 
-    function renderFrame(){
+    function renderFrame(dt){
       const width = canvas.getBoundingClientRect().width;
       const height = canvas.getBoundingClientRect().height;
       gl.disable(gl.DEPTH_TEST);
@@ -4465,39 +4498,52 @@
       gl.clearColor(0.043, 0.059, 0.09, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
 
+      updateFlyCamera(dt);
+
+      if (state.pastePlacementActive && state.camera.pointerLocked){
+        const center = screenToWorld(width / 2, height / 2, 0, width, height);
+        if (center) state.pastePreviewWorld = center;
+      }
+
       const rects = [];
       const circles = [];
 
-      const stepWorld = 200000;
-      const step = stepWorld * state.view.zoom;
-      if (step > 25){
-        const gridColor = hexToColor("#2a2f3d", 0.25);
-        const startX = ((0 - state.view.ox) % step + step) % step;
-        const startY = ((0 - state.view.oy) % step + step) % step;
-        for (let x = startX; x < width; x += step) rects.push({ x, y: 0, w: 1, h: height, color: gridColor });
-        for (let y = startY; y < height; y += step) rects.push({ x: 0, y, w: width, h: 1, color: gridColor });
+      const gridColor = hexToColor("#2a2f3d", 0.2);
+      const gridStep = 200000;
+      const half = 20;
+      for (let i = -half; i <= half; i++){
+        const a = projectWorldToScreen(i * gridStep, -half * gridStep, 0, width, height);
+        const b = projectWorldToScreen(i * gridStep, half * gridStep, 0, width, height);
+        const c = projectWorldToScreen(-half * gridStep, i * gridStep, 0, width, height);
+        const d = projectWorldToScreen(half * gridStep, i * gridStep, 0, width, height);
+        if (a && b){
+          const dx = b.sx - a.sx, dy = b.sy - a.sy, len = Math.hypot(dx, dy) || 1;
+          rects.push({ x: a.sx, y: a.sy, w: len, h: 1, color: gridColor, rot: Math.atan2(dy, dx) });
+        }
+        if (c && d){
+          const dx = d.sx - c.sx, dy = d.sy - c.sy, len = Math.hypot(dx, dy) || 1;
+          rects.push({ x: c.sx, y: c.sy, w: len, h: 1, color: gridColor, rot: Math.atan2(dy, dx) });
+        }
       }
 
       const items = getFilteredItems();
       for (const it of items){
-        const p = worldToScreen(it.x, it.y);
+        const p = projectWorldToScreen(it.x, it.y, it.z, width, height);
+        if (!p) continue;
+        const scale = clamp(380000 / p.depth, 0.7, 2.2);
         const isSel = it.id === state.selectedId || state.multiSelectedIds.has(it.id);
         const isWpMarked = state.selectedWaypointMarkerIds.has(it.id);
-        circles.push({
-          sx: p.sx,
-          sy: p.sy,
-          r: isSel ? 5 : (isWpMarked ? 4 : 3),
-          color: isSel ? hexToColor("#5865f2") : (isWpMarked ? hexToColor("#ffcc33") : hexToColor("#e0e3ff"))
-        });
+        circles.push({ sx: p.sx, sy: p.sy, r: (isSel ? 5 : (isWpMarked ? 4 : 3)) * scale, color: isSel ? hexToColor("#5865f2") : (isWpMarked ? hexToColor("#ffcc33") : hexToColor("#e0e3ff")) });
         if (isWpMarked && !isSel){
-          circles.push({ sx: p.sx, sy: p.sy, r: 5.5, color: hexToColor("#ff8a00") });
-          circles.push({ sx: p.sx, sy: p.sy, r: 4.5, color: hexToColor("#ffcc33") });
+          circles.push({ sx: p.sx, sy: p.sy, r: 5.5 * scale, color: hexToColor("#ff8a00") });
+          circles.push({ sx: p.sx, sy: p.sy, r: 4.5 * scale, color: hexToColor("#ffcc33") });
         }
       }
 
       if (state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length){
         for (const entry of state.itemClipboardItems){
-          const p = worldToScreen(state.pastePreviewWorld.x + entry.dx, state.pastePreviewWorld.y + entry.dy);
+          const p = projectWorldToScreen(state.pastePreviewWorld.x + entry.dx, state.pastePreviewWorld.y + entry.dy, state.pastePreviewWorld.z || 0, width, height);
+          if (!p) continue;
           circles.push({ sx: p.sx, sy: p.sy, r: 10, color: hexToColor("#9bf0bf", 0.75) });
           circles.push({ sx: p.sx, sy: p.sy, r: 8.5, color: hexToColor("#0b0f17", 0.0) });
           circles.push({ sx: p.sx, sy: p.sy, r: 6, color: hexToColor("#57d38c", 0.75) });
@@ -4510,88 +4556,157 @@
         const w = Math.abs(state.boxCurrent.sx - state.boxStart.sx);
         const h = Math.abs(state.boxCurrent.sy - state.boxStart.sy);
         rects.push({ x, y, w, h, color: [88/255,101/255,242/255,0.18] });
-        const border = [88/255,101/255,242/255,1];
-        rects.push({ x, y, w, h: 1.5, color: border });
-        rects.push({ x, y: y + h - 1.5, w, h: 1.5, color: border });
-        rects.push({ x, y, w: 1.5, h, color: border });
-        rects.push({ x: x + w - 1.5, y, w: 1.5, h, color: border });
       }
 
-      renderRects(rects, width, height);
+      const plainRects = [];
+      for (const r of rects){
+        if (!r.rot){ plainRects.push(r); continue; }
+        const cos = Math.cos(r.rot), sin = Math.sin(r.rot), t = r.h * 0.5;
+        const nx = -sin * t, ny = cos * t;
+        const x1 = r.x + nx, y1 = r.y + ny;
+        const x2 = r.x - nx, y2 = r.y - ny;
+        const x3 = r.x + cos * r.w - nx, y3 = r.y + sin * r.w - ny;
+        const x4 = r.x + cos * r.w + nx, y4 = r.y + sin * r.w + ny;
+        plainRects.push({ x: Math.min(x1,x2,x3,x4), y: Math.min(y1,y2,y3,y4), w: Math.max(1, Math.max(x1,x2,x3,x4)-Math.min(x1,x2,x3,x4)), h: Math.max(1, Math.max(y1,y2,y3,y4)-Math.min(y1,y2,y3,y4)), color: r.color });
+      }
+
+      renderRects(plainRects, width, height);
       renderCircles(circles, width, height);
     }
 
-    function frame(){
-      renderFrame();
+    let prev = performance.now();
+    function frame(now){
+      const dt = clamp((now - prev) / 1000, 0, 0.05);
+      prev = now;
+      renderFrame(dt);
       requestAnimationFrame(frame);
     }
 
     resize();
     requestAnimationFrame(frame);
+    return { resize, renderNow: () => renderFrame(0) };
+  }
 
-    return { resize, renderNow: renderFrame };
+  function updateFlyCamera(dt){
+    const cam = state.camera;
+    const keys = cam.keys;
+    const speed = cam.speed * (keys.shift ? cam.sprintMult : 1);
+    const yawForward = { x: Math.cos(cam.yaw), y: Math.sin(cam.yaw), z: 0 };
+    const yawRight = { x: -Math.sin(cam.yaw), y: Math.cos(cam.yaw), z: 0 };
+    let dir = { x: 0, y: 0, z: 0 };
+    if (keys.w) { dir.x += yawForward.x; dir.y += yawForward.y; }
+    if (keys.s) { dir.x -= yawForward.x; dir.y -= yawForward.y; }
+    if (keys.d) { dir.x += yawRight.x; dir.y += yawRight.y; }
+    if (keys.a) { dir.x -= yawRight.x; dir.y -= yawRight.y; }
+    if (keys.e) dir.z += 1;
+    if (keys.q) dir.z -= 1;
+    const n = normalize3(dir);
+    if (Math.hypot(dir.x, dir.y, dir.z) > 0){
+      cam.x += n.x * speed * dt;
+      cam.y += n.y * speed * dt;
+      cam.z += n.z * speed * dt;
+    }
+  }
+
+  function setMovementKey(key, down){
+    const keys = state.camera.keys;
+    if (key === "w") keys.w = down;
+    else if (key === "a") keys.a = down;
+    else if (key === "s") keys.s = down;
+    else if (key === "d") keys.d = down;
+    else if (key === "q") keys.q = down;
+    else if (key === "e") keys.e = down;
+    else if (key === "shift") keys.shift = down;
+  }
+
+  function isTypingTarget(target){
+    if (!target) return false;
+    const tag = (target.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
   }
 
   const renderer = createWebGLRenderer(cv);
 
-  function resizeCanvas(){
-    renderer.resize();
-  }
+  function resizeCanvas(){ renderer.resize(); }
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
+
+  if (camSpeedEl){
+    state.camera.speed = Number(camSpeedEl.value || 260000);
+    camSpeedEl.addEventListener("input", () => {
+      state.camera.speed = Number(camSpeedEl.value || 260000);
+      statusEl.textContent = `Fly speed: ${Math.round(state.camera.speed)}`;
+    });
+  }
 
   function fitView(){
     const items = state.items;
     if (!items.length) return;
-    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,maxZ=-Infinity;
     for (const it of items){
-      minX = Math.min(minX, it.x);
-      maxX = Math.max(maxX, it.x);
-      minY = Math.min(minY, it.y);
-      maxY = Math.max(maxY, it.y);
+      minX = Math.min(minX, it.x); maxX = Math.max(maxX, it.x);
+      minY = Math.min(minY, it.y); maxY = Math.max(maxY, it.y);
+      maxZ = Math.max(maxZ, it.z || 0);
     }
-    const w = cv.getBoundingClientRect().width;
-    const h = cv.getBoundingClientRect().height;
-    const spanX = Math.max(1, maxX - minX);
-    const spanY = Math.max(1, maxY - minY);
-    const zoomX = (w * 0.85) / spanX;
-    const zoomY = (h * 0.85) / spanY;
-    state.view.zoom = Math.min(zoomX, zoomY);
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    state.view.ox = w / 2 - cx * state.view.zoom;
-    state.view.oy = h / 2 - cy * state.view.zoom;
+    const span = Math.max(maxX-minX, maxY-minY, 1);
+    state.camera.x = (minX + maxX) / 2;
+    state.camera.y = (minY + maxY) / 2 - span * 1.1;
+    state.camera.z = maxZ + span * 0.9 + 200000;
+    state.camera.yaw = Math.PI / 2;
+    state.camera.pitch = -0.58;
   }
 
-  function worldToScreen(x,y){
-    const { zoom, ox, oy } = state.view;
-    return { sx: x*zoom + ox, sy: y*zoom + oy };
-  }
-  function screenToWorld(sx,sy){
-    const { zoom, ox, oy } = state.view;
-    return { x: (sx-ox)/zoom, y: (sy-oy)/zoom };
-  }
-
-  function draw(){
-    renderer.renderNow();
-  }
+  function draw(){ renderer.renderNow(); }
 
   function pickItemAt(sx,sy){
+    const r = cv.getBoundingClientRect();
     const items = getFilteredItems();
     let best=null, bestD2=Infinity;
     for (const it of items){
-      const p = worldToScreen(it.x,it.y);
+      const p = projectWorldToScreen(it.x, it.y, it.z, r.width, r.height);
+      if (!p) continue;
       const dx = p.sx - sx;
       const dy = p.sy - sy;
       const d2 = dx*dx + dy*dy;
       if (d2 < bestD2){ bestD2=d2; best=it; }
     }
-    if (best && bestD2 < 12*12) return best;
+    if (best && bestD2 < 14*14) return best;
     return null;
   }
 
+  document.addEventListener("pointerlockchange", () => {
+    state.camera.pointerLocked = document.pointerLockElement === cv;
+    if (!state.camera.pointerLocked){
+      setMovementKey("w", false); setMovementKey("a", false); setMovementKey("s", false); setMovementKey("d", false);
+      setMovementKey("q", false); setMovementKey("e", false); setMovementKey("shift", false);
+    }
+  });
+
+  cv.addEventListener("click", () => {
+    if (!state.modalOpen && document.pointerLockElement !== cv){
+      cv.requestPointerLock();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (isTypingTarget(e.target)) return;
+    const key = e.key.toLowerCase();
+    if (["w","a","s","d","q","e","shift"].includes(key)){
+      setMovementKey(key, true);
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener("keyup", (e) => {
+    const key = e.key.toLowerCase();
+    if (["w","a","s","d","q","e","shift"].includes(key)){
+      setMovementKey(key, false);
+      e.preventDefault();
+    }
+  });
+
   cv.addEventListener("mousedown", (e) => {
-    if (state.modalOpen) return;
+    if (state.modalOpen || state.camera.pointerLocked) return;
     closeItemContextMenu();
 
     const rect = cv.getBoundingClientRect();
@@ -4612,7 +4727,8 @@
     if (e.button !== 0) return;
 
     if (state.pastePlacementActive){
-      applyPasteAtWorld(screenToWorld(sx, sy));
+      const pastePoint = screenToWorld(sx, sy, 0);
+      if (pastePoint) applyPasteAtWorld(pastePoint);
       state.draggingItem = false;
       state.draggingPan = false;
       state.lastMouse = { sx, sy };
@@ -4662,6 +4778,7 @@
   });
 
   cv.addEventListener("contextmenu", (e) => {
+    if (state.camera.pointerLocked) return;
     e.preventDefault();
     if (state.modalOpen) return;
     if (state.suppressContextMenu){
@@ -4698,7 +4815,7 @@
   });
 
   cv.addEventListener("dblclick", (e) => {
-    if (state.modalOpen) return;
+    if (state.modalOpen || state.camera.pointerLocked) return;
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
@@ -4712,12 +4829,19 @@
   cv.addEventListener("mousemove", (e) => {
     if (state.modalOpen) return;
 
+    if (state.camera.pointerLocked){
+      state.camera.yaw += e.movementX * 0.0023;
+      state.camera.pitch = clamp(state.camera.pitch - e.movementY * 0.0023, -state.camera.pitchLimit, state.camera.pitchLimit);
+      return;
+    }
+
     const rect = cv.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
 
     if (state.pastePlacementActive){
-      state.pastePreviewWorld = screenToWorld(sx, sy);
+      const p = screenToWorld(sx, sy, 0);
+      if (p) state.pastePreviewWorld = p;
       draw();
     }
 
@@ -4741,16 +4865,20 @@
     } else if (state.draggingItem && state.selectedId){
       const it = getSelected();
       if (it && kvHas(it, "position")){
-        it.x += dx / state.view.zoom;
-        it.y += dy / state.view.zoom;
-        it.kv.position = `${it.x} ${it.y} ${it.z}`;
-        renderList();
-        draw();
-        refreshLiveMisWindow();
+        const prevW = screenToWorld(state.lastMouse.sx, state.lastMouse.sy, it.z || 0);
+        const nextW = screenToWorld(sx, sy, it.z || 0);
+        if (prevW && nextW){
+          it.x += nextW.x - prevW.x;
+          it.y += nextW.y - prevW.y;
+          it.kv.position = `${it.x} ${it.y} ${it.z}`;
+          renderList();
+          draw();
+          refreshLiveMisWindow();
+        }
       }
     } else if (state.draggingPan){
-      state.view.ox += dx;
-      state.view.oy += dy;
+      state.camera.yaw += dx * 0.002;
+      state.camera.pitch = clamp(state.camera.pitch - dy * 0.002, -state.camera.pitchLimit, state.camera.pitchLimit);
       draw();
     }
     state.lastMouse = { sx, sy };
@@ -4778,15 +4906,15 @@
       const minSize = 3;
       if ((x1 - x0) >= minSize || (y1 - y0) >= minSize){
         const boxIds = [];
+        const r = cv.getBoundingClientRect();
         for (const it of getFilteredItems()){
-          const p = worldToScreen(it.x, it.y);
+          const p = projectWorldToScreen(it.x, it.y, it.z, r.width, r.height);
+          if (!p) continue;
           if (p.sx >= x0 && p.sx <= x1 && p.sy >= y0 && p.sy <= y1){
             boxIds.push(it.id);
           }
         }
-        if (!additiveSelection){
-          state.multiSelectedIds.clear();
-        }
+        if (!additiveSelection) state.multiSelectedIds.clear();
         for (const id of boxIds) state.multiSelectedIds.add(id);
         state.selectedId = state.multiSelectedIds.size ? Array.from(state.multiSelectedIds).at(-1) : null;
         state.selectedWaypointMarkerIds.clear();
@@ -4800,22 +4928,14 @@
   cv.addEventListener("mouseleave", stopDrag);
 
   cv.addEventListener("wheel", (e) => {
-    if (state.modalOpen) return;
     e.preventDefault();
-    const rect = cv.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-
-    const before = screenToWorld(sx,sy);
-    const factor = Math.exp(-e.deltaY * 0.001);
-    state.view.zoom *= factor;
-    state.view.zoom = Math.max(1e-12, Math.min(10, state.view.zoom));
-    const after = screenToWorld(sx,sy);
-
-    state.view.ox += (after.x - before.x) * state.view.zoom;
-    state.view.oy += (after.y - before.y) * state.view.zoom;
-
-    draw();
+    if (camSpeedEl){
+      const delta = e.deltaY > 0 ? -20000 : 20000;
+      const next = clamp(Number(camSpeedEl.value || 260000) + delta, Number(camSpeedEl.min), Number(camSpeedEl.max));
+      camSpeedEl.value = String(next);
+      state.camera.speed = next;
+      statusEl.textContent = `Fly speed: ${Math.round(next)}`;
+    }
   }, { passive:false });
 
   function applyTheme(theme){
