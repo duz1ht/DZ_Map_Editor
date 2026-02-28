@@ -3975,7 +3975,16 @@
   giEnvironment.addEventListener("change", applyEnvironmentFogToInputs);
   giFogDistEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   giFogColorEnabled.addEventListener("change", applyEnvironmentFogToInputs);
-  giTerrain.addEventListener("change", applyTerrainWaterToInput);
+  giTerrain.addEventListener("change", async () => {
+    await applyTerrainWaterToInput();
+    if (!hasMisLoaded()) return;
+    try{
+      await loadTerrainFromMis(giTerrain.value);
+    } catch (err){
+      addLog(`[terrain] load error after Mission Terrain change: ${err?.message || err}`);
+      camDebugEl.textContent = `Falha ao carregar terreno: ${err.message||err}`;
+    }
+  });
   giWaterEnabled.addEventListener("change", applyTerrainWaterToInput);
   wpSelectMarkersBtn.addEventListener("click", selectWaypointMarkers);
   wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
@@ -4520,6 +4529,16 @@
   function createHeightmapTextureFromSectors(){ const px=new Uint8Array(DEPTH_W*DEPTH_H*4); for(let s=1;s<=4;s++){ const off=getSectorOffset(s); for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){ const g=Math.max(0,Math.min(255,Math.round(heightSample(s,x,y)*2.0))); const dst=((off.y+y)*DEPTH_W+(off.x+x))*4; px[dst]=g;px[dst+1]=g;px[dst+2]=g;px[dst+3]=255; } } return createTextureFromPixels(DEPTH_W,DEPTH_H,px); }
   function createDeltaTextureFromSectors(){ const px=new Uint8Array(DEPTH_W*DEPTH_H*4); for(let s=1;s<=4;s++){ const off=getSectorOffset(s); for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){ const c=heightSample(s,x,y), xm=Math.max(0,x-1),xp=Math.min(SECTOR_SIZE-1,x+1), ym=Math.max(0,y-1),yp=Math.min(SECTOR_SIZE-1,y+1); const has=(Math.abs(heightSample(s,xm,y)-c)>1e-9)||(Math.abs(heightSample(s,xp,y)-c)>1e-9)||(Math.abs(heightSample(s,x,ym)-c)>1e-9)||(Math.abs(heightSample(s,x,yp)-c)>1e-9); const v=has?128:0,dst=((off.y+y)*DEPTH_W+(off.x+x))*4; px[dst]=v;px[dst+1]=v;px[dst+2]=v;px[dst+3]=255; } } return createTextureFromPixels(DEPTH_W,DEPTH_H,px,{nearest:true}); }
   function activeTerrainTexture(){ if(renderMode==='H') return texHeight||texColor||texDelta; if(renderMode==='D') return texDelta||texColor||texHeight; return texColor||texHeight||texDelta; }
+  function clearTerrainRenderState(){
+    loadedTrnName=null;
+    sectors=null;
+    lastDepth=null;
+    lastImg=null;
+    texColor=null;
+    texHeight=null;
+    texDelta=null;
+    meshSector=[null,null,null,null,null];
+  }
   function Mesh(){ this.vb=null; this.ib=null; this.indexCount=0; this.indexType=gl.UNSIGNED_INT; }
   Mesh.prototype.upload=function(mesh){ this.vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.vb); gl.bufferData(gl.ARRAY_BUFFER,mesh.verts,gl.STATIC_DRAW); this.ib=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,mesh.idx,gl.STATIC_DRAW); this.indexCount=mesh.idx.length; this.indexType=(mesh.idx instanceof Uint32Array)?gl.UNSIGNED_INT:gl.UNSIGNED_SHORT; if(this.indexType===gl.UNSIGNED_INT&&!extUInt) throw new Error('OES_element_index_uint not supported'); };
   function rebuildTerrain(){ if(!lastDepth||!lastImg||!sectors) return; const step=parseInt(document.getElementById('step')?.value||'8',10)||8, hmul=1.0; for(let s=1;s<=4;s++){ const m=new Mesh(); m.upload(buildMeshSingleSector(s,step,hmul)); meshSector[s]=m; } texColor=createTextureFromPixels(lastImg.w,lastImg.h,lastImg.pixels); texHeight=createHeightmapTextureFromSectors(); texDelta=createDeltaTextureFromSectors(); resetCamera(); }
@@ -4704,8 +4723,10 @@
   }
 
   const TERRAIN_FILE_INDEX={"CINE": ["CINE.TRN"], "DVD1": ["DVD1.TRN"], "dvd2": ["dvd2.trn"], "dvd3": ["dvd3.trn"], "DVD4": ["DVD4.TRN"], "dvd5": ["dvd5.trn"], "dvdg1": ["dvdg1.trn"], "DVDG2": ["DVDG2.TRN"], "dvg1": ["dvg1.trn"], "dvt1": ["dvt1.trn"], "Flat": ["Flat.TRN"], "MIS1": ["MIS1.TRN"], "mis10": ["mis10.trn"], "MIS11": ["MIS11.TRN"], "MIS13": ["MIS13.TRN"], "Mis14": ["Mis14.trn"], "MIS15": ["MIS15.TRN"], "MIS16": ["MIS16.TRN"], "MIS17": ["MIS17.TRN"], "MIS18": ["MIS18.TRN"], "MIS19B": ["MIS19B.TRN"], "MIS2": ["MIS2.TRN"], "MIS3": ["MIS3.TRN"], "MIS4": ["MIS4.TRN"], "MIS5": ["MIS5.TRN"], "MIS6": ["MIS6.TRN"], "MIS7": ["MIS7.TRN"], "MIS8": ["MIS8.TRN"], "MIS9": ["MIS9.TRN"], "MIST1": ["MIST1.TRN"], "MIST2": ["MIST2.TRN"], "rmp02b": ["rmp02b.trn"], "rmp03p": ["rmp03p.trn"], "rmp03r": ["rmp03r.trn"], "TKHR_04": ["TKHR_04.trn"], "ts_01": ["ts_01.trn"], "ts_02": ["ts_02.trn"], "TS_05": ["TS_05.trn"], "TS_09": ["TS_09.trn"], "ts_11": ["ts_11.trn"], "TSBHD_04": ["TSBHD_04.trn"], "TSBHD_06": ["TSBHD_06.trn"], "zoo": ["zoo.trn"]};
-  async function loadTerrainFromMis(){
-    const terrain=extractTerrainNameFromMis();
+  async function loadTerrainFromMis(terrainOverride = null){
+    const terrainRaw = terrainOverride ?? extractTerrainNameFromMis();
+    const terrain = String(terrainRaw || "").trim();
+    clearTerrainRenderState();
     addLog(`[terrain] terrain key from MIS: ${terrain || "<empty>"}`);
     if(!terrain){
       loadedTrnName=null;
