@@ -4616,7 +4616,8 @@
 
   function bindMesh(m){ gl.bindBuffer(gl.ARRAY_BUFFER,m.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib); gl.enableVertexAttribArray(aPos); gl.enableVertexAttribArray(aUV); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,20,0); gl.vertexAttribPointer(aUV,2,gl.FLOAT,false,20,12); }
   function drawTerrain(P,V,forward){ const tex=activeTerrainTexture(); if(!(tex&&sectors&&meshSector[1])) return 0; gl.useProgram(prog); gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0); gl.bindTexture(gl.TEXTURE_2D,tex); const ox=originWorldX(),oy=originWorldY(),radius=parseFloat(document.getElementById('radius')?.value||'12288')||12288; const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1,j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1; let draws=0; for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ const srcX=mapSrcIdx(gx,wrapX), srcY=mapSrcIdx(TERRAIN_BASE_FLIP_Y?(sectorCount-1-gy):gy,wrapY), sectorIndex=sectors[srcY*sectorCount+srcX]|0; if(sectorIndex<=0) continue; const m=meshSector[sectorIndex]; if(!m||!m.indexCount) continue; const MVP=mat4Mul(P, mat4Mul(V, mat4Translate(ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE,0))); gl.uniformMatrix4fv(uMVP,false,MVP); bindMesh(m); gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0); draws++; }
-    if(trnInfo.waterHeight!==null&&Number.isFinite(trnInfo.waterHeight)){ gl.useProgram(waterProg); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.enableVertexAttribArray(waPos); gl.vertexAttribPointer(waPos,3,gl.FLOAT,false,12,0); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.uniformMatrix4fv(wuMVP,false,mat4Mul(P,V)); gl.uniform3f(wuColor,0.55,0.85,1.0); gl.uniform1f(wuAlpha,0.28); gl.uniform1f(wuZ,trnInfo.waterHeight*0.5); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ gl.uniform2f(wuOffsetXY,ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE); gl.uniform2f(wuScaleXY,SECTOR_STRIDE,SECTOR_STRIDE); gl.drawElements(gl.TRIANGLES,6,gl.UNSIGNED_SHORT,0); } gl.depthMask(true); gl.disable(gl.BLEND); }
+    const waterRender = getRenderWaterHeightRaw();
+    if(waterRender.raw!==null&&Number.isFinite(waterRender.raw)){ gl.useProgram(waterProg); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.enableVertexAttribArray(waPos); gl.vertexAttribPointer(waPos,3,gl.FLOAT,false,12,0); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.uniformMatrix4fv(wuMVP,false,mat4Mul(P,V)); gl.uniform3f(wuColor,0.55,0.85,1.0); gl.uniform1f(wuAlpha,0.28); gl.uniform1f(wuZ,waterRender.raw*0.5); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ gl.uniform2f(wuOffsetXY,ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE); gl.uniform2f(wuScaleXY,SECTOR_STRIDE,SECTOR_STRIDE); gl.drawElements(gl.TRIANGLES,6,gl.UNSIGNED_SHORT,0); } gl.depthMask(true); gl.disable(gl.BLEND); }
     if(gridVisible){
       const gridSize=gridSizeMeters();
       if(gridSize>0){
@@ -4687,6 +4688,21 @@
   function pickItemAt(sx,sy){ const items=getFilteredItems(); let best=null,bestD2=Infinity; for(const it of items){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
+  function getRenderWaterHeightRaw(){
+    const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
+    if (gi && gi.kv){
+      const attrib = Math.trunc(Number(gi.kv.attrib || 0));
+      const waterOverrideOn = (attrib & GENERAL_ATTRIB_BITS.waterOverride) !== 0;
+      if (waterOverrideOn){
+        const overrideRaw = Number(gi.kv.water_level);
+        if (Number.isFinite(overrideRaw)) return { raw: overrideRaw, source: 'MIS override' };
+      }
+    }
+
+    const trnRaw = Number(trnInfo.waterHeight);
+    if (Number.isFinite(trnRaw)) return { raw: trnRaw, source: 'TRN water_height' };
+    return { raw: null, source: 'none' };
+  }
   async function listTerrainFilesFromEditorFolder(terrainName){
     if (!state.editorFolderHandle) return null;
     try{
@@ -4888,8 +4904,9 @@
     if(document.getElementById('ground')?.checked && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=parseFloat(document.getElementById('clear')?.value||'40'); if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
     gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
     const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV);
-    const waterHeightLabel = (trnInfo.waterHeight===0 || trnInfo.waterHeight) ? trnInfo.waterHeight : '-';
-    const waterZUsedLabel = (trnInfo.waterHeight===0 || trnInfo.waterHeight) ? (trnInfo.waterHeight*0.5) : '-';
+    const waterRender = getRenderWaterHeightRaw();
+    const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
+    const waterZUsedLabel = (waterRender.raw===0 || waterRender.raw) ? (waterRender.raw*0.5) : '-';
     camDebugEl.textContent=
 `Loaded terrain: ${loadedTrnName||'none'}
 
@@ -4901,6 +4918,7 @@ polytrn_charmap       ${trnInfo.charmap || '-'}
 polytrn_foliagemap    ${trnInfo.foliagemap || '-'}
 water_height          ${waterHeightLabel}
 water_z_used          ${waterZUsedLabel}
+water_source          ${waterRender.source}
 
 Mode: ${renderMode==='C' ? 'Colormap' : (renderMode==='H' ? 'Heightmap' : 'Delta')}
 Grid: ${gridVisible ? formatGridValue(gridSizeMeters()) : 'off'}
