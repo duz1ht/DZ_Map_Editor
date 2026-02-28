@@ -798,6 +798,8 @@
       Controls: Click canvas (pointer lock), look with mouse, move with <span class="kbd">WASD</span>, <span class="kbd">Q/E</span> up/down, <span class="kbd">Shift</span> sprint.
       <br>Select <span class="kbd">click</span>, Move item <span class="kbd">Shift</span> + drag, Double-click opens Item Attributes.
       <br>Fly speed <input id="camSpeed" type="range" min="50000" max="1200000" step="10000" value="260000" style="width:180px; vertical-align:middle;" />
+      <br>3D Scale <input id="glbScale" type="range" min="0.1" max="5" step="0.1" value="1" style="width:180px; vertical-align:middle;" />
+      <br>3D Light <input id="glbLight" type="range" min="0.2" max="3" step="0.1" value="1" style="width:180px; vertical-align:middle;" />
     </div>
 
 <div class="hint" id="defStatus" style="margin-top:6px;">Item catalog loaded (embedded ITEMS.DEF).</div>
@@ -4333,6 +4335,8 @@
   const cv = document.getElementById("cv");
   const cvModels = document.getElementById("cvModels");
   const camSpeedEl = document.getElementById("camSpeed");
+  const glbScaleEl = document.getElementById("glbScale");
+  const glbLightEl = document.getElementById("glbLight");
   const movementAxesHudEl = document.getElementById("movementAxesHud");
 
   function clamp(v, mn, mx){ return Math.max(mn, Math.min(mx, v)); }
@@ -4437,7 +4441,12 @@
     camera: null,
     renderer: null,
     loader: null,
-    THREE: null
+    THREE: null,
+    hemiLight: null,
+    dirLightA: null,
+    dirLightB: null,
+    scaleMul: 1,
+    lightMul: 1
   };
 
   function makeTemplateDescriptor(root, graphic){
@@ -4445,10 +4454,15 @@
     root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root);
     const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
     box.getCenter(center);
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
+    const targetMaxDim = 35000;
+    const baseScale = Number.isFinite(targetMaxDim / maxDim) ? (targetMaxDim / maxDim) : 1;
 
-    addLog(`GLB centered: ${graphic}.glb center=(${center.x.toFixed(3)}, ${center.y.toFixed(3)}, ${center.z.toFixed(3)})`);
-    return { root, center };
+    addLog(`GLB normalized: ${graphic}.glb maxDim=${maxDim.toFixed(3)} baseScale=${baseScale.toFixed(2)} center=(${center.x.toFixed(3)}, ${center.y.toFixed(3)}, ${center.z.toFixed(3)})`);
+    return { root, center, baseScale };
   }
 
   function rebuildModelDefsIndex(){
@@ -4471,13 +4485,14 @@
       modelState.scene = new THREE.Scene();
       modelState.camera = new THREE.PerspectiveCamera(state.camera.fovDeg, 1, 1, 100000000);
       modelState.camera.up.set(0, 0, 1);
-      modelState.scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.7));
-      const d1 = new THREE.DirectionalLight(0xffffff, 0.9);
-      d1.position.set(1, 1, 2);
-      modelState.scene.add(d1);
-      const d2 = new THREE.DirectionalLight(0xffffff, 0.45);
-      d2.position.set(-1, -0.4, 1.2);
-      modelState.scene.add(d2);
+      modelState.hemiLight = new THREE.HemisphereLight(0xffffff, 0x223344, 1.2);
+      modelState.scene.add(modelState.hemiLight);
+      modelState.dirLightA = new THREE.DirectionalLight(0xffffff, 1.6);
+      modelState.dirLightA.position.set(1, 1, 2);
+      modelState.scene.add(modelState.dirLightA);
+      modelState.dirLightB = new THREE.DirectionalLight(0xffffff, 1.0);
+      modelState.dirLightB.position.set(-1, -0.4, 1.2);
+      modelState.scene.add(modelState.dirLightB);
       modelState.loader = new GLTFLoader();
       modelState.ready = true;
       addLog("3D item layer initialized (Three.js + GLTFLoader).");
@@ -4554,6 +4569,19 @@
     }
   }
 
+  function applyModelTuning(){
+    if (!modelState.ready) return;
+    const lm = modelState.lightMul;
+    if (modelState.hemiLight) modelState.hemiLight.intensity = 1.2 * lm;
+    if (modelState.dirLightA) modelState.dirLightA.intensity = 1.6 * lm;
+    if (modelState.dirLightB) modelState.dirLightB.intensity = 1.0 * lm;
+    for (const [, wrapper] of modelState.itemObjById){
+      const model = wrapper.userData?.model;
+      const baseScale = wrapper.userData?.baseScale ?? 1;
+      if (model) model.scale.setScalar(baseScale * modelState.scaleMul);
+    }
+  }
+
   function syncItemModelInstances(){
     if (!modelState.ready) return;
     const keep = new Set();
@@ -4573,6 +4601,9 @@
         const model = template.root.clone(true);
         const wrapper = new modelState.THREE.Group();
         model.position.set(-template.center.x, -template.center.y, -template.center.z);
+        model.scale.setScalar((template.baseScale || 1) * modelState.scaleMul);
+        wrapper.userData.model = model;
+        wrapper.userData.baseScale = (template.baseScale || 1);
         wrapper.add(model);
         modelState.scene.add(wrapper);
         modelState.itemObjById.set(it.id, wrapper);
@@ -4593,6 +4624,7 @@
       modelState.scene.remove(obj);
       modelState.itemObjById.delete(id);
     }
+    applyModelTuning();
   }
 
   function renderItemModelLayer(){
@@ -4929,6 +4961,24 @@
     camSpeedEl.addEventListener("input", () => {
       state.camera.speed = Number(camSpeedEl.value || 260000);
       statusEl.textContent = `Fly speed: ${Math.round(state.camera.speed)}`;
+    });
+  }
+
+  if (glbScaleEl){
+    modelState.scaleMul = Number(glbScaleEl.value || 1);
+    glbScaleEl.addEventListener("input", () => {
+      modelState.scaleMul = Number(glbScaleEl.value || 1);
+      applyModelTuning();
+      statusEl.textContent = `3D scale: ${modelState.scaleMul.toFixed(1)}x`;
+    });
+  }
+
+  if (glbLightEl){
+    modelState.lightMul = Number(glbLightEl.value || 1);
+    glbLightEl.addEventListener("input", () => {
+      modelState.lightMul = Number(glbLightEl.value || 1);
+      applyModelTuning();
+      statusEl.textContent = `3D light: ${modelState.lightMul.toFixed(1)}x`;
     });
   }
 
