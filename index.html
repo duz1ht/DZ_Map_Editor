@@ -235,7 +235,7 @@
       position:absolute;
       inset:0;
       z-index:1;
-      background:transparent;
+      background:transparent !important;
     }
     #terrainBar{
       position:absolute;left:8px;right:8px;top:8px;z-index:3;
@@ -4293,7 +4293,7 @@
   });
   // Canvas
   const cv = document.getElementById("cv");
-  const ctx = cv.getContext("2d");
+  const ctx = cv.getContext("2d", { alpha: true });
   const terrainCv = document.getElementById("terrainCanvas");
   const terrainCtx = terrainCv.getContext("2d");
   const terrainDbgEl = document.getElementById("terrainDbg");
