@@ -4542,8 +4542,8 @@
   const DEPTH_W=1024, DEPTH_H=1024, SECTOR_SIZE=512, SECTOR_STRIDE=SECTOR_SIZE, SECTOR_MESH_MAX=SECTOR_SIZE;
   const TERRAIN_BASE_FLIP_Y=true;
   const MIS_POS_SCALE=65536;
-  const THREE_MODULE_URL = "https://esm.sh/three@0.160.0";
-  const GLTF_LOADER_URL = "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+  const THREE_MODULE_URL = "https://esm.sh/three@0.152.2";
+  const GLTF_LOADER_URL = "https://esm.sh/three@0.152.2/examples/jsm/loaders/GLTFLoader.js";
   function mainAreaCenterX(){ return originWorldX() + terrainSpanX()*0.5; }
   function mainAreaCenterY(){ return originWorldY() + terrainSpanY()*0.5; }
   function rawToWorld(v, axis='z'){
@@ -4830,12 +4830,25 @@
       root.traverse((obj) => {
         if (!obj.isMesh) return;
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-        for (const m of mats){
-          if (!m) continue;
+        const converted = mats.map((m) => {
+          if (!m) return m;
           if (m.map) m.map.colorSpace = state.glb.THREE.SRGBColorSpace;
           if (m.emissiveMap) m.emissiveMap.colorSpace = state.glb.THREE.SRGBColorSpace;
-          m.needsUpdate = true;
-        }
+
+          // Evita shaders PBR complexos que falham em alguns drivers WebGL1.
+          return new state.glb.THREE.MeshLambertMaterial({
+            map: m.map || null,
+            color: m.color ? m.color.clone() : new state.glb.THREE.Color(0xffffff),
+            emissive: m.emissive ? m.emissive.clone() : new state.glb.THREE.Color(0x000000),
+            emissiveMap: m.emissiveMap || null,
+            transparent: !!m.transparent,
+            opacity: Number.isFinite(m.opacity) ? m.opacity : 1,
+            side: m.side,
+            alphaTest: m.alphaTest || 0,
+          });
+        });
+
+        obj.material = Array.isArray(obj.material) ? converted : converted[0];
       });
 
       state.glb.templateByGraphic.set(key, root);
