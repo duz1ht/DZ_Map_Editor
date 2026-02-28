@@ -791,11 +791,6 @@
   <div id="sidebar">
     <input id="fileMis" type="file" accept=".mis,.txt" style="display:none;" />
 
-    <div class="hint">
-      Controls: Zoom <span class="kbd">wheel</span> Pan <span class="kbd">drag</span> Select <span class="kbd">click</span> Move item <span class="kbd">Shift</span> + drag
-      <br>Double-click an item to open Item Attributes.
-    </div>
-
 <div class="hint" id="defStatus" style="margin-top:6px;">Item catalog loaded (embedded ITEMS.DEF).</div>
 
     <div class="row" style="margin-top:10px;">
@@ -4882,7 +4877,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     if (state.isLocalRuntime){
       addLog("Local runtime detected (file://). Waiting for 'Set Editor Folder'.");
       statusEl.textContent = "Local mode detected: open File > Set Editor Folder to load catalogs.";
-      defStatusEl.textContent = "Local mode: set the editor folder in File > Set Editor Folder.";
+      defStatusEl.textContent = "";
     } else {
       await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames()]);
     }
