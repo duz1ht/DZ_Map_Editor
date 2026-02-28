@@ -1473,7 +1473,7 @@
   function addLog(msg){
     const stamp = new Date().toLocaleTimeString();
     state.logs.unshift(`[${stamp}] ${msg}`);
-    if (state.logs.length > 500) state.logs.length = 500;
+    if (state.logs.length > 5000) state.logs.length = 5000;
     if (state.logsOpen) renderLogsWindow();
   }
 
@@ -1564,6 +1564,44 @@
       return text;
     } catch (err){
       addLog(`ERROR loading resource via editor folder: ${path} (${err?.message || "read failed"})`);
+      return null;
+    }
+  }
+
+  async function readArrayBufferFromEditorFolder(path){
+    if (!state.editorFolderHandle) return null;
+    try{
+      const parts = String(path || "").split("/").filter(Boolean);
+      let dir = state.editorFolderHandle;
+      for (let i = 0; i < parts.length - 1; i++){
+        dir = await dir.getDirectoryHandle(parts[i]);
+      }
+      const fileHandle = await dir.getFileHandle(parts[parts.length - 1]);
+      const file = await fileHandle.getFile();
+      const buf = await file.arrayBuffer();
+      addLog(`Loaded binary resource via editor folder: ${path} (${buf.byteLength} bytes)`);
+      return buf;
+    } catch (err){
+      addLog(`ERROR loading binary via editor folder: ${path} (${err?.message || "read failed"})`);
+      return null;
+    }
+  }
+
+  async function loadBinaryResource(path){
+    if (state.isLocalRuntime){
+      return readArrayBufferFromEditorFolder(path);
+    }
+    try{
+      const res = await fetch(path);
+      if (!res.ok){
+        addLog(`ERROR loading binary via fetch: ${path} (HTTP ${res.status})`);
+        return null;
+      }
+      const buf = await res.arrayBuffer();
+      addLog(`Loaded binary resource via fetch: ${path} (${buf.byteLength} bytes)`);
+      return buf;
+    } catch (err) {
+      addLog(`ERROR loading binary via fetch: ${path} (${err?.message || "fetch failed"})`);
       return null;
     }
   }
@@ -4359,31 +4397,107 @@
   const TERRAIN_FILE_INDEX={"CINE": ["CINE.TRN"], "DVD1": ["DVD1.TRN"], "dvd2": ["dvd2.trn"], "dvd3": ["dvd3.trn"], "DVD4": ["DVD4.TRN"], "dvd5": ["dvd5.trn"], "dvdg1": ["dvdg1.trn"], "DVDG2": ["DVDG2.TRN"], "dvg1": ["dvg1.trn"], "dvt1": ["dvt1.trn"], "Flat": ["Flat.TRN"], "MIS1": ["MIS1.TRN"], "mis10": ["mis10.trn"], "MIS11": ["MIS11.TRN"], "MIS13": ["MIS13.TRN"], "Mis14": ["Mis14.trn"], "MIS15": ["MIS15.TRN"], "MIS16": ["MIS16.TRN"], "MIS17": ["MIS17.TRN"], "MIS18": ["MIS18.TRN"], "MIS19B": ["MIS19B.TRN"], "MIS2": ["MIS2.TRN"], "MIS3": ["MIS3.TRN"], "MIS4": ["MIS4.TRN"], "MIS5": ["MIS5.TRN"], "MIS6": ["MIS6.TRN"], "MIS7": ["MIS7.TRN"], "MIS8": ["MIS8.TRN"], "MIS9": ["MIS9.TRN"], "MIST1": ["MIST1.TRN"], "MIST2": ["MIST2.TRN"], "rmp02b": ["rmp02b.trn"], "rmp03p": ["rmp03p.trn"], "rmp03r": ["rmp03r.trn"], "TKHR_04": ["TKHR_04.trn"], "ts_01": ["ts_01.trn"], "ts_02": ["ts_02.trn"], "TS_05": ["TS_05.trn"], "TS_09": ["TS_09.trn"], "ts_11": ["ts_11.trn"], "TSBHD_04": ["TSBHD_04.trn"], "TSBHD_06": ["TSBHD_06.trn"], "zoo": ["zoo.trn"]};
   async function loadTerrainFromMis(){
     const terrain=extractTerrainNameFromMis();
-    if(!terrain){ loadedTrnName=null; return; }
+    addLog(`[terrain] terrain key from MIS: ${terrain || "<empty>"}`);
+    if(!terrain){
+      loadedTrnName=null;
+      addLog("[terrain] MIS has no 'terrain' in general_information; terrain renderer disabled.");
+      return;
+    }
+
     const folders=Object.keys(TERRAIN_FILE_INDEX);
     const folder=folders.find(n=>n.toLowerCase()===terrain.toLowerCase());
-    if(!folder) throw new Error(`Pasta de terreno não encontrada para terrain ${terrain}`);
-    const files=TERRAIN_FILE_INDEX[folder];
+    addLog(`[terrain] searching folder for '${terrain}' (folders indexed: ${folders.length})`);
+    if(!folder){
+      loadedTrnName=null;
+      addLog(`[terrain] folder not found for '${terrain}'. First folders: ${folders.slice(0,20).join(', ')}`);
+      throw new Error(`Pasta de terreno não encontrada para terrain ${terrain}`);
+    }
+
+    const files=TERRAIN_FILE_INDEX[folder] || [];
+    addLog(`[terrain] folder matched: ${folder} (indexed files: ${files.length})`);
     const trnFile=files.find(f=>/\.trn$/i.test(f));
     const colFile=files.find(f=>/_c\.tga$/i.test(f));
-    if(!trnFile||!colFile) throw new Error(`Arquivos TRN/TGA ausentes em ${folder}`);
+    if(!trnFile){
+      addLog(`[terrain] TRN not found in index for folder ${folder}. Files: ${files.join(', ') || '<none>'}`);
+      throw new Error(`Arquivo .trn ausente em ${folder}`);
+    }
+
     loadedTrnName=trnFile;
     const base=`resources/terrains/${folder}`;
-    const trnTxt=await (await fetch(`${base}/${trnFile}`)).text();
+    addLog(`[terrain] loading TRN: ${base}/${trnFile}`);
+
+    const trnTxt = await loadTextResource(`${base}/${trnFile}`);
+    if(!trnTxt){
+      addLog(`[terrain] failed to read TRN file: ${base}/${trnFile}`);
+      throw new Error(`Falha ao ler TRN: ${base}/${trnFile}`);
+    }
+
     function trnGetValue(re){ const mm=trnTxt.match(re); return mm?mm[1]:null; }
-    trnInfo.colormap=trnGetValue(/polytrn_colormap\s+"?([^\s"]+)/i); trnInfo.detailmap=trnGetValue(/polytrn_detailmap\s+"?([^\s"]+)/i); trnInfo.polydata=trnGetValue(/polytrn_polydata\s+"?([^\s"]+)/i); trnInfo.tilestrip=trnGetValue(/polytrn_tilestrip\s+"?([^\s"]+)/i); trnInfo.charmap=trnGetValue(/polytrn_charmap\s+"?([^\s"]+)/i); trnInfo.foliagemap=trnGetValue(/polytrn_foliagemap\s+"?([^\s"]+)/i); const whStr=trnGetValue(/water_height\s+([0-9\.\-]+)/i); trnInfo.waterHeight=(whStr===null)?null:parseFloat(whStr);
-    const scMatch=trnTxt.match(/polytrn_sectorcount\s+([0-9]+)/i); sectorCount=scMatch?parseInt(scMatch[1],10):8;
-    const orgMatch=trnTxt.match(/polytrn_origin\s+(-?\d+)\s+(-?\d+)/i); terrainOrigin=orgMatch?{x:parseInt(orgMatch[1],10),y:parseInt(orgMatch[2],10)}:{x:0,y:0};
-    const wxMatch=trnTxt.match(/polytrn_wrapx\s+([01])/i), wyMatch=trnTxt.match(/polytrn_wrapy\s+([01])/i); wrapX=wxMatch?parseInt(wxMatch[1],10):1; wrapY=wyMatch?parseInt(wyMatch[1],10):1;
-    const rows=[]; trnTxt.split(/\r\n|\r|\n/).forEach(line=>{ const cut=line.split(';')[0].trim(); const m=cut.match(/^polytrn_sectors\s+(.+)$/i); if(!m) return; const vals=m[1].trim().split(/\s+/).map(v=>parseInt(v,10)).filter(Number.isFinite); if(vals.length) rows.push(vals); });
-    if(rows.length){ const w=rows[0].length; if(w!==sectorCount||rows.length!==sectorCount) sectorCount=w; sectors=new Int32Array(sectorCount*sectorCount); for(let y=0;y<sectorCount;y++) for(let x=0;x<sectorCount;x++) sectors[y*sectorCount+x]=(rows[y]||[])[x]||0; } else { sectors=new Int32Array(sectorCount*sectorCount); sectors.fill(1); }
+    trnInfo.colormap=trnGetValue(/polytrn_colormap\s+"?([^\s"]+)/i);
+    trnInfo.detailmap=trnGetValue(/polytrn_detailmap\s+"?([^\s"]+)/i);
+    trnInfo.polydata=trnGetValue(/polytrn_polydata\s+"?([^\s"]+)/i);
+    trnInfo.tilestrip=trnGetValue(/polytrn_tilestrip\s+"?([^\s"]+)/i);
+    trnInfo.charmap=trnGetValue(/polytrn_charmap\s+"?([^\s"]+)/i);
+    trnInfo.foliagemap=trnGetValue(/polytrn_foliagemap\s+"?([^\s"]+)/i);
+    const whStr=trnGetValue(/water_height\s+([0-9\.\-]+)/i);
+    trnInfo.waterHeight=(whStr===null)?null:parseFloat(whStr);
+    addLog(`[terrain] TRN parsed: polydata=${trnInfo.polydata || '-'} colormap=${trnInfo.colormap || '-'} water_height=${trnInfo.waterHeight ?? '-'}`);
+
+    const scMatch=trnTxt.match(/polytrn_sectorcount\s+([0-9]+)/i);
+    sectorCount=scMatch?parseInt(scMatch[1],10):8;
+    const orgMatch=trnTxt.match(/polytrn_origin\s+(-?\d+)\s+(-?\d+)/i);
+    terrainOrigin=orgMatch?{x:parseInt(orgMatch[1],10),y:parseInt(orgMatch[2],10)}:{x:0,y:0};
+    const wxMatch=trnTxt.match(/polytrn_wrapx\s+([01])/i), wyMatch=trnTxt.match(/polytrn_wrapy\s+([01])/i);
+    wrapX=wxMatch?parseInt(wxMatch[1],10):1;
+    wrapY=wyMatch?parseInt(wyMatch[1],10):1;
+
+    const rows=[];
+    trnTxt.split(/\r\n|\r|\n/).forEach(line=>{
+      const cut=line.split(';')[0].trim();
+      const m=cut.match(/^polytrn_sectors\s+(.+)$/i);
+      if(!m) return;
+      const vals=m[1].trim().split(/\s+/).map(v=>parseInt(v,10)).filter(Number.isFinite);
+      if(vals.length) rows.push(vals);
+    });
+    if(rows.length){
+      const w=rows[0].length;
+      if(w!==sectorCount||rows.length!==sectorCount) sectorCount=w;
+      sectors=new Int32Array(sectorCount*sectorCount);
+      for(let y=0;y<sectorCount;y++) for(let x=0;x<sectorCount;x++) sectors[y*sectorCount+x]=(rows[y]||[])[x]||0;
+    } else {
+      sectors=new Int32Array(sectorCount*sectorCount);
+      sectors.fill(1);
+    }
+    addLog(`[terrain] sector layout ready: ${sectorCount}x${sectorCount}, origin=${terrainOrigin.x},${terrainOrigin.y}, wrap=${wrapX}/${wrapY}`);
+
     const cptRef=(trnTxt.match(/polytrn_polydata\s+"?([^\s"]+)/i)||[])[1];
-    const cptFile=files.find(f=>f.toLowerCase()===String(cptRef||'').toLowerCase())||files.find(f=>/\.cpt$/i.test(f));
+    const cptFile=files.find(f=>f.toLowerCase()===String(cptRef||'').toLowerCase()) || files.find(f=>/\.cpt$/i.test(f));
+    const resolvedColFile=colFile || files.find(f=>/\.tga$/i.test(f));
+    addLog(`[terrain] CPT reference from TRN: ${cptRef || '<none>'}; resolved CPT: ${cptFile || '<none>'}; resolved TGA: ${resolvedColFile || '<none>'}`);
     if(!cptFile) throw new Error(`CPT ausente em ${folder}`);
-    const cptBuf=await (await fetch(`${base}/${cptFile}`)).arrayBuffer(); const dv=new DataView(cptBuf,0xA4); const depth=new Uint16Array(DEPTH_W*DEPTH_H); for(let i=0;i<depth.length;i++) depth[i]=dv.getUint16(i*2,true); lastDepth=depth;
-    const tgaBuf=await (await fetch(`${base}/${colFile}`)).arrayBuffer(); lastImg=decodeTGA(tgaBuf);
+    if(!resolvedColFile) throw new Error(`TGA ausente em ${folder}`);
+
+    const cptPath=`${base}/${cptFile}`;
+    addLog(`[terrain] loading CPT: ${cptPath}`);
+    const cptBuf=await loadBinaryResource(cptPath);
+    if(!cptBuf) throw new Error(`Falha ao ler CPT: ${cptPath}`);
+
+    const dv=new DataView(cptBuf,0xA4);
+    const depth=new Uint16Array(DEPTH_W*DEPTH_H);
+    for(let i=0;i<depth.length;i++) depth[i]=dv.getUint16(i*2,true);
+    lastDepth=depth;
+
+    const tgaPath=`${base}/${resolvedColFile}`;
+    addLog(`[terrain] loading TGA: ${tgaPath}`);
+    const tgaBuf=await loadBinaryResource(tgaPath);
+    if(!tgaBuf) throw new Error(`Falha ao ler TGA: ${tgaPath}`);
+    lastImg=decodeTGA(tgaBuf);
+    addLog(`[terrain] TGA decoded: ${lastImg.w}x${lastImg.h}`);
+
     rebuildTerrain();
+    addLog(`[terrain] terrain rebuild complete: ${folder}/${trnFile}`);
   }
+
 
   function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); gl.viewport(0,0,cv.width,cv.height); }
 
@@ -4456,7 +4570,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'} Draw calls: ${drawCa
   const _origLoadMisFile = loadMisFile;
   loadMisFile = async function(file, fileHandle = null){
     await _origLoadMisFile(file, fileHandle);
-    try{ await loadTerrainFromMis(); }catch(err){ camDebugEl.textContent = `Falha ao carregar terreno: ${err.message||err}`; }
+    try{ await loadTerrainFromMis(); }catch(err){ addLog(`[terrain] load error: ${err?.message || err}`); camDebugEl.textContent = `Falha ao carregar terreno: ${err.message||err}`; }
   };
 
   function applyTheme(theme){
