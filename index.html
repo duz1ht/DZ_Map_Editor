@@ -5553,29 +5553,30 @@
       y: rawToWorld(it.y,'y'),
       z: rawToWorld(it.z||0,'z')
     };
-    const axisLen = 80;
+    const gizmoScale = 0.5;
+    const axisLen = 80 * gizmoScale;
     const xTip = worldToScreen(center.x + axisLen, center.y, center.z);
     const yTip = worldToScreen(center.x, center.y + axisLen, center.z);
     const zTip = worldToScreen(center.x, center.y, center.z + axisLen);
     const c = worldToScreen(center.x, center.y, center.z);
     if (!c.visible){ state.gizmoVisual = null; return; }
 
-    const yawAnchor = worldToScreen(center.x + 55, center.y, center.z);
-    const pitchAnchor = worldToScreen(center.x, center.y, center.z + 55);
-    const yawRadius = yawAnchor.visible ? Math.max(22, Math.hypot(yawAnchor.sx - c.sx, yawAnchor.sy - c.sy)) : 30;
-    const pitchRadius = pitchAnchor.visible ? Math.max(18, Math.hypot(pitchAnchor.sx - c.sx, pitchAnchor.sy - c.sy)) : 24;
+    const yawAnchor = worldToScreen(center.x + 55 * gizmoScale, center.y, center.z);
+    const pitchAnchor = worldToScreen(center.x, center.y, center.z + 55 * gizmoScale);
+    const yawRadius = yawAnchor.visible ? Math.max(11, Math.hypot(yawAnchor.sx - c.sx, yawAnchor.sy - c.sy)) : 15;
+    const pitchRadius = pitchAnchor.visible ? Math.max(9, Math.hypot(pitchAnchor.sx - c.sx, pitchAnchor.sy - c.sy)) : 12;
 
     function drawAxis(tip, color){
       if (!tip.visible) return;
       gizmoCtx.strokeStyle = color;
-      gizmoCtx.lineWidth = 2;
+      gizmoCtx.lineWidth = 6;
       gizmoCtx.beginPath();
       gizmoCtx.moveTo(c.sx,c.sy);
       gizmoCtx.lineTo(tip.sx,tip.sy);
       gizmoCtx.stroke();
       gizmoCtx.fillStyle = color;
       gizmoCtx.beginPath();
-      gizmoCtx.arc(tip.sx, tip.sy, 6, 0, Math.PI*2);
+      gizmoCtx.arc(tip.sx, tip.sy, 3, 0, Math.PI*2);
       gizmoCtx.fill();
     }
 
@@ -5584,28 +5585,28 @@
     drawAxis(zTip, '#77a8ff');
 
     gizmoCtx.strokeStyle = '#ffd166';
-    gizmoCtx.lineWidth = 2;
+    gizmoCtx.lineWidth = 6;
     gizmoCtx.beginPath();
     gizmoCtx.arc(c.sx, c.sy, yawRadius, 0, Math.PI * 2);
     gizmoCtx.stroke();
 
     gizmoCtx.strokeStyle = '#7ce4ff';
-    gizmoCtx.lineWidth = 2;
+    gizmoCtx.lineWidth = 6;
     gizmoCtx.beginPath();
     gizmoCtx.ellipse(c.sx, c.sy, pitchRadius * 0.55, pitchRadius, 0, 0, Math.PI * 2);
     gizmoCtx.stroke();
 
     gizmoCtx.fillStyle = '#ffffff';
     gizmoCtx.beginPath();
-    gizmoCtx.arc(c.sx, c.sy, 4, 0, Math.PI*2);
+    gizmoCtx.arc(c.sx, c.sy, 2, 0, Math.PI*2);
     gizmoCtx.fill();
 
     state.gizmoVisual = {
       center: { sx: c.sx, sy: c.sy },
       handles: {
-        moveX: xTip.visible ? { sx: xTip.sx, sy: xTip.sy, r: 10, lx0: c.sx, ly0: c.sy, lx1: xTip.sx, ly1: xTip.sy } : null,
-        moveY: yTip.visible ? { sx: yTip.sx, sy: yTip.sy, r: 10, lx0: c.sx, ly0: c.sy, lx1: yTip.sx, ly1: yTip.sy } : null,
-        moveZ: zTip.visible ? { sx: zTip.sx, sy: zTip.sy, r: 10, lx0: c.sx, ly0: c.sy, lx1: zTip.sx, ly1: zTip.sy } : null,
+        moveX: xTip.visible ? { sx: xTip.sx, sy: xTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: xTip.sx, ly1: xTip.sy } : null,
+        moveY: yTip.visible ? { sx: yTip.sx, sy: yTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: yTip.sx, ly1: yTip.sy } : null,
+        moveZ: zTip.visible ? { sx: zTip.sx, sy: zTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: zTip.sx, ly1: zTip.sy } : null,
         yaw: { sx: c.sx, sy: c.sy, r: yawRadius, t: 8, ring: true },
         pitch: { sx: c.sx, sy: c.sy, rx: pitchRadius * 0.55, ry: pitchRadius, t: 7, ellipse: true }
       }
@@ -5972,7 +5973,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       if (dist(sx,sy,hh.sx,hh.sy) <= (hh.r || 10)) return mode;
       if (Number.isFinite(hh.lx0) && Number.isFinite(hh.ly0) && Number.isFinite(hh.lx1) && Number.isFinite(hh.ly1)){
         const near = distToSegment(sx, sy, hh.lx0, hh.ly0, hh.lx1, hh.ly1);
-        if (near <= 7) return mode;
+        if (near <= 10) return mode;
       }
     }
     if (h.yaw){
