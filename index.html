@@ -1338,6 +1338,19 @@
     currentMisFileHandle: null,
     generalTerrainNames: [],
 
+    itemsVersion: 0,
+    filteredItemsCache: null,
+    filteredItemsKey: "",
+    liveMisDirty: false,
+    spatialIndex: {
+      cellSize: 2048,
+      cells: new Map(),
+      itemCellKey: new Map(),
+      enabled: true,
+    },
+    pendingUiRenderRaf: 0,
+    pendingLiveMisRaf: 0,
+
     glb: {
       THREE: null,
       GLTFLoader: null,
@@ -1351,7 +1364,7 @@
       syncPromise: null,
       initPromise: null,
       structureDirty: true,
-      lastSyncSignature: "",
+      transformDirtyIds: new Set(),
       syncCount: 0,
       lastSyncMs: 0,
       lastSelectedVisualId: null,
@@ -1580,6 +1593,162 @@
   function parseFloatSafe(v){
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
+  }
+
+
+  function invalidateFilteredItemsCache(){
+    state.filteredItemsCache = null;
+    state.filteredItemsKey = "";
+  }
+
+  function markItemsChanged(options = {}){
+    const structureChanged = options.structure !== false;
+    const invalidateFilter = options.invalidateFilter !== undefined ? !!options.invalidateFilter : structureChanged;
+    state.liveMisDirty = true;
+    if (invalidateFilter){
+      state.itemsVersion += 1;
+      invalidateFilteredItemsCache();
+    }
+    if (structureChanged){
+      state.glb.structureDirty = true;
+      state.glb.transformDirtyIds.clear();
+      rebuildSpatialIndex();
+    }
+  }
+
+  function markItemTransformDirty(itemId){
+    if (itemId == null) return;
+    state.glb.transformDirtyIds.add(itemId);
+    if (state.spatialIndex.enabled){
+      const it = state.items.find((x) => x.id === itemId);
+      if (it) upsertItemInSpatialIndex(it);
+    }
+  }
+
+  function scheduleRenderList(){
+    if (state.pendingUiRenderRaf) return;
+    state.pendingUiRenderRaf = requestAnimationFrame(() => {
+      state.pendingUiRenderRaf = 0;
+      renderList();
+    });
+  }
+
+  function scheduleLiveMisRefresh(){
+    if (state.pendingLiveMisRaf) return;
+    state.pendingLiveMisRaf = requestAnimationFrame(() => {
+      state.pendingLiveMisRaf = 0;
+      refreshLiveMisWindow();
+    });
+  }
+
+  function spatialCellKeyFromWorld(x, y){
+    const size = Math.max(64, Number(state.spatialIndex.cellSize) || 2048);
+    const cx = Math.floor(Number(x || 0) / size);
+    const cy = Math.floor(Number(y || 0) / size);
+    return `${cx}:${cy}`;
+  }
+
+  function getWorldPosForItem(it){
+    return {
+      x: rawToWorld(it?.x || 0, 'x'),
+      y: rawToWorld(it?.y || 0, 'y'),
+    };
+  }
+
+  function clearSpatialIndex(){
+    state.spatialIndex.cells.clear();
+    state.spatialIndex.itemCellKey.clear();
+  }
+
+  function upsertItemInSpatialIndex(it){
+    if (!state.spatialIndex.enabled || !it) return;
+    const pos = getWorldPosForItem(it);
+    const key = spatialCellKeyFromWorld(pos.x, pos.y);
+    const prevKey = state.spatialIndex.itemCellKey.get(it.id);
+    if (prevKey && prevKey !== key){
+      const prevCell = state.spatialIndex.cells.get(prevKey);
+      if (prevCell){
+        prevCell.delete(it.id);
+        if (!prevCell.size) state.spatialIndex.cells.delete(prevKey);
+      }
+    }
+    if (!state.spatialIndex.cells.has(key)) state.spatialIndex.cells.set(key, new Set());
+    state.spatialIndex.cells.get(key).add(it.id);
+    state.spatialIndex.itemCellKey.set(it.id, key);
+  }
+
+  function removeItemFromSpatialIndex(itemId){
+    const key = state.spatialIndex.itemCellKey.get(itemId);
+    if (!key) return;
+    const cell = state.spatialIndex.cells.get(key);
+    if (cell){
+      cell.delete(itemId);
+      if (!cell.size) state.spatialIndex.cells.delete(key);
+    }
+    state.spatialIndex.itemCellKey.delete(itemId);
+  }
+
+  function rebuildSpatialIndex(){
+    clearSpatialIndex();
+    if (!state.spatialIndex.enabled) return;
+    for (const it of state.items || []) upsertItemInSpatialIndex(it);
+  }
+
+  function getSpatialCandidatesByWorldRect(minX, minY, maxX, maxY){
+    if (!state.spatialIndex.enabled || !state.spatialIndex.cells.size){
+      return state.items || [];
+    }
+    const size = Math.max(64, Number(state.spatialIndex.cellSize) || 2048);
+    const cminX = Math.floor(minX / size);
+    const cmaxX = Math.floor(maxX / size);
+    const cminY = Math.floor(minY / size);
+    const cmaxY = Math.floor(maxY / size);
+    const ids = new Set();
+    for (let cy = cminY; cy <= cmaxY; cy++){
+      for (let cx = cminX; cx <= cmaxX; cx++){
+        const cell = state.spatialIndex.cells.get(`${cx}:${cy}`);
+        if (!cell) continue;
+        for (const id of cell) ids.add(id);
+      }
+    }
+    if (!ids.size) return [];
+    const byId = new Map((state.items || []).map((it) => [it.id, it]));
+    return Array.from(ids).map((id) => byId.get(id)).filter(Boolean);
+  }
+
+  function getFilteredItems(){
+    const q = (searchEl.value || "").trim().toLowerCase();
+    const tf = typeFilterEl.value || "";
+    const key = `${state.itemsVersion}|${state.defLoaded ? 1 : 0}|${q}|${tf}`;
+    if (state.filteredItemsCache && state.filteredItemsKey === key) return state.filteredItemsCache;
+
+    const filtered = (state.items || []).filter(it => {
+      const def = getDefForItem(it);
+      const defType = def?.type ? String(def.type).toLowerCase() : "";
+      const tid = (it.kv.type_id || "").toString();
+      const name = (it.kv.name || it.kv.iai_name || "").toString();
+      const defName = def?.name ? String(def.name) : "";
+      const graphic = def?.graphic ? String(def.graphic) : "";
+
+      if (tf){
+        if (state.defLoaded){
+          if (defType !== tf) return false;
+        } else if (tid !== tf) return false;
+      }
+
+      if (!q) return true;
+      return (
+        tid.toLowerCase().includes(q) ||
+        name.toLowerCase().includes(q) ||
+        defName.toLowerCase().includes(q) ||
+        defType.toLowerCase().includes(q) ||
+        graphic.toLowerCase().includes(q)
+      );
+    });
+
+    state.filteredItemsKey = key;
+    state.filteredItemsCache = filtered;
+    return filtered;
   }
 
   function normalizeLogCategory(msg, explicitCategory = ""){
@@ -2766,7 +2935,7 @@
     if (attribVal > 0){ sec.kv.attrib = String(attribVal); lines.push(`  attrib ${attribVal}`); }
     sec.lines = lines;
     buildWaypointList();
-    refreshLiveMisWindow();
+    scheduleLiveMisRefresh();
   }
 
   function buildWaypointColorOptions(){
@@ -3061,8 +3230,14 @@
     liveMisText.innerHTML = html;
   }
 
-  function refreshLiveMisWindow(resetBaseline=false){
+  function refreshLiveMisWindow(resetBaseline=false, options = {}){
+    const force = !!options.force;
+    if (!force && !state.liveMisOpen){
+      state.liveMisDirty = true;
+      return;
+    }
     state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
+    state.liveMisDirty = false;
     if (misRealtimeConsoleEl){
       updateRealtimeChangesConsole(state.liveMisRawText, resetBaseline);
     }
@@ -3164,7 +3339,7 @@
   }
 
   function openLiveMisWindow(){
-    state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
+    refreshLiveMisWindow(false, { force: true });
     state.liveMisSearchTerm = "";
     state.liveMisSearchIndex = -1;
     state.liveMisOpen = true;
@@ -3340,7 +3515,7 @@
 
       buildGroupOptions();
       renderSectionList();
-      refreshLiveMisWindow();
+      scheduleLiveMisRefresh();
       if (state.modalOpen) renderItemWindow();
       return;
     }
@@ -3357,7 +3532,7 @@
       const prevTerrain = String(sec?.kv?.terrain || "").trim().toLowerCase();
       applyGeneralInfoSection(sec);
       renderSectionList();
-      refreshLiveMisWindow();
+      scheduleLiveMisRefresh();
       const nextTerrain = String(sec?.kv?.terrain || "").trim().toLowerCase();
       if (hasMisLoaded() && nextTerrain && nextTerrain !== prevTerrain){
         try{
@@ -3387,7 +3562,7 @@
     if (sec.kind === 'general_information') syncWeaponLoadoutsFromGeneral(sec);
 
     renderSectionList();
-    refreshLiveMisWindow();
+    scheduleLiveMisRefresh();
   }
 
   function deleteSectionBlock(){
@@ -3407,7 +3582,7 @@
     buildGroupOptions();
     renderList();
     draw();
-    refreshLiveMisWindow();
+    scheduleLiveMisRefresh();
   }
 
   function addSectionBlock(){
@@ -3547,37 +3722,6 @@
     renderList();
     draw();
     statusEl.textContent = `Select Markers: selected ${markers.length} marker(s) for waypoint ${waypointNumber}.`;
-  }
-
-  function getFilteredItems(){
-    const q = (searchEl.value || "").trim().toLowerCase();
-    const tf = typeFilterEl.value || "";
-
-    return state.items.filter(it => {
-      const def = getDefForItem(it);
-      const defType = def?.type ? String(def.type).toLowerCase() : "";
-      const tid = (it.kv.type_id || "").toString();
-      const name = (it.kv.name || it.kv.iai_name || "").toString();
-      const defName = def?.name ? String(def.name) : "";
-      const graphic = def?.graphic ? String(def.graphic) : "";
-
-      if (tf){
-        if (state.defLoaded){
-          if (defType !== tf) return false;
-        } else {
-          if (tid !== tf) return false;
-        }
-      }
-
-      if (!q) return true;
-      return (
-        tid.toLowerCase().includes(q) ||
-        name.toLowerCase().includes(q) ||
-        defName.toLowerCase().includes(q) ||
-        defType.toLowerCase().includes(q) ||
-        graphic.toLowerCase().includes(q)
-      );
-    });
   }
 
   function renderList(){
@@ -3882,11 +4026,12 @@
 
     updateAttribFromCoreControls(it);
 
-    refreshLiveMisWindow();
+    scheduleLiveMisRefresh();
 
     const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
     if (sec) sec.kv = { ...it.kv };
 
+    markItemsChanged({ structure: true });
     renderList();
     draw();
     if (state.modalOpen) renderItemWindow(); // atualiza Type/Graphic/Title se DEF mudou
@@ -3920,7 +4065,7 @@
 
     renderList();
     draw();
-    refreshLiveMisWindow();
+    scheduleLiveMisRefresh();
   }
 
   function closeModalOk(){
@@ -3933,7 +4078,7 @@
 
     renderList();
     draw();
-    refreshLiveMisWindow();
+    scheduleLiveMisRefresh();
   }
 
   modalOverlay.addEventListener("mousedown", (e) => {
@@ -3982,7 +4127,7 @@
     if (selectCreated) selectById(copy.id);
     if (refresh){
       renderItemWindow();
-      refreshLiveMisWindow();
+      scheduleLiveMisRefresh();
     }
     return copy;
   }
@@ -4041,6 +4186,7 @@
       });
       pastedItems.push(pasted);
     }
+    markItemsChanged({ structure: true });
     const pastedIds = pastedItems.map(it => it.id);
     state.selectedId = pastedIds[pastedIds.length - 1] ?? null;
     state.multiSelectedIds = new Set(pastedIds);
@@ -4048,7 +4194,7 @@
     updateWaypointMarkerCount(0);
     renderList();
     renderItemWindow();
-    refreshLiveMisWindow();
+    scheduleLiveMisRefresh();
 
     state.pastePlacementActive = false;
     state.pastePreviewWorld = null;
@@ -4077,21 +4223,24 @@
     if (!it) return;
     const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
     const copy = createPastedItemFrom(it, sec || null, { offset: true });
+    markItemsChanged({ structure: true });
     statusEl.textContent = `Duplicado: #${it.id} -> #${copy.id}`;
   });
 
   function deleteSelectedItem(){
     const it = getSelected();
     if (!it) return;
+    removeItemFromSpatialIndex(it.id);
     state.items = state.items.filter(x => x.id !== it.id);
     state.sectionBlocks = state.sectionBlocks.filter(s => !(s.kind === "item" && s.start === it.start));
+    markItemsChanged({ structure: true });
     state.selectedId = null;
     state.multiSelectedIds.clear();
     closeItemContextMenu();
     if (state.modalOpen) closeModalOk();
     renderList();
     draw();
-    refreshLiveMisWindow();
+    scheduleLiveMisRefresh();
     statusEl.textContent = `Apagado: #${it.id}`;
   }
 
@@ -4114,8 +4263,8 @@
     statusEl.textContent = `Camera movida para X=${x.toFixed(2)} Y=${y.toFixed(2)} Z=${z.toFixed(2)}`;
   });
 
-  searchEl.addEventListener("input", () => { renderList(); draw(); });
-  typeFilterEl.addEventListener("change", () => { renderList(); draw(); });
+  searchEl.addEventListener("input", () => { invalidateFilteredItemsCache(); renderList(); draw(); });
+  typeFilterEl.addEventListener("change", () => { invalidateFilteredItemsCache(); renderList(); draw(); });
 
   sectionCloseBtn.addEventListener("click", closeSectionEditor);
   sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
@@ -4230,6 +4379,7 @@
     state.rawText = "";
     state.items = [];
     state.sectionBlocks = [];
+    markItemsChanged({ structure: true });
     state.selectedId = null;
     state.multiSelectedIds.clear();
     state.filename = "";
@@ -4242,7 +4392,7 @@
     fileMisEl.value = "";
     renderList();
     draw();
-    refreshLiveMisWindow(true);
+    refreshLiveMisWindow(true, { force: true });
   }
 
   async function saveCurrentMap(options = {}){
@@ -4558,6 +4708,7 @@
     const parsed = parseMIS(text);
     state.items = parsed.items;
     state.sectionBlocks = parsed.sectionBlocks;
+    markItemsChanged({ structure: true });
     state.selectedId = null;
     state.multiSelectedIds.clear();
     state.itemClipboard = null;
@@ -4576,7 +4727,7 @@
     fitView();
     renderList();
     draw();
-    refreshLiveMisWindow(true);
+    refreshLiveMisWindow(true, { force: true });
   }
 
   fileMisEl.addEventListener("change", async (e) => {
@@ -4835,11 +4986,47 @@
     return draws; }
 
   function drawItems(PV){
-    const items=getFilteredItems(); if(!items.length) return;
-    const verts=[]; for(const it of items) verts.push(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z'));
-    gl.useProgram(itemProg); gl.bindBuffer(gl.ARRAY_BUFFER,itemVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.DYNAMIC_DRAW); gl.enableVertexAttribArray(iaPos); gl.vertexAttribPointer(iaPos,3,gl.FLOAT,false,0,0); gl.uniformMatrix4fv(iuMVP,false,PV);
-    for(let i=0;i<items.length;i++){ const it=items[i], sel=(it.id===state.selectedId||state.multiSelectedIds.has(it.id)), wp=state.selectedWaypointMarkerIds.has(it.id); if(sel) gl.uniform4f(iuColor,0.35,0.45,0.95,1); else if(wp) gl.uniform4f(iuColor,1.0,0.8,0.2,1); else gl.uniform4f(iuColor,0.88,0.9,1.0,1); gl.uniform1f(iuPointSize,sel?11:8); gl.drawArrays(gl.POINTS,i,1); }
-    if(state.pastePlacementActive&&state.pastePreviewWorld&&state.itemClipboardItems.length){ const p=[]; for(const entry of state.itemClipboardItems) p.push(state.pastePreviewWorld.x+entry.dx,state.pastePreviewWorld.y+entry.dy,state.pastePreviewWorld.z||0); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(p),gl.DYNAMIC_DRAW); gl.uniform4f(iuColor,0.34,0.83,0.55,0.9); gl.uniform1f(iuPointSize,13); gl.drawArrays(gl.POINTS,0,p.length/3); }
+    const items = getFilteredItems();
+    if (!items.length && !(state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length)) return;
+
+    const groups = {
+      normal: [],
+      waypoint: [],
+      selected: [],
+    };
+
+    for (const it of items){
+      const x = rawToWorld(it.x,'x');
+      const y = rawToWorld(it.y,'y');
+      const z = rawToWorld(it.z||0,'z');
+      if (it.id===state.selectedId||state.multiSelectedIds.has(it.id)) groups.selected.push(x,y,z);
+      else if (state.selectedWaypointMarkerIds.has(it.id)) groups.waypoint.push(x,y,z);
+      else groups.normal.push(x,y,z);
+    }
+
+    gl.useProgram(itemProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER,itemVB);
+    gl.enableVertexAttribArray(iaPos);
+    gl.vertexAttribPointer(iaPos,3,gl.FLOAT,false,0,0);
+    gl.uniformMatrix4fv(iuMVP,false,PV);
+
+    function drawGroup(buffer, color, size){
+      if (!buffer.length) return;
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(buffer),gl.DYNAMIC_DRAW);
+      gl.uniform4f(iuColor,color[0],color[1],color[2],color[3]);
+      gl.uniform1f(iuPointSize,size);
+      gl.drawArrays(gl.POINTS,0,buffer.length/3);
+    }
+
+    drawGroup(groups.normal, [0.88,0.9,1.0,1], 8);
+    drawGroup(groups.waypoint, [1.0,0.8,0.2,1], 8);
+    drawGroup(groups.selected, [0.35,0.45,0.95,1], 11);
+
+    if(state.pastePlacementActive&&state.pastePreviewWorld&&state.itemClipboardItems.length){
+      const p=[];
+      for(const entry of state.itemClipboardItems) p.push(state.pastePreviewWorld.x+entry.dx,state.pastePreviewWorld.y+entry.dy,state.pastePreviewWorld.z||0);
+      drawGroup(p, [0.34,0.83,0.55,0.9], 13);
+    }
   }
 
   function resolveItemGraphic(it){
@@ -5034,10 +5221,6 @@
     return { entries: out, stats };
   }
 
-  function buildGlbSyncSignature(entries){
-    return entries.map(({ it, graphic }) => `${it.id}:${graphic}`).join("|");
-  }
-
   async function loadGraphicTemplate(graphic){
     const key = String(graphic || "").trim();
     if (!key) return null;
@@ -5146,7 +5329,6 @@
     state.glb.syncPromise = (async () => {
       const started = performance.now();
       const { entries, stats } = getRenderableGlbEntries();
-      const signature = buildGlbSyncSignature(entries);
       const wantedIds = new Set(entries.map(x => x.it.id));
 
       for (const [itemId, obj] of state.glb.itemInstances.entries()){
@@ -5216,8 +5398,8 @@
         addLog(`[3d_items] itens sem_graphic_def_item (${syncReport.itemsMissingGraphicInDefAndItem.length}): ${formatGlbStatItems(syncReport.itemsMissingGraphicInDefAndItem)}`);
       }
 
-      state.glb.lastSyncSignature = signature;
       state.glb.structureDirty = false;
+      state.glb.transformDirtyIds.clear();
       state.glb.syncCount += 1;
       state.glb.lastSyncMs = performance.now() - started;
     })();
@@ -5231,16 +5413,20 @@
 
   function updateGlbTransformsFromState(){
     if (!state.glb.ready) return;
-    const { entries } = getRenderableGlbEntries();
-    const signature = buildGlbSyncSignature(entries);
-    if (signature !== state.glb.lastSyncSignature) state.glb.structureDirty = true;
+    if (state.glb.structureDirty && !state.glb.syncPromise){
+      syncGlbItems();
+      return;
+    }
+    if (!state.glb.transformDirtyIds.size) return;
 
-    for (const { it, graphic } of entries){
-      const instance = state.glb.itemInstances.get(it.id);
-      if (!instance || instance.userData.graphic !== graphic) continue;
+    const byId = new Map((state.items || []).map((it) => [it.id, it]));
+    for (const itemId of Array.from(state.glb.transformDirtyIds.values())){
+      const it = byId.get(itemId);
+      const instance = state.glb.itemInstances.get(itemId);
+      if (!it || !instance) continue;
       applyItemTransformToObject(instance, it);
     }
-    if (state.glb.structureDirty && !state.glb.syncPromise) syncGlbItems();
+    state.glb.transformDirtyIds.clear();
   }
 
   function drawGlbItems(P, V){
@@ -5372,11 +5558,13 @@
     applyItemOrientationToKv(it);
     const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
     if (sec) sec.kv = { ...it.kv };
-    refreshLiveMisWindow();
-    renderList();
+    markItemsChanged({ structure: false });
+    markItemTransformDirty(it.id);
+    scheduleLiveMisRefresh();
+    scheduleRenderList();
   }
 
-  function pickItemAt(sx,sy){ const items=getFilteredItems(); let best=null,bestD2=Infinity; for(const it of items){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
+  function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
   function getRenderWaterHeightRaw(){
@@ -5654,8 +5842,8 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   });
   cv.addEventListener("contextmenu", (e) => { e.preventDefault(); const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAtCanvas(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
   cv.addEventListener("dblclick", (e) => { const rect=cv.getBoundingClientRect(); const picked=pickItemAtCanvas(e.clientX-rect.left,e.clientY-rect.top); if(picked){ selectById(picked.id); openModal(); } });
-  cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.pastePlacementActive){ const z=state.selectedId?rawToWorld(getSelected()?.z||0,'z'):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=rawToWorld((active[0]?.z)||0,'z'); const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; it.x=worldToRaw(rawToWorld(it.x,'x')+dx,'x'); it.y=worldToRaw(rawToWorld(it.y,'y')+dy,'y'); it.kv.position=`${it.x} ${it.y} ${it.z}`; } state.dragAnchor=nowW; renderList(); refreshLiveMisWindow(); } state.lastMouse={sx,sy}; });
-  function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; if(had){ const ids=[]; for(const it of getFilteredItems()){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); } }
+  cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.pastePlacementActive){ const z=state.selectedId?rawToWorld(getSelected()?.z||0,'z'):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=rawToWorld((active[0]?.z)||0,'z'); const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; it.x=worldToRaw(rawToWorld(it.x,'x')+dx,'x'); it.y=worldToRaw(rawToWorld(it.y,'y')+dy,'y'); it.kv.position=`${it.x} ${it.y} ${it.z}`; markItemTransformDirty(it.id); upsertItemInSpatialIndex(it);} markItemsChanged({ structure: false }); state.dragAnchor=nowW; scheduleRenderList(); scheduleLiveMisRefresh(); } state.lastMouse={sx,sy}; });
+  function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; if(had){ const worldA=screenToWorld(x0,y0,0); const worldB=screenToWorld(x1,y1,0); const minX=Math.min(worldA.x,worldB.x), maxX=Math.max(worldA.x,worldB.x), minY=Math.min(worldA.y,worldB.y), maxY=Math.max(worldA.y,worldB.y); const candidates=getSpatialCandidatesByWorldRect(minX,minY,maxX,maxY); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); const ids=[]; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); refreshLiveMisWindow(false, { force: true }); } }
   cv.addEventListener('mouseup',stopDrag); cv.addEventListener('mouseleave',stopDrag);
   cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const sp=document.getElementById('speed'); if(!sp) return; const cur=parseFloat(sp.value||'35'); const min=parseFloat(sp.min||'5'); const max=parseFloat(sp.max||'600'); const step=parseFloat(sp.step||'5'); const next=Math.max(min, Math.min(max, cur*Math.exp(-e.deltaY*0.001))); const snapped=Math.round(next/step)*step; sp.value=String(Math.max(min,Math.min(max,snapped))); },{passive:false});
 
