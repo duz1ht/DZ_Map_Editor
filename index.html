@@ -4865,6 +4865,19 @@
     obj.rotation.x = pitchRad;
   }
 
+  function syncObjectTransformToItem(obj, it){
+    if (!obj || !it) return;
+    it.x = worldToRaw(obj.position.x, 'x');
+    it.y = worldToRaw(obj.position.y, 'y');
+    it.z = worldToRaw(obj.position.z, 'z');
+
+    const yawDeg = obj.rotation.z * 180 / Math.PI;
+    const pitchWithForwardCorrectionDeg = obj.rotation.x * 180 / Math.PI;
+    it.heading = yawDeg;
+    // Scene node stores pitch with a +90° X-axis correction; remove it when writing back to MIS entity.
+    it.pitch = pitchWithForwardCorrectionDeg - 90;
+  }
+
   async function ensureGlbRendererReady(){
     if (state.glb.ready) return true;
     if (state.glb.initPromise) return state.glb.initPromise;
