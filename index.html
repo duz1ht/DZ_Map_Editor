@@ -5891,14 +5891,19 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   setRenderMode('C');
 
   cv.addEventListener("mousedown", (e) => {
-    if (state.modalOpen) return; closeItemContextMenu(); const rect = cv.getBoundingClientRect(); const sx = e.clientX - rect.left; const sy = e.clientY - rect.top; if (e.button !== 0) return; state.cameraLookActive = true;
+    if (state.modalOpen) return; closeItemContextMenu(); const rect = cv.getBoundingClientRect(); const sx = e.clientX - rect.left; const sy = e.clientY - rect.top; if (e.button !== 0) return; state.cameraLookActive = false;
     if (!state.pastePlacementActive){
       const gizmoMode = pickGizmoModeAt(e.clientX, e.clientY);
       if (gizmoMode && state.selectedId != null){
-        state.cameraLookActive = false; state.gizmoDrag = { mode: gizmoMode, lastX: e.clientX, lastY: e.clientY, itemId: state.selectedId };
+        state.gizmoDrag = { mode: gizmoMode, lastX: e.clientX, lastY: e.clientY, itemId: state.selectedId };
         state.lastMouse = { sx, sy };
         return;
       }
+    }
+    if (document.pointerLockElement===cv && !state.pastePlacementActive && !e.ctrlKey && !e.shiftKey){
+      state.cameraLookActive = true;
+      state.lastMouse = { sx, sy };
+      return;
     }
     if (state.pastePlacementActive){ applyPasteAtWorld(screenToWorld(sx, sy, state.pastePreviewWorld?.z || 0)); state.lastMouse = { sx, sy }; return; }
     const picked = pickItemAtCanvas(sx,sy);
