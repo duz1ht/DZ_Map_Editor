@@ -4923,6 +4923,9 @@
     for (const [level, obj] of allowedEntries){
       lod.addLevel(obj, lodDistanceForLevel(level));
     }
+    for (const obj of orderedNodes){
+      if (obj.parent === root) root.remove(obj);
+    }
     root.add(lod);
   }
 
