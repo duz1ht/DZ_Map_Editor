@@ -5553,7 +5553,13 @@
       y: rawToWorld(it.y,'y'),
       z: rawToWorld(it.z||0,'z')
     };
-    const gizmoScale = 0.5;
+    const gizmoMinScale = 0.22;
+    const gizmoMaxScale = 0.5;
+    const gizmoNearDist = 180;
+    const gizmoFarDist = 1800;
+    const camDist = vec3Len(vec3Sub(center, cam.pos));
+    const t = Math.max(0, Math.min(1, (camDist - gizmoNearDist) / Math.max(1, gizmoFarDist - gizmoNearDist)));
+    const gizmoScale = gizmoMinScale + (gizmoMaxScale - gizmoMinScale) * t;
     const axisLen = 80 * gizmoScale;
     const xTip = worldToScreen(center.x + axisLen, center.y, center.z);
     const yTip = worldToScreen(center.x, center.y + axisLen, center.z);
