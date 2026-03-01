@@ -249,35 +249,14 @@
       white-space:pre;
       pointer-events:none;
     }
-    #itemGizmo{
+    #gizmoCanvas{
       position:absolute;
+      inset:0;
       z-index:7;
-      display:none;
-      gap:6px;
-      transform:translate(-50%,-50%);
       pointer-events:auto;
+      width:100%;
+      height:100%;
     }
-    #itemGizmo.show{ display:flex; }
-    .gizmoHandle{
-      width:22px;
-      height:22px;
-      border-radius:50%;
-      border:1px solid rgba(255,255,255,.45);
-      background:rgba(18,26,42,.9);
-      color:#e9f0ff;
-      font-size:11px;
-      line-height:1;
-      cursor:grab;
-      display:grid;
-      place-items:center;
-      user-select:none;
-    }
-    .gizmoHandle:active{ cursor:grabbing; }
-    .gizmoMoveX{ border-color:#ff7b7b; }
-    .gizmoMoveY{ border-color:#88ff88; }
-    .gizmoMoveZ{ border-color:#88aaff; }
-    .gizmoYaw{ border-color:#ffd166; }
-    .gizmoPitch{ border-color:#7ce4ff; }
 
     .hint{
       color:var(--text-muted);
@@ -892,13 +871,7 @@
     <div id="canvasWrap">
       <canvas id="cv"></canvas>
       <div id="camDebug"></div>
-      <div id="itemGizmo" aria-hidden="true">
-        <button class="gizmoHandle gizmoMoveX" data-gizmo-mode="moveX" title="Move X">X</button>
-        <button class="gizmoHandle gizmoMoveY" data-gizmo-mode="moveY" title="Move Y">Y</button>
-        <button class="gizmoHandle gizmoMoveZ" data-gizmo-mode="moveZ" title="Move Z">Z</button>
-        <button class="gizmoHandle gizmoYaw" data-gizmo-mode="yaw" title="Yaw">Yw</button>
-        <button class="gizmoHandle gizmoPitch" data-gizmo-mode="pitch" title="Pitch">Pt</button>
-      </div>
+      <canvas id="gizmoCanvas" aria-hidden="true"></canvas>
 
       <div id="sectionOverlay" aria-hidden="true">
         <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
@@ -1329,6 +1302,7 @@
     pastePlacementActive: false,
     pastePreviewWorld: null,
     gizmoDrag: null,
+    gizmoVisual: null,
 
     gameStrings: new Map(),
     weaponDefs: new Map(),
@@ -4760,7 +4734,8 @@
   // Canvas (WebGL terrain viewer + editor items)
   const cv = document.getElementById("cv");
   const camDebugEl = document.getElementById("camDebug");
-  const itemGizmoEl = document.getElementById("itemGizmo");
+  const gizmoCanvasEl = document.getElementById("gizmoCanvas");
+  const gizmoCtx = gizmoCanvasEl?.getContext("2d");
   const gl = cv.getContext('webgl',{antialias:true, alpha:false});
   if(!gl){ statusEl.textContent = "WebGL indisponível."; throw new Error('WebGL not available'); }
   const extUInt=gl.getExtension('OES_element_index_uint');
@@ -5557,22 +5532,80 @@
   }
 
   function updateItemGizmo(){
+    if (!gizmoCtx || !gizmoCanvasEl) return;
+    const rect = cv.getBoundingClientRect();
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+    gizmoCtx.setTransform(dpr,0,0,dpr,0,0);
+    gizmoCtx.clearRect(0,0,rect.width,rect.height);
+
     const it = getSelected();
     if (!it || state.modalOpen){
-      itemGizmoEl.classList.remove("show");
-      itemGizmoEl.setAttribute("aria-hidden", "true");
+      state.gizmoVisual = null;
       return;
     }
-    const p = worldToScreen(rawToWorld(it.x,'x'), rawToWorld(it.y,'y'), rawToWorld(it.z||0,'z'));
-    if (!p.visible){
-      itemGizmoEl.classList.remove("show");
-      itemGizmoEl.setAttribute("aria-hidden", "true");
-      return;
+
+    const center = {
+      x: rawToWorld(it.x,'x'),
+      y: rawToWorld(it.y,'y'),
+      z: rawToWorld(it.z||0,'z')
+    };
+    const axisLen = 80;
+    const xTip = worldToScreen(center.x + axisLen, center.y, center.z);
+    const yTip = worldToScreen(center.x, center.y + axisLen, center.z);
+    const zTip = worldToScreen(center.x, center.y, center.z + axisLen);
+    const c = worldToScreen(center.x, center.y, center.z);
+    if (!c.visible){ state.gizmoVisual = null; return; }
+
+    const yawAnchor = worldToScreen(center.x + 55, center.y, center.z);
+    const pitchAnchor = worldToScreen(center.x, center.y, center.z + 55);
+    const yawRadius = yawAnchor.visible ? Math.max(22, Math.hypot(yawAnchor.sx - c.sx, yawAnchor.sy - c.sy)) : 30;
+    const pitchRadius = pitchAnchor.visible ? Math.max(18, Math.hypot(pitchAnchor.sx - c.sx, pitchAnchor.sy - c.sy)) : 24;
+
+    function drawAxis(tip, color){
+      if (!tip.visible) return;
+      gizmoCtx.strokeStyle = color;
+      gizmoCtx.lineWidth = 2;
+      gizmoCtx.beginPath();
+      gizmoCtx.moveTo(c.sx,c.sy);
+      gizmoCtx.lineTo(tip.sx,tip.sy);
+      gizmoCtx.stroke();
+      gizmoCtx.fillStyle = color;
+      gizmoCtx.beginPath();
+      gizmoCtx.arc(tip.sx, tip.sy, 6, 0, Math.PI*2);
+      gizmoCtx.fill();
     }
-    itemGizmoEl.style.left = `${p.sx}px`;
-    itemGizmoEl.style.top = `${p.sy}px`;
-    itemGizmoEl.classList.add("show");
-    itemGizmoEl.setAttribute("aria-hidden", "false");
+
+    drawAxis(xTip, '#ff6b6b');
+    drawAxis(yTip, '#6bff8f');
+    drawAxis(zTip, '#77a8ff');
+
+    gizmoCtx.strokeStyle = '#ffd166';
+    gizmoCtx.lineWidth = 2;
+    gizmoCtx.beginPath();
+    gizmoCtx.arc(c.sx, c.sy, yawRadius, 0, Math.PI * 2);
+    gizmoCtx.stroke();
+
+    gizmoCtx.strokeStyle = '#7ce4ff';
+    gizmoCtx.lineWidth = 2;
+    gizmoCtx.beginPath();
+    gizmoCtx.ellipse(c.sx, c.sy, pitchRadius * 0.55, pitchRadius, 0, 0, Math.PI * 2);
+    gizmoCtx.stroke();
+
+    gizmoCtx.fillStyle = '#ffffff';
+    gizmoCtx.beginPath();
+    gizmoCtx.arc(c.sx, c.sy, 4, 0, Math.PI*2);
+    gizmoCtx.fill();
+
+    state.gizmoVisual = {
+      center: { sx: c.sx, sy: c.sy },
+      handles: {
+        moveX: xTip.visible ? { sx: xTip.sx, sy: xTip.sy, r: 10 } : null,
+        moveY: yTip.visible ? { sx: yTip.sx, sy: yTip.sy, r: 10 } : null,
+        moveZ: zTip.visible ? { sx: zTip.sx, sy: zTip.sy, r: 10 } : null,
+        yaw: { sx: c.sx, sy: c.sy, r: yawRadius, t: 8, ring: true },
+        pitch: { sx: c.sx, sy: c.sy, rx: pitchRadius * 0.55, ry: pitchRadius, t: 7, ellipse: true }
+      }
+    };
   }
 
   function commitGizmoUpdate(it){
@@ -5761,7 +5794,7 @@
 
 
 
-  function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); gl.viewport(0,0,cv.width,cv.height); }
+  function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); gl.viewport(0,0,cv.width,cv.height); if(gizmoCanvasEl){ gizmoCanvasEl.width=Math.floor(r.width*dpr); gizmoCanvasEl.height=Math.floor(r.height*dpr); } }
 
   function fitView(){
     const items = state.items || [];
@@ -5870,15 +5903,41 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   cv.addEventListener('mouseup',stopDrag); cv.addEventListener('mouseleave',stopDrag);
   cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const sp=document.getElementById('speed'); if(!sp) return; const cur=parseFloat(sp.value||'35'); const min=parseFloat(sp.min||'5'); const max=parseFloat(sp.max||'600'); const step=parseFloat(sp.step||'5'); const next=Math.max(min, Math.min(max, cur*Math.exp(-e.deltaY*0.001))); const snapped=Math.round(next/step)*step; sp.value=String(Math.max(min,Math.min(max,snapped))); },{passive:false});
 
-  itemGizmoEl.addEventListener("mousedown", (e) => {
-    const handle = e.target.closest("[data-gizmo-mode]");
-    if (!handle) return;
+  function pickGizmoModeAt(clientX, clientY){
+    if (!state.gizmoVisual) return null;
+    const rect = cv.getBoundingClientRect();
+    const sx = clientX - rect.left;
+    const sy = clientY - rect.top;
+    const h = state.gizmoVisual.handles || {};
+
+    function dist(a,b,c,d){ return Math.hypot(a-c,b-d); }
+    for (const mode of ["moveX","moveY","moveZ"]){
+      const hh = h[mode];
+      if (!hh) continue;
+      if (dist(sx,sy,hh.sx,hh.sy) <= (hh.r || 10)) return mode;
+    }
+    if (h.yaw){
+      const d = dist(sx,sy,h.yaw.sx,h.yaw.sy);
+      if (Math.abs(d - h.yaw.r) <= (h.yaw.t || 8)) return "yaw";
+    }
+    if (h.pitch){
+      const nx = (sx - h.pitch.sx) / Math.max(1, h.pitch.rx);
+      const ny = (sy - h.pitch.sy) / Math.max(1, h.pitch.ry);
+      const v = Math.abs((nx*nx + ny*ny) - 1);
+      if (v <= 0.22) return "pitch";
+    }
+    return null;
+  }
+
+  gizmoCanvasEl?.addEventListener("mousedown", (e) => {
     const it = getSelected();
     if (!it) return;
+    const mode = pickGizmoModeAt(e.clientX, e.clientY);
+    if (!mode) return;
     e.preventDefault();
     e.stopPropagation();
     state.gizmoDrag = {
-      mode: handle.dataset.gizmoMode,
+      mode,
       lastX: e.clientX,
       lastY: e.clientY,
       itemId: it.id,
