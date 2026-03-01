@@ -3962,8 +3962,11 @@
       copy.y += 50000;
     }
     if (worldPosition){
-      copy.x = worldToRaw(worldPosition.x,'x');
-      copy.y = worldToRaw(worldPosition.y,'y');
+      const copyWorld = rawPosToWorld(copy.x, copy.y, copy.z || 0);
+      const rawPos = worldPosToRaw(worldPosition.x, worldPosition.y, copyWorld.z);
+      copy.x = rawPos.x;
+      copy.y = rawPos.y;
+      copy.z = rawPos.z;
     }
     if (copy.kv.position) copy.kv.position = `${copy.x} ${copy.y} ${copy.z}`;
     state.items.push(copy);
@@ -4000,8 +4003,8 @@
       return {
         item: structuredClone(it),
         section: sec ? structuredClone(sec) : null,
-        dx: rawToWorld(it.x,'x') - rawToWorld(anchor.x,'x'),
-        dy: rawToWorld(it.y,'y') - rawToWorld(anchor.y,'y')
+        dx: rawPosToWorld(it.x,it.y,it.z||0).x - rawPosToWorld(anchor.x,anchor.y,anchor.z||0).x,
+        dy: rawPosToWorld(it.x,it.y,it.z||0).y - rawPosToWorld(anchor.x,anchor.y,anchor.z||0).y
       };
     });
 
@@ -4648,20 +4651,24 @@
   const MIS_POS_SCALE=65536;
   const THREE_MODULE_URL = "https://esm.sh/three@0.152.2";
   const GLTF_LOADER_URL = "https://esm.sh/three@0.152.2/examples/jsm/loaders/GLTFLoader.js";
-  function mainAreaCenterX(){ return originWorldX() + terrainSpanX()*0.5; }
-  function mainAreaCenterY(){ return originWorldY() + terrainSpanY()*0.5; }
-  function rawToWorld(v, axis='z'){
-    const n=(Number(v)||0)/MIS_POS_SCALE;
-    if(axis==='x') return n + mainAreaCenterX();
-    if(axis==='y') return n + mainAreaCenterY();
-    return n;
+  function rawPosToWorld(x, y, z = 0){
+    const rx=(Number(x)||0)/MIS_POS_SCALE;
+    const ry=(Number(y)||0)/MIS_POS_SCALE;
+    const rz=(Number(z)||0)/MIS_POS_SCALE;
+    return { x: rx, y: rz, z: -ry };
   }
-  function worldToRaw(v, axis='z'){
-    const n=Number(v)||0;
-    if(axis==='x') return Math.round((n-mainAreaCenterX())*MIS_POS_SCALE);
-    if(axis==='y') return Math.round((n-mainAreaCenterY())*MIS_POS_SCALE);
-    return Math.round(n*MIS_POS_SCALE);
+  function worldPosToRaw(x, y, z = 0){
+    const wx=Number(x)||0;
+    const wy=Number(y)||0;
+    const wz=Number(z)||0;
+    return {
+      x: Math.round(wx*MIS_POS_SCALE),
+      y: Math.round(-wz*MIS_POS_SCALE),
+      z: Math.round(wy*MIS_POS_SCALE)
+    };
   }
+  function rawToWorld(v){ return (Number(v)||0)/MIS_POS_SCALE; }
+  function worldToRaw(v){ return Math.round((Number(v)||0)*MIS_POS_SCALE); }
   let sectorCount=8, terrainOrigin={x:0,y:0}, wrapX=1, wrapY=1, sectors=null, lastDepth=null, lastImg=null, loadedTrnName=null;
   let trnInfo={colormap:null,detailmap:null,polydata:null,tilestrip:null,charmap:null,foliagemap:null,waterHeight:null};
   let texColor=null, texHeight=null, texDelta=null; let meshSector=[null,null,null,null,null];
@@ -4838,7 +4845,7 @@
 
   function drawItems(PV){
     const items=getFilteredItems(); if(!items.length) return;
-    const verts=[]; for(const it of items) verts.push(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z'));
+    const verts=[]; for(const it of items){ const wp=rawPosToWorld(it.x,it.y,it.z||0); verts.push(wp.x,wp.y,wp.z); }
     gl.useProgram(itemProg); gl.bindBuffer(gl.ARRAY_BUFFER,itemVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.DYNAMIC_DRAW); gl.enableVertexAttribArray(iaPos); gl.vertexAttribPointer(iaPos,3,gl.FLOAT,false,0,0); gl.uniformMatrix4fv(iuMVP,false,PV);
     for(let i=0;i<items.length;i++){ const it=items[i], sel=(it.id===state.selectedId||state.multiSelectedIds.has(it.id)), wp=state.selectedWaypointMarkerIds.has(it.id); if(sel) gl.uniform4f(iuColor,0.35,0.45,0.95,1); else if(wp) gl.uniform4f(iuColor,1.0,0.8,0.2,1); else gl.uniform4f(iuColor,0.88,0.9,1.0,1); gl.uniform1f(iuPointSize,sel?11:8); gl.drawArrays(gl.POINTS,i,1); }
     if(state.pastePlacementActive&&state.pastePreviewWorld&&state.itemClipboardItems.length){ const p=[]; for(const entry of state.itemClipboardItems) p.push(state.pastePreviewWorld.x+entry.dx,state.pastePreviewWorld.y+entry.dy,state.pastePreviewWorld.z||0); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(p),gl.DYNAMIC_DRAW); gl.uniform4f(iuColor,0.34,0.83,0.55,0.9); gl.uniform1f(iuPointSize,13); gl.drawArrays(gl.POINTS,0,p.length/3); }
@@ -4852,14 +4859,10 @@
 
   function applyItemTransformToObject(obj, it){
     if (!obj || !it) return;
-    obj.position.set(
-      rawToWorld(it.x,'x'),
-      rawToWorld(it.y,'y'),
-      rawToWorld(it.z||0,'z')
-    );
-    const yawRad = (Number(it.heading) || 0) * Math.PI / 180;
-    const pitchCalibratedDeg = (Number(it.pitch) || 0) + 90;
-    const pitchRad = pitchCalibratedDeg * Math.PI / 180;
+    const wp = rawPosToWorld(it.x,it.y,it.z||0);
+    obj.position.set(wp.x, wp.y, wp.z);
+    const yawRad = ((-(Number(it.heading) || 0)) + 180) * Math.PI / 180;
+    const pitchRad = (-(Number(it.pitch) || 0)) * Math.PI / 180;
     obj.rotation.order = "ZXY";
     obj.rotation.z = yawRad;
     obj.rotation.x = pitchRad;
@@ -5281,7 +5284,8 @@
       itemGizmoEl.setAttribute("aria-hidden", "true");
       return;
     }
-    const p = worldToScreen(rawToWorld(it.x,'x'), rawToWorld(it.y,'y'), rawToWorld(it.z||0,'z'));
+    const wp = rawPosToWorld(it.x,it.y,it.z||0);
+    const p = worldToScreen(wp.x, wp.y, wp.z);
     if (!p.visible){
       itemGizmoEl.classList.remove("show");
       itemGizmoEl.setAttribute("aria-hidden", "true");
@@ -5303,7 +5307,7 @@
     renderList();
   }
 
-  function pickItemAt(sx,sy){ const items=getFilteredItems(); let best=null,bestD2=Infinity; for(const it of items){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
+  function pickItemAt(sx,sy){ const items=getFilteredItems(); let best=null,bestD2=Infinity; for(const it of items){ const wp=rawPosToWorld(it.x,it.y,it.z||0); const p=worldToScreen(wp.x,wp.y,wp.z); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
   function getRenderWaterHeightRaw(){
@@ -5492,9 +5496,10 @@
     }
     let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,maxZ=0;
     for (const it of items){
-      minX=Math.min(minX,rawToWorld(it.x||0,'x')); maxX=Math.max(maxX,rawToWorld(it.x||0,'x'));
-      minY=Math.min(minY,rawToWorld(it.y||0,'y')); maxY=Math.max(maxY,rawToWorld(it.y||0,'y'));
-      maxZ=Math.max(maxZ,rawToWorld(it.z||0,'z'));
+      const wp=rawPosToWorld(it.x||0,it.y||0,it.z||0);
+      minX=Math.min(minX,wp.x); maxX=Math.max(maxX,wp.x);
+      minY=Math.min(minY,wp.y); maxY=Math.max(maxY,wp.y);
+      maxZ=Math.max(maxZ,wp.z);
     }
     const cx=(minX+maxX)*0.5;
     const cy=(minY+maxY)*0.5;
@@ -5575,14 +5580,14 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     if (state.modalOpen) return; closeItemContextMenu(); const rect = cv.getBoundingClientRect(); const sx = e.clientX - rect.left; const sy = e.clientY - rect.top; if (e.button !== 0) return;
     if (state.pastePlacementActive){ applyPasteAtWorld(screenToWorld(sx, sy, state.pastePreviewWorld?.z || 0)); state.lastMouse = { sx, sy }; return; }
     const picked = pickItemAtCanvas(sx,sy);
-    if (picked){ if (e.ctrlKey){ if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id); else state.multiSelectedIds.add(picked.id); state.selectedId = picked.id; renderList(); } else selectById(picked.id); state.draggingItem = e.shiftKey; if (state.draggingItem) state.dragAnchor = screenToWorld(sx, sy, rawToWorld(picked.z||0,'z')); }
+    if (picked){ if (e.ctrlKey){ if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id); else state.multiSelectedIds.add(picked.id); state.selectedId = picked.id; renderList(); } else selectById(picked.id); state.draggingItem = e.shiftKey; if (state.draggingItem){ const pickedW=rawPosToWorld(picked.x,picked.y,picked.z||0); state.dragAnchor = screenToWorld(sx, sy, pickedW.z); } }
     else { state.draggingItem=false; state.boxSelecting=true; state.boxSelectAdditive=e.ctrlKey; state.boxStart={sx,sy}; state.boxCurrent={sx,sy}; if(!e.ctrlKey){state.selectedId=null; state.multiSelectedIds.clear();} renderList(); }
     state.lastMouse={sx,sy};
   });
   cv.addEventListener("contextmenu", (e) => { e.preventDefault(); const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAtCanvas(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
   cv.addEventListener("dblclick", (e) => { const rect=cv.getBoundingClientRect(); const picked=pickItemAtCanvas(e.clientX-rect.left,e.clientY-rect.top); if(picked){ selectById(picked.id); openModal(); } });
-  cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.pastePlacementActive){ const z=state.selectedId?rawToWorld(getSelected()?.z||0,'z'):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=rawToWorld((active[0]?.z)||0,'z'); const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; it.x=worldToRaw(rawToWorld(it.x,'x')+dx,'x'); it.y=worldToRaw(rawToWorld(it.y,'y')+dy,'y'); it.kv.position=`${it.x} ${it.y} ${it.z}`; } state.dragAnchor=nowW; renderList(); refreshLiveMisWindow(); } state.lastMouse={sx,sy}; });
-  function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; if(had){ const ids=[]; for(const it of getFilteredItems()){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); } }
+  cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.pastePlacementActive){ const selected=getSelected(); const z=selected?rawPosToWorld(selected.x,selected.y,selected.z||0).z:0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=active.length?rawPosToWorld(active[0].x,active[0].y,active[0].z||0).z:0; const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; const curW=rawPosToWorld(it.x,it.y,it.z||0); const nextRaw=worldPosToRaw(curW.x+dx,curW.y+dy,curW.z); it.x=nextRaw.x; it.y=nextRaw.y; it.z=nextRaw.z; it.kv.position=`${it.x} ${it.y} ${it.z}`; } state.dragAnchor=nowW; renderList(); refreshLiveMisWindow(); } state.lastMouse={sx,sy}; });
+  function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; if(had){ const ids=[]; for(const it of getFilteredItems()){ const wp=rawPosToWorld(it.x,it.y,it.z||0); const p=worldToScreen(wp.x,wp.y,wp.z); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); } }
   cv.addEventListener('mouseup',stopDrag); cv.addEventListener('mouseleave',stopDrag);
   cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const sp=document.getElementById('speed'); if(!sp) return; const cur=parseFloat(sp.value||'35'); const min=parseFloat(sp.min||'5'); const max=parseFloat(sp.max||'600'); const step=parseFloat(sp.step||'5'); const next=Math.max(min, Math.min(max, cur*Math.exp(-e.deltaY*0.001))); const snapped=Math.round(next/step)*step; sp.value=String(Math.max(min,Math.min(max,snapped))); },{passive:false});
 
@@ -5611,7 +5616,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     state.gizmoDrag.lastX = e.clientX;
     state.gizmoDrag.lastY = e.clientY;
 
-    const currentW = { x: rawToWorld(it.x,'x'), y: rawToWorld(it.y,'y'), z: rawToWorld(it.z||0,'z') };
+    const currentW = rawPosToWorld(it.x,it.y,it.z||0);
     const mode = state.gizmoDrag.mode;
     if (mode === "moveX" || mode === "moveY"){
       const rect = cv.getBoundingClientRect();
@@ -5621,11 +5626,22 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       const now = screenToWorld(sx, sy, currentW.z);
       const wx = now.x - prev.x;
       const wy = now.y - prev.y;
-      if (mode === "moveX") it.x = worldToRaw(currentW.x + wx, 'x');
-      if (mode === "moveY") it.y = worldToRaw(currentW.y + wy, 'y');
+      if (mode === "moveX" || mode === "moveY"){
+        const nextRaw = worldPosToRaw(
+          mode === "moveX" ? currentW.x + wx : currentW.x,
+          mode === "moveY" ? currentW.y + wy : currentW.y,
+          currentW.z
+        );
+        it.x = nextRaw.x;
+        it.y = nextRaw.y;
+        it.z = nextRaw.z;
+      }
     } else if (mode === "moveZ"){
       const dz = -dy * 1.25;
-      it.z = worldToRaw(currentW.z + dz, 'z');
+      const nextRaw = worldPosToRaw(currentW.x, currentW.y, currentW.z + dz);
+      it.x = nextRaw.x;
+      it.y = nextRaw.y;
+      it.z = nextRaw.z;
     } else if (mode === "yaw"){
       it.heading = (Number(it.heading) || 0) + dx * 0.5;
     } else if (mode === "pitch"){
