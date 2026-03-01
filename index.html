@@ -1358,7 +1358,7 @@
       lastStats: null,
       lastSyncReport: null,
       lodDistances: [0, 280, 500],
-      activeLodLevels: [0, 1, 3],
+      activeLodLevels: [0, 1, 2],
       lodConfigLogged: false,
       logDetailOptions: {
         showItemsMissingDefForType: false,
@@ -4887,7 +4887,7 @@
   function collectAllowedLodEntries(levelEntries){
     const wanted = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
       ? state.glb.activeLodLevels
-      : [0, 1, 3];
+      : [0, 1, 2];
     const byLevel = new Map(levelEntries);
     const out = [];
     for (const level of wanted){
@@ -4953,7 +4953,7 @@
     const fallbackPairs = [];
     if (fallbackNodes[0]) fallbackPairs.push([0, fallbackNodes[0]]);
     if (fallbackNodes[1]) fallbackPairs.push([1, fallbackNodes[1]]);
-    if (fallbackNodes[2]) fallbackPairs.push([3, fallbackNodes[2]]);
+    if (fallbackNodes[2]) fallbackPairs.push([2, fallbackNodes[2]]);
     fallbackPairs.forEach(([level, obj]) => {
       fallbackLod.addLevel(obj, lodDistanceForLevel(level));
     });
@@ -4991,7 +4991,7 @@
         if (!state.glb.lodConfigLogged){
           const activeLevels = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
             ? state.glb.activeLodLevels
-            : [0, 1, 3];
+            : [0, 1, 2];
           addLog(`[3d_items] LOD por distancia ativo (unidades do mundo): ${activeLevels.map((level) => `LOD${level}>=${lodDistanceForLevel(level)}`).join(' | ')}`);
           state.glb.lodConfigLogged = true;
         }
