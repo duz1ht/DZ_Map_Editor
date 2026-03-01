@@ -1357,6 +1357,8 @@
       lastSelectedVisualId: null,
       lastStats: null,
       lastSyncReport: null,
+      lodDistances: [0, 80, 160, 280, 420, 600],
+      lodConfigLogged: false,
       logDetailOptions: {
         showItemsMissingDefForType: false,
         showItemsMissingGraphicInDefAndItem: false,
@@ -4861,6 +4863,52 @@
     obj.rotation.x = pitchRad;
   }
 
+  function parseNamedLodLevel(name){
+    const raw = String(name || "").trim();
+    if (!raw) return null;
+    const m = raw.match(/^(.*)_LOD(\d+)$/i);
+    if (!m) return { baseName: raw, level: 0 };
+    const baseName = String(m[1] || "").trim();
+    const level = Number(m[2]);
+    if (!baseName || !Number.isFinite(level) || level < 1) return null;
+    return { baseName, level };
+  }
+
+  function lodDistanceForLevel(level){
+    const distances = state.glb.lodDistances || [0];
+    if (level < distances.length) return distances[level];
+    const last = distances[distances.length - 1] || 0;
+    const prev = distances[distances.length - 2] || 0;
+    const step = Math.max(40, last - prev || 120);
+    return last + step * (level - distances.length + 1);
+  }
+
+  function convertNamedTopLevelObjectsToLodGroups(root){
+    if (!root || !root.children?.length || !state.glb.THREE) return;
+    const { THREE } = state.glb;
+    const grouped = new Map();
+
+    for (const child of root.children){
+      const parsed = parseNamedLodLevel(child?.name);
+      if (!parsed) continue;
+      const key = parsed.baseName.toLowerCase();
+      if (!grouped.has(key)) grouped.set(key, { baseName: parsed.baseName, levels: new Map() });
+      const bucket = grouped.get(key);
+      if (!bucket.levels.has(parsed.level)) bucket.levels.set(parsed.level, child);
+    }
+
+    for (const [, bucket] of grouped){
+      if (!bucket.levels.has(0) || bucket.levels.size < 2) continue;
+      const levelEntries = Array.from(bucket.levels.entries()).sort((a,b) => a[0] - b[0]);
+      const lod = new THREE.LOD();
+      lod.name = `${bucket.baseName}__LOD_GROUP`;
+      for (const [level, obj] of levelEntries){
+        lod.addLevel(obj, lodDistanceForLevel(level));
+      }
+      root.add(lod);
+    }
+  }
+
   async function ensureGlbRendererReady(){
     if (state.glb.ready) return true;
     if (state.glb.initPromise) return state.glb.initPromise;
@@ -4889,6 +4937,10 @@
         state.glb.scene = scene3d;
         state.glb.camera = camera3d;
         state.glb.loader = new GLTFLoader();
+        if (!state.glb.lodConfigLogged){
+          addLog(`[3d_items] LOD por distancia ativo (unidades do mundo): ${state.glb.lodDistances.map((d, i) => `LOD${i}>=${d}`).join(' | ' )}`);
+          state.glb.lodConfigLogged = true;
+        }
         state.glb.ready = true;
       } catch (err) {
         addLog(`[3d_items] erro ao iniciar renderer GLB: ${err?.message || err}`);
@@ -5005,6 +5057,8 @@
 
         obj.material = Array.isArray(obj.material) ? converted : converted[0];
       });
+
+      convertNamedTopLevelObjectsToLodGroups(root);
 
       state.glb.templateByGraphic.set(key, root);
       return root;
