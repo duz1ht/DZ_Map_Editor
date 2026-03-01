@@ -5347,6 +5347,17 @@
       for (const mat of mats){
         if (!mat || typeof mat.wireframe !== "boolean") continue;
         mat.wireframe = !!state.glb.wireframeEnabled;
+        if (mat.color){
+          if (state.glb.wireframeEnabled){
+            if (!Object.prototype.hasOwnProperty.call(mat.userData, "_wireframePrevColorHex")){
+              mat.userData._wireframePrevColorHex = mat.color.getHex();
+            }
+            mat.color.setHex(0xffffff);
+          } else if (Object.prototype.hasOwnProperty.call(mat.userData, "_wireframePrevColorHex")){
+            mat.color.setHex(mat.userData._wireframePrevColorHex);
+            delete mat.userData._wireframePrevColorHex;
+          }
+        }
         mat.needsUpdate = true;
       }
     });
@@ -5358,6 +5369,10 @@
     state.glb.wireframeEnabled = next;
     for (const instance of state.glb.itemInstances.values()){
       applyWireframeToGlbObject(instance);
+    }
+    if (!next && state.glb.ready){
+      state.glb.lastSelectedVisualId = null;
+      updateSelectedGlbVisual();
     }
     if (showGlbWireframeEl) showGlbWireframeEl.checked = next;
     addLog(`[3d_items] wireframe ${next ? "on" : "off"}`);
@@ -5503,6 +5518,10 @@
 
   function tintMaterialSelection(material, selected){
     if (!material || !material.color) return;
+    if (state.glb.wireframeEnabled){
+      material.color.setHex(0xffffff);
+      return;
+    }
     if (!Object.prototype.hasOwnProperty.call(material.userData, "_baseColorHex")){
       material.userData._baseColorHex = material.color.getHex();
     }
