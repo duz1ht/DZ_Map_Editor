@@ -4852,17 +4852,67 @@
 
   function applyItemTransformToObject(obj, it){
     if (!obj || !it) return;
-    obj.position.set(
-      rawToWorld(it.x,'x'),
-      rawToWorld(it.y,'y'),
-      rawToWorld(it.z||0,'z')
-    );
-    const yawRad = (Number(it.heading) || 0) * Math.PI / 180;
-    const pitchCalibratedDeg = (Number(it.pitch) || 0) + 90;
-    const pitchRad = pitchCalibratedDeg * Math.PI / 180;
+    const worldPos = {
+      x: rawToWorld(it.x,'x'),
+      y: rawToWorld(it.y,'y'),
+      z: rawToWorld(it.z||0,'z'),
+    };
+    const scenePos = rotateVectorAroundX(worldPos, -Math.PI / 2);
+    obj.position.set(scenePos.x, scenePos.y, scenePos.z);
+
+    const { yawRad, pitchRad } = convertEntityAnglesToSceneEuler(it.heading, it.pitch);
     obj.rotation.order = "ZXY";
     obj.rotation.z = yawRad;
     obj.rotation.x = pitchRad;
+  }
+
+  function syncObjectTransformToItem(obj, it){
+    if (!obj || !it) return;
+
+    const scenePos = { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+    const worldPos = rotateVectorAroundX(scenePos, Math.PI / 2);
+    it.x = worldToRaw(worldPos.x, 'x');
+    it.y = worldToRaw(worldPos.y, 'y');
+    it.z = worldToRaw(worldPos.z, 'z');
+
+    const entityAngles = convertSceneEulerToEntityAngles(obj.rotation.z, obj.rotation.x);
+    it.heading = entityAngles.headingDeg;
+    it.pitch = entityAngles.pitchDeg;
+  }
+
+  function rotateVectorAroundX(vec, angleRad){
+    const c = Math.cos(angleRad);
+    const s = Math.sin(angleRad);
+    return {
+      x: Number(vec?.x) || 0,
+      y: (Number(vec?.y) || 0) * c - (Number(vec?.z) || 0) * s,
+      z: (Number(vec?.y) || 0) * s + (Number(vec?.z) || 0) * c,
+    };
+  }
+
+  function convertEntityAnglesToSceneEuler(headingDeg, pitchDeg){
+    const heading = Number(headingDeg) || 0;
+    const pitch = Number(pitchDeg) || 0;
+    const yawRad = degToRad(180 - heading);
+    const pitchRad = degToRad(-(pitch + 90));
+    return { yawRad, pitchRad };
+  }
+
+  function convertSceneEulerToEntityAngles(yawRad, pitchRad){
+    const yawDeg = radToDeg(yawRad);
+    const pitchDeg = radToDeg(pitchRad);
+    return {
+      headingDeg: normalizeDegrees(180 - yawDeg),
+      pitchDeg: normalizeDegrees(-pitchDeg - 90),
+    };
+  }
+
+  function degToRad(v){ return (Number(v) || 0) * Math.PI / 180; }
+  function radToDeg(v){ return (Number(v) || 0) * 180 / Math.PI; }
+  function normalizeDegrees(v){
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    return ((n % 360) + 360) % 360;
   }
 
   async function ensureGlbRendererReady(){
