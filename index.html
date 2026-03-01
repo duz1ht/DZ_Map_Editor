@@ -253,7 +253,7 @@
       position:absolute;
       inset:0;
       z-index:7;
-      pointer-events:auto;
+      pointer-events:none;
       width:100%;
       height:100%;
       background:transparent;
@@ -5891,6 +5891,14 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
 
   cv.addEventListener("mousedown", (e) => {
     if (state.modalOpen) return; closeItemContextMenu(); const rect = cv.getBoundingClientRect(); const sx = e.clientX - rect.left; const sy = e.clientY - rect.top; if (e.button !== 0) return;
+    if (!state.pastePlacementActive){
+      const gizmoMode = pickGizmoModeAt(e.clientX, e.clientY);
+      if (gizmoMode && state.selectedId != null){
+        state.gizmoDrag = { mode: gizmoMode, lastX: e.clientX, lastY: e.clientY, itemId: state.selectedId };
+        state.lastMouse = { sx, sy };
+        return;
+      }
+    }
     if (state.pastePlacementActive){ applyPasteAtWorld(screenToWorld(sx, sy, state.pastePreviewWorld?.z || 0)); state.lastMouse = { sx, sy }; return; }
     const picked = pickItemAtCanvas(sx,sy);
     if (picked){ if (e.ctrlKey){ if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id); else state.multiSelectedIds.add(picked.id); state.selectedId = picked.id; renderList(); } else selectById(picked.id); state.draggingItem = e.shiftKey; if (state.draggingItem) state.dragAnchor = screenToWorld(sx, sy, rawToWorld(picked.z||0,'z')); }
@@ -5929,21 +5937,6 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     }
     return null;
   }
-
-  gizmoCanvasEl?.addEventListener("mousedown", (e) => {
-    const it = getSelected();
-    if (!it) return;
-    const mode = pickGizmoModeAt(e.clientX, e.clientY);
-    if (!mode) return;
-    e.preventDefault();
-    e.stopPropagation();
-    state.gizmoDrag = {
-      mode,
-      lastX: e.clientX,
-      lastY: e.clientY,
-      itemId: it.id,
-    };
-  });
 
   window.addEventListener("mousemove", (e) => {
     if (!state.gizmoDrag) return;
