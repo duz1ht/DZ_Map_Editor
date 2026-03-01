@@ -4850,16 +4850,34 @@
     return graphic;
   }
 
-  function applyItemTransformToObject(obj, it){
-    if (!obj || !it) return;
-    obj.position.set(
-      rawToWorld(it.x,'x'),
-      rawToWorld(it.y,'y'),
-      rawToWorld(it.z||0,'z')
-    );
+  function getItemWorldTransform(it){
+    const rawPos = {
+      x: rawToWorld(it.x, 'x'),
+      y: rawToWorld(it.y, 'y'),
+      z: rawToWorld(it.z || 0, 'z'),
+    };
+
+    // Correção de eixo inspirada no Opennova:
+    // Rotated(Vector3.Right, -PI/2), isto é, rotação de -90° em X.
+    const correctionCos = 0;
+    const correctionSin = -1;
+    const correctedPos = {
+      x: rawPos.x,
+      y: rawPos.y * correctionCos - rawPos.z * correctionSin,
+      z: rawPos.y * correctionSin + rawPos.z * correctionCos,
+    };
+
     const yawRad = (Number(it.heading) || 0) * Math.PI / 180;
     const pitchCalibratedDeg = (Number(it.pitch) || 0) + 90;
     const pitchRad = pitchCalibratedDeg * Math.PI / 180;
+
+    return { correctedPos, yawRad, pitchRad };
+  }
+
+  function applyItemTransformToObject(obj, it){
+    if (!obj || !it) return;
+    const { correctedPos, yawRad, pitchRad } = getItemWorldTransform(it);
+    obj.position.set(correctedPos.x, correctedPos.y, correctedPos.z);
     obj.rotation.order = "ZXY";
     obj.rotation.z = yawRad;
     obj.rotation.x = pitchRad;
