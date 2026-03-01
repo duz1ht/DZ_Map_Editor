@@ -5603,9 +5603,9 @@
     state.gizmoVisual = {
       center: { sx: c.sx, sy: c.sy },
       handles: {
-        moveX: xTip.visible ? { sx: xTip.sx, sy: xTip.sy, r: 10 } : null,
-        moveY: yTip.visible ? { sx: yTip.sx, sy: yTip.sy, r: 10 } : null,
-        moveZ: zTip.visible ? { sx: zTip.sx, sy: zTip.sy, r: 10 } : null,
+        moveX: xTip.visible ? { sx: xTip.sx, sy: xTip.sy, r: 10, lx0: c.sx, ly0: c.sy, lx1: xTip.sx, ly1: xTip.sy } : null,
+        moveY: yTip.visible ? { sx: yTip.sx, sy: yTip.sy, r: 10, lx0: c.sx, ly0: c.sy, lx1: yTip.sx, ly1: yTip.sy } : null,
+        moveZ: zTip.visible ? { sx: zTip.sx, sy: zTip.sy, r: 10, lx0: c.sx, ly0: c.sy, lx1: zTip.sx, ly1: zTip.sy } : null,
         yaw: { sx: c.sx, sy: c.sy, r: yawRadius, t: 8, ring: true },
         pitch: { sx: c.sx, sy: c.sy, rx: pitchRadius * 0.55, ry: pitchRadius, t: 7, ellipse: true }
       }
@@ -5956,10 +5956,24 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     const h = state.gizmoVisual.handles || {};
 
     function dist(a,b,c,d){ return Math.hypot(a-c,b-d); }
+    function distToSegment(px, py, x0, y0, x1, y1){
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const len2 = dx*dx + dy*dy;
+      if (len2 <= 1e-6) return Math.hypot(px - x0, py - y0);
+      const t = Math.max(0, Math.min(1, ((px - x0)*dx + (py - y0)*dy) / len2));
+      const cx = x0 + t*dx;
+      const cy = y0 + t*dy;
+      return Math.hypot(px - cx, py - cy);
+    }
     for (const mode of ["moveX","moveY","moveZ"]){
       const hh = h[mode];
       if (!hh) continue;
       if (dist(sx,sy,hh.sx,hh.sy) <= (hh.r || 10)) return mode;
+      if (Number.isFinite(hh.lx0) && Number.isFinite(hh.ly0) && Number.isFinite(hh.lx1) && Number.isFinite(hh.ly1)){
+        const near = distToSegment(sx, sy, hh.lx0, hh.ly0, hh.lx1, hh.ly1);
+        if (near <= 7) return mode;
+      }
     }
     if (h.yaw){
       const d = dist(sx,sy,h.yaw.sx,h.yaw.sy);
