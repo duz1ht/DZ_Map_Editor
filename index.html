@@ -5080,10 +5080,14 @@
         skippedMissingGraphicInDefAndItem: stats.skippedMissingGraphicInDefAndItem,
         distinctGraphics: stats.graphicsFrequency.size,
         topGraphics,
+        missingGlbFiles: Array.from(state.glb.missingGraphics.values())
+          .sort((a,b) => a.localeCompare(b))
+          .map((graphic) => `resources/3d_items/${graphic}.glb`),
       };
       state.glb.lastStats = syncReport;
       state.glb.lastSyncReport = syncReport;
       addLog(`[3d_items] cobertura GLB: total=${syncReport.totalItems} renderizaveis=${syncReport.renderableItems} instancias=${syncReport.finalInstances} sem_graphic=${syncReport.skippedMissingGraphic} sem_type_id=${syncReport.skippedMissingTypeId} sem_def_para_type=${syncReport.skippedDefNotFoundForTypeId} sem_graphic_def_item=${syncReport.skippedMissingGraphicInDefAndItem} ausentes_pos_sync=${syncReport.missingInstancesAfterSync} graficos_distintos=${syncReport.distinctGraphics} top=${topGraphics.join(', ') || '<none>'}`);
+      addLog(`[3d_items] arquivos GLB ausentes (${syncReport.missingGlbFiles.length}): ${syncReport.missingGlbFiles.join(', ') || '<none>'}`);
 
       state.glb.lastSyncSignature = signature;
       state.glb.structureDirty = false;
