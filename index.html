@@ -1357,6 +1357,10 @@
       lastSelectedVisualId: null,
       lastStats: null,
       lastSyncReport: null,
+      logDetailOptions: {
+        showItemsMissingDefForType: false,
+        showItemsMissingGraphicInDefAndItem: false,
+      },
       ready: false,
     },
   };
@@ -1604,20 +1608,34 @@
   function renderLogsFilterBar(){
     if (!logsFilterBar) return;
     const categories = Array.from(state.logFilters.keys()).sort((a,b) => a.localeCompare(b));
-    if (!categories.length){
-      logsFilterBar.innerHTML = "";
-      return;
-    }
-    logsFilterBar.innerHTML = categories.map((cat) => {
+    const categoryChips = categories.map((cat) => {
       const safe = cat.replace(/[^a-z0-9_-]/gi, "_");
       const checked = state.logFilters.get(cat) !== false ? "checked" : "";
       return `<label class="logsFilterChip" title="Mostrar categoria: ${escapeHtml(cat)}"><input type="checkbox" data-log-filter="${safe}" data-log-category="${escapeHtml(cat)}" ${checked}/> ${escapeHtml(cat)}</label>`;
     }).join("");
+
+    const detailOptions = state.glb?.logDetailOptions || {};
+    const detailChips = [
+      `<label class="logsFilterChip" title="Mostrar no log quais itens estão sem DEF para o type_id"><input type="checkbox" data-log-detail-option="showItemsMissingDefForType" ${detailOptions.showItemsMissingDefForType ? 'checked' : ''}/> detalhar sem_def_para_type</label>`,
+      `<label class="logsFilterChip" title="Mostrar no log quais itens estão sem graphic tanto no DEF quanto no item"><input type="checkbox" data-log-detail-option="showItemsMissingGraphicInDefAndItem" ${detailOptions.showItemsMissingGraphicInDefAndItem ? 'checked' : ''}/> detalhar sem_graphic_def_item</label>`
+    ].join("");
+
+    logsFilterBar.innerHTML = `${categoryChips}${detailChips}`;
+
     logsFilterBar.querySelectorAll("input[data-log-filter]").forEach((el) => {
       el.addEventListener("change", (ev) => {
         const category = (ev.target.dataset.logCategory || "").toLowerCase();
         state.logFilters.set(category, !!ev.target.checked);
         renderLogsWindow();
+      });
+    });
+
+    logsFilterBar.querySelectorAll("input[data-log-detail-option]").forEach((el) => {
+      el.addEventListener("change", (ev) => {
+        const key = ev.target.dataset.logDetailOption;
+        if (!key || !state.glb.logDetailOptions || !(key in state.glb.logDetailOptions)) return;
+        state.glb.logDetailOptions[key] = !!ev.target.checked;
+        addLog(`[3d_items] detalhamento ${key}=${state.glb.logDetailOptions[key] ? 'on' : 'off'}`);
       });
     });
   }
@@ -4903,6 +4921,8 @@
       skippedMissingTypeId: 0,
       skippedDefNotFoundForTypeId: 0,
       skippedMissingGraphicInDefAndItem: 0,
+      itemsMissingDefForType: [],
+      itemsMissingGraphicInDefAndItem: [],
       graphicsFrequency: new Map(),
     };
 
@@ -4916,8 +4936,22 @@
       if (!graphic){
         stats.skippedMissingGraphic += 1;
         if (!typeId) stats.skippedMissingTypeId += 1;
-        if (typeId && !def) stats.skippedDefNotFoundForTypeId += 1;
-        if (!defGraphic && !itemGraphic) stats.skippedMissingGraphicInDefAndItem += 1;
+        if (typeId && !def){
+          stats.skippedDefNotFoundForTypeId += 1;
+          stats.itemsMissingDefForType.push({
+            id: it.id,
+            typeId,
+            name: String(it?.kv?.name || it?.kv?.iai_name || "").trim(),
+          });
+        }
+        if (!defGraphic && !itemGraphic){
+          stats.skippedMissingGraphicInDefAndItem += 1;
+          stats.itemsMissingGraphicInDefAndItem.push({
+            id: it.id,
+            typeId,
+            name: String(it?.kv?.name || it?.kv?.iai_name || "").trim(),
+          });
+        }
         continue;
       }
 
@@ -5020,6 +5054,18 @@
     return root;
   }
 
+  function formatGlbStatItems(items){
+    if (!items || !items.length) return "<none>";
+    return items
+      .map((it) => {
+        const parts = [`#${it.id}`];
+        if (it.typeId) parts.push(`type=${it.typeId}`);
+        if (it.name) parts.push(`name=${it.name}`);
+        return parts.join("|");
+      })
+      .join(", ");
+  }
+
   async function syncGlbItems(){
     const ready = await ensureGlbRendererReady();
     if (!ready || state.glb.syncPromise) return;
@@ -5083,11 +5129,19 @@
         missingGlbFiles: Array.from(state.glb.missingGraphics.values())
           .sort((a,b) => a.localeCompare(b))
           .map((graphic) => `resources/3d_items/${graphic}.glb`),
+        itemsMissingDefForType: stats.itemsMissingDefForType,
+        itemsMissingGraphicInDefAndItem: stats.itemsMissingGraphicInDefAndItem,
       };
       state.glb.lastStats = syncReport;
       state.glb.lastSyncReport = syncReport;
       addLog(`[3d_items] cobertura GLB: total=${syncReport.totalItems} renderizaveis=${syncReport.renderableItems} instancias=${syncReport.finalInstances} sem_graphic=${syncReport.skippedMissingGraphic} sem_type_id=${syncReport.skippedMissingTypeId} sem_def_para_type=${syncReport.skippedDefNotFoundForTypeId} sem_graphic_def_item=${syncReport.skippedMissingGraphicInDefAndItem} ausentes_pos_sync=${syncReport.missingInstancesAfterSync} graficos_distintos=${syncReport.distinctGraphics} top=${topGraphics.join(', ') || '<none>'}`);
       addLog(`[3d_items] arquivos GLB ausentes (${syncReport.missingGlbFiles.length}): ${syncReport.missingGlbFiles.join(', ') || '<none>'}`);
+      if (state.glb.logDetailOptions?.showItemsMissingDefForType){
+        addLog(`[3d_items] itens sem_def_para_type (${syncReport.itemsMissingDefForType.length}): ${formatGlbStatItems(syncReport.itemsMissingDefForType)}`);
+      }
+      if (state.glb.logDetailOptions?.showItemsMissingGraphicInDefAndItem){
+        addLog(`[3d_items] itens sem_graphic_def_item (${syncReport.itemsMissingGraphicInDefAndItem.length}): ${formatGlbStatItems(syncReport.itemsMissingGraphicInDefAndItem)}`);
+      }
 
       state.glb.lastSyncSignature = signature;
       state.glb.structureDirty = false;
