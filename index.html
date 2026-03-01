@@ -4648,18 +4648,13 @@
   const MIS_POS_SCALE=65536;
   const THREE_MODULE_URL = "https://esm.sh/three@0.152.2";
   const GLTF_LOADER_URL = "https://esm.sh/three@0.152.2/examples/jsm/loaders/GLTFLoader.js";
-  function mainAreaCenterX(){ return originWorldX() + terrainSpanX()*0.5; }
-  function mainAreaCenterY(){ return originWorldY() + terrainSpanY()*0.5; }
+  // OpenNova-style positional conversion: scale only (no fixed translation offset).
   function rawToWorld(v, axis='z'){
     const n=(Number(v)||0)/MIS_POS_SCALE;
-    if(axis==='x') return n + mainAreaCenterX();
-    if(axis==='y') return n + mainAreaCenterY();
     return n;
   }
   function worldToRaw(v, axis='z'){
     const n=Number(v)||0;
-    if(axis==='x') return Math.round((n-mainAreaCenterX())*MIS_POS_SCALE);
-    if(axis==='y') return Math.round((n-mainAreaCenterY())*MIS_POS_SCALE);
     return Math.round(n*MIS_POS_SCALE);
   }
   let sectorCount=8, terrainOrigin={x:0,y:0}, wrapX=1, wrapY=1, sectors=null, lastDepth=null, lastImg=null, loadedTrnName=null;
@@ -4857,8 +4852,9 @@
       rawToWorld(it.y,'y'),
       rawToWorld(it.z||0,'z')
     );
-    const yawRad = (Number(it.heading) || 0) * Math.PI / 180;
-    const pitchCalibratedDeg = (Number(it.pitch) || 0) + 90;
+    // OpenNova-style orientation correction: sign-flip yaw/pitch and apply a +180° yaw phase shift.
+    const yawRad = ((-(Number(it.heading) || 0)) + 180) * Math.PI / 180;
+    const pitchCalibratedDeg = (-(Number(it.pitch) || 0)) + 90;
     const pitchRad = pitchCalibratedDeg * Math.PI / 180;
     obj.rotation.order = "ZXY";
     obj.rotation.z = yawRad;
@@ -5627,9 +5623,9 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       const dz = -dy * 1.25;
       it.z = worldToRaw(currentW.z + dz, 'z');
     } else if (mode === "yaw"){
-      it.heading = (Number(it.heading) || 0) + dx * 0.5;
+      it.heading = (Number(it.heading) || 0) - dx * 0.5;
     } else if (mode === "pitch"){
-      it.pitch = (Number(it.pitch) || 0) - dy * 0.5;
+      it.pitch = (Number(it.pitch) || 0) + dy * 0.5;
     }
 
     commitGizmoUpdate(it);
