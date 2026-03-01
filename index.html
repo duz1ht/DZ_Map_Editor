@@ -5900,16 +5900,41 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
         return;
       }
     }
-    if (!state.pastePlacementActive && !e.ctrlKey && !e.shiftKey){
+    if (state.pastePlacementActive){ applyPasteAtWorld(screenToWorld(sx, sy, state.pastePreviewWorld?.z || 0)); state.lastMouse = { sx, sy }; return; }
+    const picked = pickItemAtCanvas(sx,sy);
+    if (picked){
+      if (e.ctrlKey){
+        if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id);
+        else state.multiSelectedIds.add(picked.id);
+        state.selectedId = picked.id;
+        renderList();
+      } else {
+        selectById(picked.id);
+      }
+      state.cameraLookActive = false;
+      state.draggingItem = e.shiftKey;
+      if (state.draggingItem) state.dragAnchor = screenToWorld(sx, sy, rawToWorld(picked.z||0,'z'));
+      state.lastMouse={sx,sy};
+      return;
+    }
+
+    // Clique esquerdo em espaço vazio: limpa seleção.
+    if (!e.ctrlKey) selectById(null);
+
+    // Hold esquerdo em espaço vazio = câmera (look), mantendo cursor oculto só durante hold.
+    if (!e.ctrlKey && !e.shiftKey){
       state.cameraLookActive = true;
       state.lastMouse = { sx, sy };
       if (document.pointerLockElement!==cv && cv.requestPointerLock) cv.requestPointerLock();
       return;
     }
-    if (state.pastePlacementActive){ applyPasteAtWorld(screenToWorld(sx, sy, state.pastePreviewWorld?.z || 0)); state.lastMouse = { sx, sy }; return; }
-    const picked = pickItemAtCanvas(sx,sy);
-    if (picked){ if (e.ctrlKey){ if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id); else state.multiSelectedIds.add(picked.id); state.selectedId = picked.id; renderList(); } else selectById(picked.id); state.draggingItem = e.shiftKey; if (state.draggingItem) state.dragAnchor = screenToWorld(sx, sy, rawToWorld(picked.z||0,'z')); }
-    else { state.draggingItem=false; state.boxSelecting=true; state.boxSelectAdditive=e.ctrlKey; state.boxStart={sx,sy}; state.boxCurrent={sx,sy}; if(!e.ctrlKey){state.selectedId=null; state.multiSelectedIds.clear();} renderList(); }
+
+    // Ctrl+arrastar mantém box selection em espaço vazio.
+    state.draggingItem=false;
+    state.boxSelecting=true;
+    state.boxSelectAdditive=e.ctrlKey;
+    state.boxStart={sx,sy};
+    state.boxCurrent={sx,sy};
     state.lastMouse={sx,sy};
   });
   cv.addEventListener("contextmenu", (e) => { e.preventDefault(); const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAtCanvas(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
