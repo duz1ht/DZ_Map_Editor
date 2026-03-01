@@ -5571,9 +5571,9 @@
     const t = Math.max(0, Math.min(1, (camDist - gizmoNearDist) / Math.max(1, gizmoFarDist - gizmoNearDist)));
 
     // Escala visual em pixels: perto = menor, longe = maior.
-    const axisLenPx = 30 + (70 - 30) * t;
-    const yawRadius = 16 + (34 - 16) * t;
-    const pitchRadius = 12 + (28 - 12) * t;
+    const axisLenPx = 54 + (70 - 54) * t;
+    const yawRadius = 28.8 + (34 - 28.8) * t;
+    const pitchRadius = 21.6 + (28 - 21.6) * t;
 
     const c = worldToScreen(center.x, center.y, center.z);
     if (!c.visible){ state.gizmoVisual = null; return; }
