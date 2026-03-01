@@ -4101,6 +4101,15 @@
       draw();
       statusEl.textContent = "Paste cancelado.";
     }
+    if (e.key === "Escape" && (state.selectedId != null || state.multiSelectedIds.size || state.selectedWaypointMarkerIds.size)){
+      state.selectedId = null;
+      state.multiSelectedIds.clear();
+      state.selectedWaypointMarkerIds.clear();
+      renderList();
+      draw();
+      scheduleLiveMisRefresh();
+      statusEl.textContent = "Seleção limpa.";
+    }
   });
 
   function createPastedItemFrom(sourceItem, sourceSection = null, options = {}){
