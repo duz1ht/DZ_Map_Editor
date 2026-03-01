@@ -4850,19 +4850,58 @@
     return graphic;
   }
 
+  function degToRad(v){ return v * Math.PI / 180; }
+  function radToDeg(v){ return v * 180 / Math.PI; }
+
+  function rotateAroundX(v, radians){
+    const c = Math.cos(radians), s = Math.sin(radians);
+    return {
+      x: v.x,
+      y: v.y * c - v.z * s,
+      z: v.y * s + v.z * c,
+    };
+  }
+
+  function entityWorldPositionToScenePosition(rawPos){
+    return rotateAroundX(rawPos, -Math.PI / 2);
+  }
+
+  function scenePositionToEntityWorldPosition(scenePos){
+    return rotateAroundX(scenePos, +Math.PI / 2);
+  }
+
   function applyItemTransformToObject(obj, it){
     if (!obj || !it) return;
-    obj.position.set(
-      rawToWorld(it.x,'x'),
-      rawToWorld(it.y,'y'),
-      rawToWorld(it.z||0,'z')
-    );
-    const yawRad = (Number(it.heading) || 0) * Math.PI / 180;
-    const pitchCalibratedDeg = (Number(it.pitch) || 0) + 90;
-    const pitchRad = pitchCalibratedDeg * Math.PI / 180;
-    obj.rotation.order = "ZXY";
-    obj.rotation.z = yawRad;
-    obj.rotation.x = pitchRad;
+
+    const rawWorldPos = {
+      x: rawToWorld(it.x,'x'),
+      y: rawToWorld(it.y,'y'),
+      z: rawToWorld(it.z||0,'z')
+    };
+    const scenePos = entityWorldPositionToScenePosition(rawWorldPos);
+    obj.position.set(scenePos.x, scenePos.y, scenePos.z);
+
+    const yawRad = degToRad(Number(it.heading) || 0);
+    const pitchRad = degToRad(Number(it.pitch) || 0);
+    obj.rotation.order = "YXZ";
+    obj.rotation.y = -yawRad + Math.PI;
+    obj.rotation.x = -pitchRad;
+    obj.rotation.z = 0;
+  }
+
+  function syncItemTransformFromObject(it, obj){
+    if (!it || !obj) return;
+
+    const scenePos = { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+    const entityWorldPos = scenePositionToEntityWorldPosition(scenePos);
+    it.x = worldToRaw(entityWorldPos.x, 'x');
+    it.y = worldToRaw(entityWorldPos.y, 'y');
+    it.z = worldToRaw(entityWorldPos.z, 'z');
+
+    const euler = obj.rotation.clone();
+    euler.order = "YXZ";
+    it.heading = radToDeg(Math.PI - euler.y);
+    it.pitch = radToDeg(-euler.x);
   }
 
   async function ensureGlbRendererReady(){
