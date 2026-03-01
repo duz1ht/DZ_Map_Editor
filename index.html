@@ -1327,6 +1327,7 @@
       lastSyncSignature: "",
       syncCount: 0,
       lastSyncMs: 0,
+      lastSelectedVisualId: null,
       ready: false,
     },
   };
@@ -4941,6 +4942,11 @@
           const template = await loadGraphicTemplate(graphic);
           if (!template) continue;
           instance = template.clone(true);
+          instance.traverse((obj) => {
+            if (!obj.isMesh) return;
+            if (Array.isArray(obj.material)) obj.material = obj.material.map(m => m ? m.clone() : m);
+            else if (obj.material) obj.material = obj.material.clone();
+          });
           instance.userData.itemId = it.id;
           instance.userData.graphic = graphic;
           state.glb.scene.add(instance);
@@ -4986,19 +4992,93 @@
     }
     updateGlbTransformsFromState();
 
-    const { THREE, camera, renderer, scene } = state.glb;
+    const { renderer, scene } = state.glb;
+    applyThreeCameraFromPV(P, V);
+    updateSelectedGlbVisual();
+
+    renderer.resetState();
+    renderer.render(scene, state.glb.camera);
+    renderer.resetState();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  function applyThreeCameraFromPV(P, V){
+    if (!state.glb.ready || !state.glb.camera || !state.glb.THREE) return;
+    const { THREE, camera } = state.glb;
     const projection = new THREE.Matrix4().fromArray(P);
     const view = new THREE.Matrix4().fromArray(V);
-
     camera.projectionMatrix.copy(projection);
     camera.projectionMatrixInverse.copy(projection).invert();
     camera.matrixWorldInverse.copy(view);
     camera.matrixWorld.copy(view).invert();
+  }
 
-    renderer.resetState();
-    renderer.render(scene, camera);
-    renderer.resetState();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  function tintMaterialSelection(material, selected){
+    if (!material || !material.color) return;
+    if (!Object.prototype.hasOwnProperty.call(material.userData, "_baseColorHex")){
+      material.userData._baseColorHex = material.color.getHex();
+    }
+    const base = material.userData._baseColorHex;
+    if (!selected){
+      material.color.setHex(base);
+      return;
+    }
+    const c = material.color;
+    c.setHex(base);
+    c.lerp(new state.glb.THREE.Color(0x7fa6ff), 0.5);
+  }
+
+  function setGlbInstanceSelected(instance, selected){
+    if (!instance) return;
+    instance.traverse((obj) => {
+      if (!obj.isMesh) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const m of mats) tintMaterialSelection(m, selected);
+    });
+  }
+
+  function updateSelectedGlbVisual(){
+    if (!state.glb.ready) return;
+    const current = state.selectedId;
+    if (state.glb.lastSelectedVisualId === current) return;
+    const prevInstance = state.glb.itemInstances.get(state.glb.lastSelectedVisualId);
+    setGlbInstanceSelected(prevInstance, false);
+    const curInstance = state.glb.itemInstances.get(current);
+    setGlbInstanceSelected(curInstance, true);
+    state.glb.lastSelectedVisualId = current ?? null;
+  }
+
+  function getItemIdFromObject3D(obj){
+    let cur = obj;
+    while (cur){
+      if (Object.prototype.hasOwnProperty.call(cur.userData || {}, "itemId")) return cur.userData.itemId;
+      cur = cur.parent;
+    }
+    return null;
+  }
+
+  function pickItemFromGlbAt(sx, sy){
+    if (!state.glb.ready || !state.glb.THREE || !state.glb.camera) return null;
+    const rect = cv.getBoundingClientRect();
+    const nx = (sx / rect.width) * 2 - 1;
+    const ny = 1 - (sy / rect.height) * 2;
+    const { P, V } = currentPV();
+    applyThreeCameraFromPV(P, V);
+
+    const raycaster = new state.glb.THREE.Raycaster();
+    raycaster.setFromCamera(new state.glb.THREE.Vector2(nx, ny), state.glb.camera);
+    const hits = raycaster.intersectObjects(Array.from(state.glb.itemInstances.values()), true);
+    for (const hit of hits){
+      const itemId = getItemIdFromObject3D(hit.object);
+      if (itemId == null) continue;
+      const it = state.items.find(x => x.id === itemId) || null;
+      if (it) return it;
+    }
+    return null;
+  }
+
+  function pickItemAtCanvas(sx, sy){
+    return pickItemFromGlbAt(sx, sy) || pickItemAt(sx, sy);
   }
 
   function applyItemOrientationToKv(it){
@@ -5302,13 +5382,13 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   cv.addEventListener("mousedown", (e) => {
     if (state.modalOpen) return; closeItemContextMenu(); const rect = cv.getBoundingClientRect(); const sx = e.clientX - rect.left; const sy = e.clientY - rect.top; if (e.button !== 0) return;
     if (state.pastePlacementActive){ applyPasteAtWorld(screenToWorld(sx, sy, state.pastePreviewWorld?.z || 0)); state.lastMouse = { sx, sy }; return; }
-    const picked = pickItemAt(sx,sy);
+    const picked = pickItemAtCanvas(sx,sy);
     if (picked){ if (e.ctrlKey){ if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id); else state.multiSelectedIds.add(picked.id); state.selectedId = picked.id; renderList(); } else selectById(picked.id); state.draggingItem = e.shiftKey; if (state.draggingItem) state.dragAnchor = screenToWorld(sx, sy, rawToWorld(picked.z||0,'z')); }
     else { state.draggingItem=false; state.boxSelecting=true; state.boxSelectAdditive=e.ctrlKey; state.boxStart={sx,sy}; state.boxCurrent={sx,sy}; if(!e.ctrlKey){state.selectedId=null; state.multiSelectedIds.clear();} renderList(); }
     state.lastMouse={sx,sy};
   });
-  cv.addEventListener("contextmenu", (e) => { e.preventDefault(); const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAt(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
-  cv.addEventListener("dblclick", (e) => { const rect=cv.getBoundingClientRect(); const picked=pickItemAt(e.clientX-rect.left,e.clientY-rect.top); if(picked){ selectById(picked.id); openModal(); } });
+  cv.addEventListener("contextmenu", (e) => { e.preventDefault(); const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAtCanvas(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
+  cv.addEventListener("dblclick", (e) => { const rect=cv.getBoundingClientRect(); const picked=pickItemAtCanvas(e.clientX-rect.left,e.clientY-rect.top); if(picked){ selectById(picked.id); openModal(); } });
   cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.pastePlacementActive){ const z=state.selectedId?rawToWorld(getSelected()?.z||0,'z'):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=rawToWorld((active[0]?.z)||0,'z'); const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; it.x=worldToRaw(rawToWorld(it.x,'x')+dx,'x'); it.y=worldToRaw(rawToWorld(it.y,'y')+dy,'y'); it.kv.position=`${it.x} ${it.y} ${it.z}`; } state.dragAnchor=nowW; renderList(); refreshLiveMisWindow(); } state.lastMouse={sx,sy}; });
   function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; if(had){ const ids=[]; for(const it of getFilteredItems()){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); } }
   cv.addEventListener('mouseup',stopDrag); cv.addEventListener('mouseleave',stopDrag);
