@@ -521,6 +521,32 @@
       gap:10px;
     }
     .windowTitle .spacer{ flex:1; }
+    .logsFilterBar{
+      display:flex;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      gap:6px;
+      max-width:min(72vw, 820px);
+    }
+    .logsFilterChip{
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      font-size:11px;
+      padding:1px 5px;
+      border:1px solid var(--line-soft);
+      border-radius:12px;
+      background:var(--surface-subtle);
+      color:var(--text-subtle);
+      white-space:nowrap;
+      user-select:none;
+    }
+    .logsFilterChip input{
+      width:12px;
+      height:12px;
+      margin:0;
+      accent-color:var(--accent);
+    }
     .xbtn{
       border:1px solid var(--line-heavy);
       background:var(--disabled-bg);
@@ -987,7 +1013,7 @@
 
       <div id="logsOverlay" aria-hidden="true">
         <div id="logsWindow" role="dialog" aria-modal="true" aria-label="Logs">
-          <div class="windowTitle">Logs <span class="spacer"></span><button class="xbtn" id="logsCloseBtn">X</button></div>
+          <div class="windowTitle">Logs <span class="spacer"></span><span id="logsFilterBar" class="logsFilterBar" aria-label="Log filters"></span><button class="xbtn" id="logsCloseBtn">X</button></div>
           <pre id="logsText"></pre>
           <div class="btnRow" style="justify-content:flex-end;"><button id="logsClearBtn">Clear Logs</button></div>
         </div>
@@ -1293,6 +1319,7 @@
     selectedWaypointMarkerIds: new Set(),
     logsOpen: false,
     logs: [],
+    logFilters: new Map(),
 
     contextMenuOpen: false,
     contextTargetId: null,
@@ -1328,6 +1355,12 @@
       syncCount: 0,
       lastSyncMs: 0,
       lastSelectedVisualId: null,
+      lastStats: null,
+      lastSyncReport: null,
+      logDetailOptions: {
+        showItemsMissingDefForType: false,
+        showItemsMissingGraphicInDefAndItem: false,
+      },
       ready: false,
     },
   };
@@ -1361,6 +1394,7 @@
   const logsCloseBtn = document.getElementById("logsCloseBtn");
   const logsText = document.getElementById("logsText");
   const logsClearBtn = document.getElementById("logsClearBtn");
+  const logsFilterBar = document.getElementById("logsFilterBar");
   const wpSelectMarkersBtn = document.getElementById("wpSelectMarkersBtn");
   const wpSaveAsBtn = document.getElementById("wpSaveAsBtn");
   const wpOkBtn = document.getElementById("wpOkBtn");
@@ -1545,21 +1579,86 @@
     return Number.isFinite(n) ? n : 0;
   }
 
-  function addLog(msg){
+  function normalizeLogCategory(msg, explicitCategory = ""){
+    const forced = String(explicitCategory || "").trim().toLowerCase();
+    if (forced) return forced;
+    const m = String(msg || "").match(/^\s*\[([^\]]+)\]/);
+    if (m && m[1]) return m[1].trim().toLowerCase();
+    const upper = String(msg || "").toUpperCase();
+    if (upper.startsWith("ERROR") || upper.includes(" ERROR ")) return "error";
+    if (upper.startsWith("WARNING") || upper.includes(" WARNING ")) return "warning";
+    if (upper.startsWith("LOADED") || upper.includes("RESOURCE")) return "resources";
+    return "general";
+  }
+
+  function ensureLogFilter(category){
+    const key = String(category || "general").trim().toLowerCase() || "general";
+    if (!state.logFilters.has(key)) state.logFilters.set(key, true);
+    return key;
+  }
+
+  function getVisibleLogs(){
+    return state.logs.filter(entry => state.logFilters.get(entry.category) !== false);
+  }
+
+  function formatLogEntry(entry){
+    return `[${entry.stamp}] [${entry.category}] ${entry.msg}`;
+  }
+
+  function renderLogsFilterBar(){
+    if (!logsFilterBar) return;
+    const categories = Array.from(state.logFilters.keys()).sort((a,b) => a.localeCompare(b));
+    const categoryChips = categories.map((cat) => {
+      const safe = cat.replace(/[^a-z0-9_-]/gi, "_");
+      const checked = state.logFilters.get(cat) !== false ? "checked" : "";
+      return `<label class="logsFilterChip" title="Mostrar categoria: ${escapeHtml(cat)}"><input type="checkbox" data-log-filter="${safe}" data-log-category="${escapeHtml(cat)}" ${checked}/> ${escapeHtml(cat)}</label>`;
+    }).join("");
+
+    const detailOptions = state.glb?.logDetailOptions || {};
+    const detailChips = [
+      `<label class="logsFilterChip" title="Mostrar no log quais itens estão sem DEF para o type_id"><input type="checkbox" data-log-detail-option="showItemsMissingDefForType" ${detailOptions.showItemsMissingDefForType ? 'checked' : ''}/> detalhar sem_def_para_type</label>`,
+      `<label class="logsFilterChip" title="Mostrar no log quais itens estão sem graphic tanto no DEF quanto no item"><input type="checkbox" data-log-detail-option="showItemsMissingGraphicInDefAndItem" ${detailOptions.showItemsMissingGraphicInDefAndItem ? 'checked' : ''}/> detalhar sem_graphic_def_item</label>`
+    ].join("");
+
+    logsFilterBar.innerHTML = `${categoryChips}${detailChips}`;
+
+    logsFilterBar.querySelectorAll("input[data-log-filter]").forEach((el) => {
+      el.addEventListener("change", (ev) => {
+        const category = (ev.target.dataset.logCategory || "").toLowerCase();
+        state.logFilters.set(category, !!ev.target.checked);
+        renderLogsWindow();
+      });
+    });
+
+    logsFilterBar.querySelectorAll("input[data-log-detail-option]").forEach((el) => {
+      el.addEventListener("change", (ev) => {
+        const key = ev.target.dataset.logDetailOption;
+        if (!key || !state.glb.logDetailOptions || !(key in state.glb.logDetailOptions)) return;
+        state.glb.logDetailOptions[key] = !!ev.target.checked;
+        addLog(`[3d_items] detalhamento ${key}=${state.glb.logDetailOptions[key] ? 'on' : 'off'}`);
+      });
+    });
+  }
+
+  function addLog(msg, options = {}){
     const stamp = new Date().toLocaleTimeString();
-    state.logs.unshift(`[${stamp}] ${msg}`);
+    const category = ensureLogFilter(normalizeLogCategory(msg, options.category));
+    state.logs.unshift({ stamp, msg: String(msg || ""), category });
     if (state.logs.length > 5000) state.logs.length = 5000;
+    renderLogsFilterBar();
     if (state.logsOpen) renderLogsWindow();
   }
 
   function renderLogsWindow(){
-    logsText.textContent = state.logs.length ? state.logs.join("\n") : "// No logs yet.";
+    const visible = getVisibleLogs();
+    logsText.textContent = visible.length ? visible.map(formatLogEntry).join("\n") : "// No logs for current filters.";
   }
 
   function openLogsWindow(){
     state.logsOpen = true;
     logsOverlay.classList.add("open");
     logsOverlay.setAttribute("aria-hidden", "false");
+    renderLogsFilterBar();
     renderLogsWindow();
   }
 
@@ -3080,7 +3179,7 @@
 
   logsCloseBtn.addEventListener("click", closeLogsWindow);
   logsOverlay.addEventListener("mousedown", (e) => { if (e.target === logsOverlay) closeLogsWindow(); });
-  logsClearBtn.addEventListener("click", () => { state.logs = []; renderLogsWindow(); addLog("Logs cleared by user."); });
+  logsClearBtn.addEventListener("click", () => { state.logs = []; renderLogsFilterBar(); renderLogsWindow(); addLog("Logs cleared by user.", { category: "general" }); });
   misRealtimeClearBtn.addEventListener("click", () => {
     state.realtimeLog = [];
     state.realtimePrevMisText = state.liveMisRawText || state.realtimePrevMisText;
@@ -4815,12 +4914,53 @@
 
   function getRenderableGlbEntries(){
     const out = [];
+    const stats = {
+      totalItems: (state.items || []).length,
+      renderableItems: 0,
+      skippedMissingGraphic: 0,
+      skippedMissingTypeId: 0,
+      skippedDefNotFoundForTypeId: 0,
+      skippedMissingGraphicInDefAndItem: 0,
+      itemsMissingDefForType: [],
+      itemsMissingGraphicInDefAndItem: [],
+      graphicsFrequency: new Map(),
+    };
+
     for (const it of state.items || []){
-      const graphic = resolveItemGraphic(it);
-      if (!graphic) continue;
+      const typeId = String(it?.kv?.type_id || "").trim();
+      const def = getDefForItem(it);
+      const defGraphic = String(def?.graphic || "").trim();
+      const itemGraphic = String(it?.kv?.graphic || "").trim();
+      const graphic = (defGraphic || itemGraphic).trim();
+
+      if (!graphic){
+        stats.skippedMissingGraphic += 1;
+        if (!typeId) stats.skippedMissingTypeId += 1;
+        if (typeId && !def){
+          stats.skippedDefNotFoundForTypeId += 1;
+          stats.itemsMissingDefForType.push({
+            id: it.id,
+            typeId,
+            name: String(it?.kv?.name || it?.kv?.iai_name || "").trim(),
+          });
+        }
+        if (!defGraphic && !itemGraphic){
+          stats.skippedMissingGraphicInDefAndItem += 1;
+          stats.itemsMissingGraphicInDefAndItem.push({
+            id: it.id,
+            typeId,
+            name: String(it?.kv?.name || it?.kv?.iai_name || "").trim(),
+          });
+        }
+        continue;
+      }
+
+      stats.renderableItems += 1;
+      stats.graphicsFrequency.set(graphic, (stats.graphicsFrequency.get(graphic) || 0) + 1);
       out.push({ it, graphic });
     }
-    return out;
+
+    return { entries: out, stats };
   }
 
   function buildGlbSyncSignature(entries){
@@ -4914,13 +5054,25 @@
     return root;
   }
 
+  function formatGlbStatItems(items){
+    if (!items || !items.length) return "<none>";
+    return items
+      .map((it) => {
+        const parts = [`#${it.id}`];
+        if (it.typeId) parts.push(`type=${it.typeId}`);
+        if (it.name) parts.push(`name=${it.name}`);
+        return parts.join("|");
+      })
+      .join(", ");
+  }
+
   async function syncGlbItems(){
     const ready = await ensureGlbRendererReady();
     if (!ready || state.glb.syncPromise) return;
 
     state.glb.syncPromise = (async () => {
       const started = performance.now();
-      const entries = getRenderableGlbEntries();
+      const { entries, stats } = getRenderableGlbEntries();
       const signature = buildGlbSyncSignature(entries);
       const wantedIds = new Set(entries.map(x => x.it.id));
 
@@ -4956,6 +5108,41 @@
         applyItemTransformToObject(instance, it);
       }
 
+      const topGraphics = Array.from(stats.graphicsFrequency.entries())
+        .sort((a,b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([graphic, count]) => `${graphic}:${count}`);
+      const nonRenderable = stats.totalItems - stats.renderableItems;
+      const finalInstances = state.glb.itemInstances.size;
+      const syncReport = {
+        totalItems: stats.totalItems,
+        renderableItems: stats.renderableItems,
+        nonRenderableItems: nonRenderable,
+        finalInstances,
+        missingInstancesAfterSync: Math.max(0, stats.renderableItems - finalInstances),
+        skippedMissingGraphic: stats.skippedMissingGraphic,
+        skippedMissingTypeId: stats.skippedMissingTypeId,
+        skippedDefNotFoundForTypeId: stats.skippedDefNotFoundForTypeId,
+        skippedMissingGraphicInDefAndItem: stats.skippedMissingGraphicInDefAndItem,
+        distinctGraphics: stats.graphicsFrequency.size,
+        topGraphics,
+        missingGlbFiles: Array.from(state.glb.missingGraphics.values())
+          .sort((a,b) => a.localeCompare(b))
+          .map((graphic) => `resources/3d_items/${graphic}.glb`),
+        itemsMissingDefForType: stats.itemsMissingDefForType,
+        itemsMissingGraphicInDefAndItem: stats.itemsMissingGraphicInDefAndItem,
+      };
+      state.glb.lastStats = syncReport;
+      state.glb.lastSyncReport = syncReport;
+      addLog(`[3d_items] cobertura GLB: total=${syncReport.totalItems} renderizaveis=${syncReport.renderableItems} instancias=${syncReport.finalInstances} sem_graphic=${syncReport.skippedMissingGraphic} sem_type_id=${syncReport.skippedMissingTypeId} sem_def_para_type=${syncReport.skippedDefNotFoundForTypeId} sem_graphic_def_item=${syncReport.skippedMissingGraphicInDefAndItem} ausentes_pos_sync=${syncReport.missingInstancesAfterSync} graficos_distintos=${syncReport.distinctGraphics} top=${topGraphics.join(', ') || '<none>'}`);
+      addLog(`[3d_items] arquivos GLB ausentes (${syncReport.missingGlbFiles.length}): ${syncReport.missingGlbFiles.join(', ') || '<none>'}`);
+      if (state.glb.logDetailOptions?.showItemsMissingDefForType){
+        addLog(`[3d_items] itens sem_def_para_type (${syncReport.itemsMissingDefForType.length}): ${formatGlbStatItems(syncReport.itemsMissingDefForType)}`);
+      }
+      if (state.glb.logDetailOptions?.showItemsMissingGraphicInDefAndItem){
+        addLog(`[3d_items] itens sem_graphic_def_item (${syncReport.itemsMissingGraphicInDefAndItem.length}): ${formatGlbStatItems(syncReport.itemsMissingGraphicInDefAndItem)}`);
+      }
+
       state.glb.lastSyncSignature = signature;
       state.glb.structureDirty = false;
       state.glb.syncCount += 1;
@@ -4971,7 +5158,7 @@
 
   function updateGlbTransformsFromState(){
     if (!state.glb.ready) return;
-    const entries = getRenderableGlbEntries();
+    const { entries } = getRenderableGlbEntries();
     const signature = buildGlbSyncSignature(entries);
     if (signature !== state.glb.lastSyncSignature) state.glb.structureDirty = true;
 
@@ -5355,6 +5542,11 @@ Top view lock: ${topViewLocked?'on':'off'}
 Draw calls: ${drawCalls}
 GLB instances: ${state.glb.itemInstances.size}
 GLB sync: #${state.glb.syncCount} (${state.glb.lastSyncMs.toFixed(2)} ms)
+GLB total/render: ${state.glb.lastStats?.totalItems ?? '-'} / ${state.glb.lastStats?.renderableItems ?? '-'}
+GLB sem graphic: ${state.glb.lastStats?.skippedMissingGraphic ?? '-'}
+GLB sem type_id: ${state.glb.lastStats?.skippedMissingTypeId ?? '-'}
+GLB sem def(type_id): ${state.glb.lastStats?.skippedDefNotFoundForTypeId ?? '-'}
+GLB sem instância pós-sync: ${state.glb.lastStats?.missingInstancesAfterSync ?? '-'}
 Wrap: x=${wrapX} y=${wrapY}
 Sectors: ${sectorCount}x${sectorCount} origin=${terrainOrigin.x},${terrainOrigin.y}
 Terrain size: ${terrainSpanX()} x ${terrainSpanY()}
