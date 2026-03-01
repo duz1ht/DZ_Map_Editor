@@ -5339,26 +5339,46 @@
       .join(", ");
   }
 
+  function createWhiteWireframeMaterialFrom(baseMat){
+    const { THREE } = state.glb;
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      wireframe: true,
+      transparent: !!baseMat?.transparent,
+      opacity: Number.isFinite(baseMat?.opacity) ? baseMat.opacity : 1,
+      side: baseMat?.side,
+      alphaTest: baseMat?.alphaTest || 0,
+      depthTest: baseMat?.depthTest !== false,
+      depthWrite: baseMat?.depthWrite !== false,
+      fog: false,
+      toneMapped: false,
+    });
+    mat.needsUpdate = true;
+    return mat;
+  }
+
   function applyWireframeToGlbObject(root){
     if (!root) return;
     root.traverse((obj) => {
       if (!obj.isMesh || !obj.material) return;
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      for (const mat of mats){
-        if (!mat || typeof mat.wireframe !== "boolean") continue;
-        mat.wireframe = !!state.glb.wireframeEnabled;
-        if (mat.color){
-          if (state.glb.wireframeEnabled){
-            if (!Object.prototype.hasOwnProperty.call(mat.userData, "_wireframePrevColorHex")){
-              mat.userData._wireframePrevColorHex = mat.color.getHex();
-            }
-            mat.color.setHex(0xffffff);
-          } else if (Object.prototype.hasOwnProperty.call(mat.userData, "_wireframePrevColorHex")){
-            mat.color.setHex(mat.userData._wireframePrevColorHex);
-            delete mat.userData._wireframePrevColorHex;
-          }
+      if (state.glb.wireframeEnabled){
+        if (!Object.prototype.hasOwnProperty.call(obj.userData, "_wireframeOriginalMaterial")){
+          obj.userData._wireframeOriginalMaterial = obj.material;
         }
-        mat.needsUpdate = true;
+        const base = obj.userData._wireframeOriginalMaterial;
+        if (Array.isArray(base)){
+          obj.material = base.map((m) => createWhiteWireframeMaterialFrom(m));
+        } else {
+          obj.material = createWhiteWireframeMaterialFrom(base);
+        }
+        return;
+      }
+      if (Object.prototype.hasOwnProperty.call(obj.userData, "_wireframeOriginalMaterial")){
+        const current = obj.material;
+        obj.material = obj.userData._wireframeOriginalMaterial;
+        delete obj.userData._wireframeOriginalMaterial;
+        if (Array.isArray(current)) current.forEach((m) => m?.dispose?.());
+        else current?.dispose?.();
       }
     });
   }
