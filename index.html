@@ -4883,12 +4883,25 @@
     return last + step * (level - distances.length + 1);
   }
 
+  function topLevelObjectHasMesh(node){
+    let hasMesh = false;
+    if (!node?.traverse) return false;
+    node.traverse((obj) => {
+      if (hasMesh || !obj?.isMesh) return;
+      hasMesh = true;
+    });
+    return hasMesh;
+  }
+
   function convertNamedTopLevelObjectsToLodGroups(root){
     if (!root || !root.children?.length || !state.glb.THREE) return;
     const { THREE } = state.glb;
     const grouped = new Map();
+    const initialChildren = Array.from(root.children);
+    const nodesUsedByNamedLods = new Set();
+    let namedGroupCount = 0;
 
-    for (const child of root.children){
+    for (const child of initialChildren){
       const parsed = parseNamedLodLevel(child?.name);
       if (!parsed) continue;
       const key = parsed.baseName.toLowerCase();
@@ -4904,9 +4917,27 @@
       lod.name = `${bucket.baseName}__LOD_GROUP`;
       for (const [level, obj] of levelEntries){
         lod.addLevel(obj, lodDistanceForLevel(level));
+        nodesUsedByNamedLods.add(obj);
       }
       root.add(lod);
+      namedGroupCount += 1;
     }
+
+    if (namedGroupCount > 0) return;
+
+    const fallbackNodes = initialChildren.filter((child) => {
+      if (nodesUsedByNamedLods.has(child)) return false;
+      return topLevelObjectHasMesh(child);
+    });
+    if (fallbackNodes.length < 2) return;
+
+    const fallbackBaseName = String(fallbackNodes[0]?.name || 'GLB_ROOT').trim() || 'GLB_ROOT';
+    const fallbackLod = new THREE.LOD();
+    fallbackLod.name = `${fallbackBaseName}__LOD_GROUP_FALLBACK`;
+    fallbackNodes.forEach((obj, level) => {
+      fallbackLod.addLevel(obj, lodDistanceForLevel(level));
+    });
+    root.add(fallbackLod);
   }
 
   async function ensureGlbRendererReady(){
