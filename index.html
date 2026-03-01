@@ -5553,24 +5553,36 @@
       y: rawToWorld(it.y,'y'),
       z: rawToWorld(it.z||0,'z')
     };
-    const gizmoMinScale = 0.22;
-    const gizmoMaxScale = 0.5;
     const gizmoNearDist = 180;
     const gizmoFarDist = 1800;
     const camDist = vec3Len(vec3Sub(center, cam.pos));
     const t = Math.max(0, Math.min(1, (camDist - gizmoNearDist) / Math.max(1, gizmoFarDist - gizmoNearDist)));
-    const gizmoScale = gizmoMinScale + (gizmoMaxScale - gizmoMinScale) * t;
-    const axisLen = 80 * gizmoScale;
-    const xTip = worldToScreen(center.x + axisLen, center.y, center.z);
-    const yTip = worldToScreen(center.x, center.y + axisLen, center.z);
-    const zTip = worldToScreen(center.x, center.y, center.z + axisLen);
+
+    // Escala visual em pixels: perto = menor, longe = maior.
+    const axisLenPx = 30 + (70 - 30) * t;
+    const yawRadius = 16 + (34 - 16) * t;
+    const pitchRadius = 12 + (28 - 12) * t;
+
     const c = worldToScreen(center.x, center.y, center.z);
     if (!c.visible){ state.gizmoVisual = null; return; }
 
-    const yawAnchor = worldToScreen(center.x + 55 * gizmoScale, center.y, center.z);
-    const pitchAnchor = worldToScreen(center.x, center.y, center.z + 55 * gizmoScale);
-    const yawRadius = yawAnchor.visible ? Math.max(11, Math.hypot(yawAnchor.sx - c.sx, yawAnchor.sy - c.sy)) : 15;
-    const pitchRadius = pitchAnchor.visible ? Math.max(9, Math.hypot(pitchAnchor.sx - c.sx, pitchAnchor.sy - c.sy)) : 12;
+    const axisProbe = 20;
+    function axisDir(dx, dy, dz, fallback){
+      const p = worldToScreen(center.x + dx, center.y + dy, center.z + dz);
+      if (!p.visible) return fallback;
+      const vx = p.sx - c.sx;
+      const vy = p.sy - c.sy;
+      const l = Math.hypot(vx, vy);
+      if (l <= 1e-4) return fallback;
+      return { x: vx / l, y: vy / l };
+    }
+    const xDir = axisDir(axisProbe, 0, 0, { x: 1, y: 0 });
+    const yDir = axisDir(0, axisProbe, 0, { x: 0, y: -1 });
+    const zDir = axisDir(0, 0, axisProbe, { x: 0.6, y: -0.8 });
+
+    const xTip = { visible: true, sx: c.sx + xDir.x * axisLenPx, sy: c.sy + xDir.y * axisLenPx };
+    const yTip = { visible: true, sx: c.sx + yDir.x * axisLenPx, sy: c.sy + yDir.y * axisLenPx };
+    const zTip = { visible: true, sx: c.sx + zDir.x * axisLenPx, sy: c.sy + zDir.y * axisLenPx };
 
     function drawAxis(tip, color){
       if (!tip.visible) return;
