@@ -1357,6 +1357,9 @@
       lastSelectedVisualId: null,
       lastStats: null,
       lastSyncReport: null,
+      lodDistances: [0, 280, 500],
+      activeLodLevels: [0, 1],
+      lodConfigLogged: false,
       logDetailOptions: {
         showItemsMissingDefForType: false,
         showItemsMissingGraphicInDefAndItem: false,
@@ -4861,6 +4864,71 @@
     obj.rotation.x = pitchRad;
   }
 
+  function parseNamedLodLevel(name){
+    const raw = String(name || "").trim();
+    if (!raw) return null;
+    const m = raw.match(/^(.*)_LOD(\d+)$/i);
+    if (!m) return { baseName: raw, level: 0 };
+    const baseName = String(m[1] || "").trim();
+    const level = Number(m[2]);
+    if (!baseName || !Number.isFinite(level) || level < 1) return null;
+    return { baseName, level };
+  }
+
+  function lodDistanceForLevel(level){
+    const distances = state.glb.lodDistances || [0];
+    if (level < distances.length) return distances[level];
+    const last = distances[distances.length - 1] || 0;
+    const prev = distances[distances.length - 2] || 0;
+    const step = Math.max(40, last - prev || 120);
+    return last + step * (level - distances.length + 1);
+  }
+
+  function collectAllowedLodEntries(levelEntries){
+    const wanted = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
+      ? state.glb.activeLodLevels
+      : [0, 1];
+    const byLevel = new Map(levelEntries);
+    const out = [];
+    for (const level of wanted){
+      if (!byLevel.has(level)) continue;
+      out.push([level, byLevel.get(level)]);
+    }
+    return out;
+  }
+
+  function topLevelObjectHasMesh(node){
+    let hasMesh = false;
+    if (!node?.traverse) return false;
+    node.traverse((obj) => {
+      if (hasMesh || !obj?.isMesh) return;
+      hasMesh = true;
+    });
+    return hasMesh;
+  }
+
+  function convertNamedTopLevelObjectsToLodGroups(root){
+    if (!root || !root.children?.length || !state.glb.THREE) return;
+    const { THREE } = state.glb;
+    const orderedNodes = Array.from(root.children).filter((child) => topLevelObjectHasMesh(child));
+    if (orderedNodes.length < 2) return;
+
+    const levelEntries = orderedNodes.map((obj, level) => [level, obj]);
+    const allowedEntries = collectAllowedLodEntries(levelEntries);
+    if (allowedEntries.length < 2) return;
+
+    const baseName = String(orderedNodes[0]?.name || 'GLB_ROOT').trim() || 'GLB_ROOT';
+    const lod = new THREE.LOD();
+    lod.name = `${baseName}__LOD_GROUP_ORDERED`;
+    for (const [level, obj] of allowedEntries){
+      lod.addLevel(obj, lodDistanceForLevel(level));
+    }
+    for (const obj of orderedNodes){
+      if (obj.parent === root) root.remove(obj);
+    }
+    root.add(lod);
+  }
+
   async function ensureGlbRendererReady(){
     if (state.glb.ready) return true;
     if (state.glb.initPromise) return state.glb.initPromise;
@@ -4889,6 +4957,13 @@
         state.glb.scene = scene3d;
         state.glb.camera = camera3d;
         state.glb.loader = new GLTFLoader();
+        if (!state.glb.lodConfigLogged){
+          const activeLevels = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
+            ? state.glb.activeLodLevels
+            : [0, 1];
+          addLog(`[3d_items] LOD por distancia ativo (unidades do mundo): ${activeLevels.map((level) => `LOD${level}>=${lodDistanceForLevel(level)}`).join(' | ')}`);
+          state.glb.lodConfigLogged = true;
+        }
         state.glb.ready = true;
       } catch (err) {
         addLog(`[3d_items] erro ao iniciar renderer GLB: ${err?.message || err}`);
@@ -5005,6 +5080,8 @@
 
         obj.material = Array.isArray(obj.material) ? converted : converted[0];
       });
+
+      convertNamedTopLevelObjectsToLodGroups(root);
 
       state.glb.templateByGraphic.set(key, root);
       return root;
