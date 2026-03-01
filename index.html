@@ -249,6 +249,35 @@
       white-space:pre;
       pointer-events:none;
     }
+    #itemGizmo{
+      position:absolute;
+      z-index:7;
+      display:none;
+      gap:6px;
+      transform:translate(-50%,-50%);
+      pointer-events:auto;
+    }
+    #itemGizmo.show{ display:flex; }
+    .gizmoHandle{
+      width:22px;
+      height:22px;
+      border-radius:50%;
+      border:1px solid rgba(255,255,255,.45);
+      background:rgba(18,26,42,.9);
+      color:#e9f0ff;
+      font-size:11px;
+      line-height:1;
+      cursor:grab;
+      display:grid;
+      place-items:center;
+      user-select:none;
+    }
+    .gizmoHandle:active{ cursor:grabbing; }
+    .gizmoMoveX{ border-color:#ff7b7b; }
+    .gizmoMoveY{ border-color:#88ff88; }
+    .gizmoMoveZ{ border-color:#88aaff; }
+    .gizmoYaw{ border-color:#ffd166; }
+    .gizmoPitch{ border-color:#7ce4ff; }
 
     .hint{
       color:var(--text-muted);
@@ -825,7 +854,7 @@
       <button id="modeH" class="modeBtn" title="Heightmap (R)">H</button>
       <button id="modeD" class="modeBtn" title="Delta/Variation (R)">D</button>
       <label class="tbCtl"><input id="ground" type="checkbox" checked> Ground clamp</label>
-      <label class="tbCtl">Speed <input id="speed" type="range" min="20" max="1200" step="10" value="300"></label>
+      <label class="tbCtl">Speed <input id="speed" type="range" min="5" max="600" step="5" value="35"></label>
       <label class="tbCtl">Clearance <input id="clear" type="range" min="1" max="200" step="1" value="40"></label>
       <label class="tbCtl">Draw radius <input id="radius" type="range" min="512" max="65536" step="256" value="12288"></label>
       <label class="tbCtl"><input id="mainArea" type="checkbox"> Main area</label>
@@ -837,6 +866,13 @@
     <div id="canvasWrap">
       <canvas id="cv"></canvas>
       <div id="camDebug"></div>
+      <div id="itemGizmo" aria-hidden="true">
+        <button class="gizmoHandle gizmoMoveX" data-gizmo-mode="moveX" title="Move X">X</button>
+        <button class="gizmoHandle gizmoMoveY" data-gizmo-mode="moveY" title="Move Y">Y</button>
+        <button class="gizmoHandle gizmoMoveZ" data-gizmo-mode="moveZ" title="Move Z">Z</button>
+        <button class="gizmoHandle gizmoYaw" data-gizmo-mode="yaw" title="Yaw">Yw</button>
+        <button class="gizmoHandle gizmoPitch" data-gizmo-mode="pitch" title="Pitch">Pt</button>
+      </div>
 
       <div id="sectionOverlay" aria-hidden="true">
         <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
@@ -1265,6 +1301,7 @@
     itemClipboardItems: [],
     pastePlacementActive: false,
     pastePreviewWorld: null,
+    gizmoDrag: null,
 
     gameStrings: new Map(),
     weaponDefs: new Map(),
@@ -1273,6 +1310,26 @@
     editorFolderHandle: null,
     currentMisFileHandle: null,
     generalTerrainNames: [],
+
+    glb: {
+      THREE: null,
+      GLTFLoader: null,
+      renderer: null,
+      scene: null,
+      camera: null,
+      loader: null,
+      templateByGraphic: new Map(),
+      missingGraphics: new Set(),
+      itemInstances: new Map(),
+      syncPromise: null,
+      initPromise: null,
+      structureDirty: true,
+      lastSyncSignature: "",
+      syncCount: 0,
+      lastSyncMs: 0,
+      lastSelectedVisualId: null,
+      ready: false,
+    },
   };
 
   // UI refs
@@ -2664,7 +2721,7 @@
           if (!t || t.startsWith("//")) continue;
           const m = t.match(/^([A-Za-z0-9_]+)\s+(.*)$/);
           if (!m) continue;
-          const key = m[1];
+          const key = m[1].toLowerCase();
           let val = m[2].trim();
           if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
           kv[key] = val;
@@ -3543,9 +3600,9 @@
     setEnabled(ui.absHeight, kvHas(it, "absolute_height"));
     setValueIf(ui.absHeight, kvHas(it, "absolute_height") ? String(it.kv.absolute_height) === "1" : false);
 
-    // Facing
-    setEnabled(ui.heading, kvHas(it, "facing") || kvHas(it, "rot"));
-    setEnabled(ui.pitch, kvHas(it, "facing"));
+    // Facing (sempre editável na janela)
+    setEnabled(ui.heading, true);
+    setEnabled(ui.pitch, true);
     setValueIf(ui.heading, it.heading);
     setValueIf(ui.pitch, it.pitch);
 
@@ -3631,7 +3688,8 @@
     renderAIAttrs(it);
   }
 
-  function commitFromWindow(){
+  function commitFromWindow(options = {}){
+    const applyOrientation = !!options.applyOrientation;
     if (!state.modalOpen) return;
     const it = getSelected();
     if (!it) return;
@@ -3662,13 +3720,15 @@
     if (kvHas(it, "height_lock")) it.kv.height_lock = ui.lock.checked ? "1" : "0";
     if (kvHas(it, "absolute_height")) it.kv.absolute_height = ui.absHeight.checked ? "1" : "0";
 
-    if (kvHas(it, "facing")){
+    if (applyOrientation){
       it.heading = parseFloatSafe(ui.heading.value);
       it.pitch = parseFloatSafe(ui.pitch.value);
-      it.kv.facing = `${it.heading} ${it.pitch}`;
-    } else if (kvHas(it, "rot")){
-      it.heading = parseFloatSafe(ui.heading.value);
-      it.kv.rot = String(it.heading);
+
+      if (kvHas(it, "facing") || !kvHas(it, "rot")){
+        it.kv.facing = `${it.heading} ${it.pitch}`;
+      } else {
+        it.kv.rot = String(it.heading);
+      }
     }
 
     if (kvHas(it, "remove_if_less_than")) it.kv.remove_if_less_than = ui.lessThan.value;
@@ -3684,7 +3744,7 @@
       if (ui.group.value) it.kv.group_id = ui.group.value;
       else if (kvHas(it, "group_id")) it.kv.group_id = "";
     }
-    it.kv.team = ui.team.value;
+    if (kvHas(it, "team")) it.kv.team = ui.team.value;
 
     if (kvHas(it, "waccuracy1")) it.kv.waccuracy1 = String(parseFloatSafe(ui.wacc1.value));
     if (kvHas(it, "waccuracy2")) it.kv.waccuracy2 = String(parseFloatSafe(ui.wacc2.value));
@@ -3692,21 +3752,25 @@
     const wpPauseKey = kvFindKey(it, ["wp_pause", "wppause"]);
     if (wpPauseKey) it.kv[wpPauseKey] = String(parseFloatSafe(ui.wpPause.value));
     if (kvHas(it, "max_attack_distance")) it.kv.max_attack_distance = String(parseFloatSafe(ui.maxAttack.value));
-    if (kvHas(it, "edistances")) it.kv.edistances = String(parseFloatSafe(ui.maxEngage.value));
+    if (kvHas(it, "edistances")) it.kv.edistances = ui.maxEngage.value;
     if (kvHas(it, "perception2")) it.kv.perception2 = String(parseFloatSafe(ui.minEngage.value));
 
     if (kvHas(it, "mission_critical")) it.kv.mission_critical = ui.missionCritical.checked ? "1" : "0";
 
     const hasWaypointRef = !!ui.wpList.value;
-    if (hasWaypointRef) it.kv.waypoint_id = ui.wpList.value;
-    else delete it.kv.waypoint_id;
+    if (kvHas(it, "waypoint_id")){
+      if (hasWaypointRef) it.kv.waypoint_id = ui.wpList.value;
+      else delete it.kv.waypoint_id;
+    }
 
     const wpNum = Math.trunc(Number(ui.wpNumber.value));
-    if (hasWaypointRef && Number.isFinite(wpNum) && wpNum > 0) it.kv.wpnumber = String(wpNum);
-    else delete it.kv.wpnumber;
+    if (kvHas(it, "wpnumber")){
+      if (hasWaypointRef && Number.isFinite(wpNum) && wpNum > 0) it.kv.wpnumber = String(wpNum);
+      else delete it.kv.wpnumber;
+    }
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
-    if (state.wpNames.length){
+    if (state.wpNames.length && kvHas(it, "ttoolindex")){
       const idx = Math.trunc(Number(ui.wpName.value));
       if (Number.isFinite(idx) && idx >= 0) it.kv.ttoolindex = String(idx);
     }
@@ -3726,23 +3790,7 @@
     if (state.modalOpen) renderItemWindow(); // atualiza Type/Graphic/Title se DEF mudou
   }
 
-  const inputsToCommit = [
-    ui.subtype, ui.layer,
-    ui.posx, ui.posy, ui.posz,
-    ui.absHeight, ui.lock,
-    ui.heading, ui.pitch,
-    ui.lessThan, ui.moreThan, ui.multiplayerOnly,
-    ui.spinmapColor,
-    ui.activeArea, ui.aiTextfile, ui.group, ui.team,
-    ui.wacc1, ui.wacc2, ui.fireTimer, ui.wpPause,
-    ui.maxAttack, ui.maxEngage, ui.minEngage,
-    ui.missionCritical,
-    ui.wpList, ui.wpNumber, ui.wpName, ui.wpDistance, ui.advEvent, ui.navWp,
-  ];
-  for (const el of inputsToCommit){
-    el.addEventListener("input", commitFromWindow);
-    el.addEventListener("change", commitFromWindow);
-  }
+  // Edição fica pendente na janela e só é aplicada em OK.
 
   function openModal(){
     const it = getSelected();
@@ -3774,6 +3822,7 @@
   }
 
   function closeModalOk(){
+    commitFromWindow({ applyOrientation: true });
     state.modalSnapshot = null;
     state.modalOpen = false;
 
@@ -4435,6 +4484,7 @@
   // Canvas (WebGL terrain viewer + editor items)
   const cv = document.getElementById("cv");
   const camDebugEl = document.getElementById("camDebug");
+  const itemGizmoEl = document.getElementById("itemGizmo");
   const gl = cv.getContext('webgl',{antialias:true, alpha:false});
   if(!gl){ statusEl.textContent = "WebGL indisponível."; throw new Error('WebGL not available'); }
   const extUInt=gl.getExtension('OES_element_index_uint');
@@ -4450,7 +4500,7 @@
   const prog=gl.createProgram(); gl.attachShader(prog,compile(gl.VERTEX_SHADER,vsSrc)); gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fsSrc)); gl.linkProgram(prog);
   if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog)||'link failed');
   const aPos=gl.getAttribLocation(prog,'aPos'), aUV=gl.getAttribLocation(prog,'aUV');
-  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV');
+  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex');
 
   const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; }`;
   const itemFs=`precision mediump float; uniform vec4 uColor; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; gl_FragColor=uColor; }`;
@@ -4479,6 +4529,14 @@
   const lineVB=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,lineVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,0,1,0,0,1,0,0,1,1,0,1,1,0,0,1,0,0,1,0,0,0,0]),gl.STATIC_DRAW);
 
   function mat4Identity(){ return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]); }
+  function resetFixedGlState(){
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.disable(gl.BLEND);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    gl.useProgram(null);
+  }
   function mat4Mul(a,b){ const o=new Float32Array(16); for(let c=0;c<4;c++) for(let r=0;r<4;r++) o[c*4+r]=a[0*4+r]*b[c*4+0]+a[1*4+r]*b[c*4+1]+a[2*4+r]*b[c*4+2]+a[3*4+r]*b[c*4+3]; return o; }
   function mat4Perspective(fovy,aspect,near,far){ const f=1/Math.tan(fovy/2), nf=1/(near-far); const o=new Float32Array(16); o[0]=f/aspect;o[5]=f;o[10]=(far+near)*nf;o[11]=-1;o[14]=(2*far*near)*nf; return o; }
   function mat4Translate(x,y,z){ const o=mat4Identity(); o[12]=x;o[13]=y;o[14]=z; return o; }
@@ -4489,6 +4547,8 @@
   const DEPTH_W=1024, DEPTH_H=1024, SECTOR_SIZE=512, SECTOR_STRIDE=SECTOR_SIZE, SECTOR_MESH_MAX=SECTOR_SIZE;
   const TERRAIN_BASE_FLIP_Y=true;
   const MIS_POS_SCALE=65536;
+  const THREE_MODULE_URL = "https://esm.sh/three@0.152.2";
+  const GLTF_LOADER_URL = "https://esm.sh/three@0.152.2/examples/jsm/loaders/GLTFLoader.js";
   function mainAreaCenterX(){ return originWorldX() + terrainSpanX()*0.5; }
   function mainAreaCenterY(){ return originWorldY() + terrainSpanY()*0.5; }
   function rawToWorld(v, axis='z'){
@@ -4615,7 +4675,7 @@
   function screenToWorld(sx,sy,zPlane=0){ const ray=screenRay(sx,sy), dz=ray.dir.z; if(Math.abs(dz)<1e-6) return {x:ray.origin.x,y:ray.origin.y,z:zPlane}; const t=(zPlane-ray.origin.z)/dz; return {x:ray.origin.x+ray.dir.x*Math.max(t,0), y:ray.origin.y+ray.dir.y*Math.max(t,0), z:zPlane}; }
 
   function bindMesh(m){ gl.bindBuffer(gl.ARRAY_BUFFER,m.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib); gl.enableVertexAttribArray(aPos); gl.enableVertexAttribArray(aUV); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,20,0); gl.vertexAttribPointer(aUV,2,gl.FLOAT,false,20,12); }
-  function drawTerrain(P,V,forward){ const tex=activeTerrainTexture(); if(!(tex&&sectors&&meshSector[1])) return 0; gl.useProgram(prog); gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0); gl.bindTexture(gl.TEXTURE_2D,tex); const ox=originWorldX(),oy=originWorldY(),radius=parseFloat(document.getElementById('radius')?.value||'12288')||12288; const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1,j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1; let draws=0; for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ const srcX=mapSrcIdx(gx,wrapX), srcY=mapSrcIdx(TERRAIN_BASE_FLIP_Y?(sectorCount-1-gy):gy,wrapY), sectorIndex=sectors[srcY*sectorCount+srcX]|0; if(sectorIndex<=0) continue; const m=meshSector[sectorIndex]; if(!m||!m.indexCount) continue; const MVP=mat4Mul(P, mat4Mul(V, mat4Translate(ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE,0))); gl.uniformMatrix4fv(uMVP,false,MVP); bindMesh(m); gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0); draws++; }
+  function drawTerrain(P,V,forward){ const tex=activeTerrainTexture(); if(!(tex&&sectors&&meshSector[1])) return 0; gl.useProgram(prog); gl.activeTexture(gl.TEXTURE0); gl.uniform1i(uTex,0); gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0); gl.bindTexture(gl.TEXTURE_2D,tex); const ox=originWorldX(),oy=originWorldY(),radius=parseFloat(document.getElementById('radius')?.value||'12288')||12288; const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1,j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1; let draws=0; for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ const srcX=mapSrcIdx(gx,wrapX), srcY=mapSrcIdx(TERRAIN_BASE_FLIP_Y?(sectorCount-1-gy):gy,wrapY), sectorIndex=sectors[srcY*sectorCount+srcX]|0; if(sectorIndex<=0) continue; const m=meshSector[sectorIndex]; if(!m||!m.indexCount) continue; const MVP=mat4Mul(P, mat4Mul(V, mat4Translate(ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE,0))); gl.uniformMatrix4fv(uMVP,false,MVP); bindMesh(m); gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0); draws++; }
     const waterRender = getRenderWaterHeightRaw();
     if(waterRender.raw!==null&&Number.isFinite(waterRender.raw)){ gl.useProgram(waterProg); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.enableVertexAttribArray(waPos); gl.vertexAttribPointer(waPos,3,gl.FLOAT,false,12,0); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.uniformMatrix4fv(wuMVP,false,mat4Mul(P,V)); gl.uniform3f(wuColor,0.55,0.85,1.0); gl.uniform1f(wuAlpha,0.28); gl.uniform1f(wuZ,waterRender.raw*0.5); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); for(let gy=j0;gy<=j1;gy++) for(let gx=i0;gx<=i1;gx++){ gl.uniform2f(wuOffsetXY,ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE); gl.uniform2f(wuScaleXY,SECTOR_STRIDE,SECTOR_STRIDE); gl.drawElements(gl.TRIANGLES,6,gl.UNSIGNED_SHORT,0); } gl.depthMask(true); gl.disable(gl.BLEND); }
     if(gridVisible){
@@ -4683,6 +4743,377 @@
     gl.useProgram(itemProg); gl.bindBuffer(gl.ARRAY_BUFFER,itemVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.DYNAMIC_DRAW); gl.enableVertexAttribArray(iaPos); gl.vertexAttribPointer(iaPos,3,gl.FLOAT,false,0,0); gl.uniformMatrix4fv(iuMVP,false,PV);
     for(let i=0;i<items.length;i++){ const it=items[i], sel=(it.id===state.selectedId||state.multiSelectedIds.has(it.id)), wp=state.selectedWaypointMarkerIds.has(it.id); if(sel) gl.uniform4f(iuColor,0.35,0.45,0.95,1); else if(wp) gl.uniform4f(iuColor,1.0,0.8,0.2,1); else gl.uniform4f(iuColor,0.88,0.9,1.0,1); gl.uniform1f(iuPointSize,sel?11:8); gl.drawArrays(gl.POINTS,i,1); }
     if(state.pastePlacementActive&&state.pastePreviewWorld&&state.itemClipboardItems.length){ const p=[]; for(const entry of state.itemClipboardItems) p.push(state.pastePreviewWorld.x+entry.dx,state.pastePreviewWorld.y+entry.dy,state.pastePreviewWorld.z||0); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(p),gl.DYNAMIC_DRAW); gl.uniform4f(iuColor,0.34,0.83,0.55,0.9); gl.uniform1f(iuPointSize,13); gl.drawArrays(gl.POINTS,0,p.length/3); }
+  }
+
+  function resolveItemGraphic(it){
+    const def = getDefForItem(it);
+    const graphic = String(def?.graphic || it?.kv?.graphic || "").trim();
+    return graphic;
+  }
+
+  function applyItemTransformToObject(obj, it){
+    if (!obj || !it) return;
+    obj.position.set(
+      rawToWorld(it.x,'x'),
+      rawToWorld(it.y,'y'),
+      rawToWorld(it.z||0,'z')
+    );
+    const yawRad = (Number(it.heading) || 0) * Math.PI / 180;
+    const pitchCalibratedDeg = (Number(it.pitch) || 0) + 90;
+    const pitchRad = pitchCalibratedDeg * Math.PI / 180;
+    obj.rotation.order = "ZXY";
+    obj.rotation.z = yawRad;
+    obj.rotation.x = pitchRad;
+  }
+
+  async function ensureGlbRendererReady(){
+    if (state.glb.ready) return true;
+    if (state.glb.initPromise) return state.glb.initPromise;
+
+    state.glb.initPromise = (async () => {
+      try {
+        const THREE = await import(THREE_MODULE_URL);
+        const { GLTFLoader } = await import(GLTF_LOADER_URL);
+        const renderer = new THREE.WebGLRenderer({ canvas: cv, context: gl, antialias: true, alpha: false });
+        renderer.autoClear = false;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+
+        const scene3d = new THREE.Scene();
+        scene3d.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.65));
+        const dir1 = new THREE.DirectionalLight(0xffffff, 1.1); dir1.position.set(5, 8, 6); scene3d.add(dir1);
+        const dir2 = new THREE.DirectionalLight(0xffffff, 0.6); dir2.position.set(-6, 3, -5); scene3d.add(dir2);
+
+        const camera3d = new THREE.PerspectiveCamera(60, 1, 0.01, 20000);
+        camera3d.matrixAutoUpdate = false;
+
+        state.glb.THREE = THREE;
+        state.glb.GLTFLoader = GLTFLoader;
+        state.glb.renderer = renderer;
+        state.glb.scene = scene3d;
+        state.glb.camera = camera3d;
+        state.glb.loader = new GLTFLoader();
+        state.glb.ready = true;
+      } catch (err) {
+        addLog(`[3d_items] erro ao iniciar renderer GLB: ${err?.message || err}`);
+        state.glb.ready = false;
+      }
+      return state.glb.ready;
+    })();
+
+    return state.glb.initPromise;
+  }
+
+  function clearGlbItemInstances(){
+    if (!state.glb.ready || !state.glb.scene) return;
+    for (const obj of state.glb.itemInstances.values()){
+      state.glb.scene.remove(obj);
+    }
+    state.glb.itemInstances.clear();
+  }
+
+  function getRenderableGlbEntries(){
+    const out = [];
+    for (const it of state.items || []){
+      const graphic = resolveItemGraphic(it);
+      if (!graphic) continue;
+      out.push({ it, graphic });
+    }
+    return out;
+  }
+
+  function buildGlbSyncSignature(entries){
+    return entries.map(({ it, graphic }) => `${it.id}:${graphic}`).join("|");
+  }
+
+  async function loadGraphicTemplate(graphic){
+    const key = String(graphic || "").trim();
+    if (!key) return null;
+    if (state.glb.templateByGraphic.has(key)) return state.glb.templateByGraphic.get(key);
+
+    const path = `resources/3d_items/${key}.glb`;
+    try {
+      const glbData = await loadBinaryResource(path);
+      if (!glbData) throw new Error(`Falha ao ler GLB: ${path}`);
+
+      const basePath = path.slice(0, path.lastIndexOf("/") + 1);
+      const gltf = state.glb.loader.parseAsync
+        ? await state.glb.loader.parseAsync(glbData, basePath)
+        : await new Promise((resolve, reject) => {
+            state.glb.loader.parse(glbData, basePath, resolve, reject);
+          });
+      const root = gltf.scene || gltf.scenes?.[0] || null;
+      if (!root) return null;
+
+      root.traverse((obj) => {
+        if (!obj.isMesh) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        const converted = mats.map((m) => {
+          if (!m) return m;
+          if (m.map) m.map.colorSpace = state.glb.THREE.SRGBColorSpace;
+          if (m.emissiveMap) m.emissiveMap.colorSpace = state.glb.THREE.SRGBColorSpace;
+
+          // Evita shaders PBR complexos que falham em alguns drivers WebGL1.
+          return new state.glb.THREE.MeshLambertMaterial({
+            map: m.map || null,
+            color: m.color ? m.color.clone() : new state.glb.THREE.Color(0xffffff),
+            emissive: m.emissive ? m.emissive.clone() : new state.glb.THREE.Color(0x000000),
+            emissiveMap: m.emissiveMap || null,
+            transparent: !!m.transparent,
+            opacity: Number.isFinite(m.opacity) ? m.opacity : 1,
+            side: m.side,
+            alphaTest: m.alphaTest || 0,
+          });
+        });
+
+        obj.material = Array.isArray(obj.material) ? converted : converted[0];
+      });
+
+      state.glb.templateByGraphic.set(key, root);
+      return root;
+    } catch (err) {
+      const placeholder = createMissingGlbPlaceholder(key);
+      state.glb.templateByGraphic.set(key, placeholder);
+      if (!state.glb.missingGraphics.has(key)){
+        state.glb.missingGraphics.add(key);
+        addLog(`[3d_items] GLB ausente ou inválido: ${path}`);
+      }
+      return placeholder;
+    }
+  }
+
+  function createMissingGlbPlaceholder(graphic){
+    const { THREE } = state.glb;
+    const root = new THREE.Group();
+    root.userData.missingGraphic = graphic;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+    if (ctx){
+      ctx.fillStyle = "rgba(20, 8, 8, 0.85)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "rgba(255, 90, 90, 0.95)";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+      ctx.fillStyle = "#ffb3b3";
+      ctx.font = "700 36px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("MISSING", canvas.width * 0.5, canvas.height * 0.5);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(2.8, 1.4, 1);
+    root.add(sprite);
+    return root;
+  }
+
+  async function syncGlbItems(){
+    const ready = await ensureGlbRendererReady();
+    if (!ready || state.glb.syncPromise) return;
+
+    state.glb.syncPromise = (async () => {
+      const started = performance.now();
+      const entries = getRenderableGlbEntries();
+      const signature = buildGlbSyncSignature(entries);
+      const wantedIds = new Set(entries.map(x => x.it.id));
+
+      for (const [itemId, obj] of state.glb.itemInstances.entries()){
+        if (wantedIds.has(itemId)) continue;
+        state.glb.scene.remove(obj);
+        state.glb.itemInstances.delete(itemId);
+      }
+
+      for (const { it, graphic } of entries){
+        let instance = state.glb.itemInstances.get(it.id) || null;
+        if (instance && instance.userData.graphic !== graphic){
+          state.glb.scene.remove(instance);
+          state.glb.itemInstances.delete(it.id);
+          instance = null;
+        }
+
+        if (!instance){
+          const template = await loadGraphicTemplate(graphic);
+          if (!template) continue;
+          instance = template.clone(true);
+          instance.traverse((obj) => {
+            if (!obj.isMesh) return;
+            if (Array.isArray(obj.material)) obj.material = obj.material.map(m => m ? m.clone() : m);
+            else if (obj.material) obj.material = obj.material.clone();
+          });
+          instance.userData.itemId = it.id;
+          instance.userData.graphic = graphic;
+          state.glb.scene.add(instance);
+          state.glb.itemInstances.set(it.id, instance);
+        }
+
+        applyItemTransformToObject(instance, it);
+      }
+
+      state.glb.lastSyncSignature = signature;
+      state.glb.structureDirty = false;
+      state.glb.syncCount += 1;
+      state.glb.lastSyncMs = performance.now() - started;
+    })();
+
+    try {
+      await state.glb.syncPromise;
+    } finally {
+      state.glb.syncPromise = null;
+    }
+  }
+
+  function updateGlbTransformsFromState(){
+    if (!state.glb.ready) return;
+    const entries = getRenderableGlbEntries();
+    const signature = buildGlbSyncSignature(entries);
+    if (signature !== state.glb.lastSyncSignature) state.glb.structureDirty = true;
+
+    for (const { it, graphic } of entries){
+      const instance = state.glb.itemInstances.get(it.id);
+      if (!instance || instance.userData.graphic !== graphic) continue;
+      applyItemTransformToObject(instance, it);
+    }
+    if (state.glb.structureDirty && !state.glb.syncPromise) syncGlbItems();
+  }
+
+  function drawGlbItems(P, V){
+    if (!state.glb.ready){
+      ensureGlbRendererReady().then((ready) => {
+        if (ready) syncGlbItems();
+      });
+      return;
+    }
+    updateGlbTransformsFromState();
+
+    const { renderer, scene } = state.glb;
+    applyThreeCameraFromPV(P, V);
+    updateSelectedGlbVisual();
+
+    renderer.resetState();
+    renderer.render(scene, state.glb.camera);
+    renderer.resetState();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  function applyThreeCameraFromPV(P, V){
+    if (!state.glb.ready || !state.glb.camera || !state.glb.THREE) return;
+    const { THREE, camera } = state.glb;
+    const projection = new THREE.Matrix4().fromArray(P);
+    const view = new THREE.Matrix4().fromArray(V);
+    camera.projectionMatrix.copy(projection);
+    camera.projectionMatrixInverse.copy(projection).invert();
+    camera.matrixWorldInverse.copy(view);
+    camera.matrixWorld.copy(view).invert();
+  }
+
+  function tintMaterialSelection(material, selected){
+    if (!material || !material.color) return;
+    if (!Object.prototype.hasOwnProperty.call(material.userData, "_baseColorHex")){
+      material.userData._baseColorHex = material.color.getHex();
+    }
+    const base = material.userData._baseColorHex;
+    if (!selected){
+      material.color.setHex(base);
+      return;
+    }
+    const c = material.color;
+    c.setHex(base);
+    c.lerp(new state.glb.THREE.Color(0x7fa6ff), 0.5);
+  }
+
+  function setGlbInstanceSelected(instance, selected){
+    if (!instance) return;
+    instance.traverse((obj) => {
+      if (!obj.isMesh) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const m of mats) tintMaterialSelection(m, selected);
+    });
+  }
+
+  function updateSelectedGlbVisual(){
+    if (!state.glb.ready) return;
+    const current = state.selectedId;
+    if (state.glb.lastSelectedVisualId === current) return;
+    const prevInstance = state.glb.itemInstances.get(state.glb.lastSelectedVisualId);
+    setGlbInstanceSelected(prevInstance, false);
+    const curInstance = state.glb.itemInstances.get(current);
+    setGlbInstanceSelected(curInstance, true);
+    state.glb.lastSelectedVisualId = current ?? null;
+  }
+
+  function getItemIdFromObject3D(obj){
+    let cur = obj;
+    while (cur){
+      if (Object.prototype.hasOwnProperty.call(cur.userData || {}, "itemId")) return cur.userData.itemId;
+      cur = cur.parent;
+    }
+    return null;
+  }
+
+  function pickItemFromGlbAt(sx, sy){
+    if (!state.glb.ready || !state.glb.THREE || !state.glb.camera) return null;
+    const rect = cv.getBoundingClientRect();
+    const nx = (sx / rect.width) * 2 - 1;
+    const ny = 1 - (sy / rect.height) * 2;
+    const { P, V } = currentPV();
+    applyThreeCameraFromPV(P, V);
+
+    const raycaster = new state.glb.THREE.Raycaster();
+    raycaster.setFromCamera(new state.glb.THREE.Vector2(nx, ny), state.glb.camera);
+    const hits = raycaster.intersectObjects(Array.from(state.glb.itemInstances.values()), true);
+    for (const hit of hits){
+      const itemId = getItemIdFromObject3D(hit.object);
+      if (itemId == null) continue;
+      const it = state.items.find(x => x.id === itemId) || null;
+      if (it) return it;
+    }
+    return null;
+  }
+
+  function pickItemAtCanvas(sx, sy){
+    return pickItemFromGlbAt(sx, sy) || pickItemAt(sx, sy);
+  }
+
+  function applyItemOrientationToKv(it){
+    if (!it) return;
+    if (kvHas(it, "facing") || !kvHas(it, "rot")) it.kv.facing = `${it.heading} ${it.pitch}`;
+    else it.kv.rot = String(it.heading);
+  }
+
+  function updateItemGizmo(){
+    const it = getSelected();
+    if (!it || state.modalOpen){
+      itemGizmoEl.classList.remove("show");
+      itemGizmoEl.setAttribute("aria-hidden", "true");
+      return;
+    }
+    const p = worldToScreen(rawToWorld(it.x,'x'), rawToWorld(it.y,'y'), rawToWorld(it.z||0,'z'));
+    if (!p.visible){
+      itemGizmoEl.classList.remove("show");
+      itemGizmoEl.setAttribute("aria-hidden", "true");
+      return;
+    }
+    itemGizmoEl.style.left = `${p.sx}px`;
+    itemGizmoEl.style.top = `${p.sy}px`;
+    itemGizmoEl.classList.add("show");
+    itemGizmoEl.setAttribute("aria-hidden", "false");
+  }
+
+  function commitGizmoUpdate(it){
+    if (!it) return;
+    if (kvHas(it, "position")) it.kv.position = `${it.x} ${it.y} ${it.z}`;
+    applyItemOrientationToKv(it);
+    const sec = state.sectionBlocks.find(s => s.kind === "item" && s.start === it.start);
+    if (sec) sec.kv = { ...it.kv };
+    refreshLiveMisWindow();
+    renderList();
   }
 
   function pickItemAt(sx,sy){ const items=getFilteredItems(); let best=null,bestD2=Infinity; for(const it of items){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
@@ -4898,8 +5329,10 @@
     const now=performance.now(), dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
     const {forwardXY,right,forward}=cameraBasis(); let dir=vec3(0,0,0); if(move.w) dir=vec3Add(dir,forwardXY); if(move.s) dir=vec3Sub(dir,forwardXY); if(move.d) dir=vec3Add(dir,right); if(move.a) dir=vec3Sub(dir,right); if(move.e) dir=vec3Add(dir,vec3(0,0,1)); if(move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); if(dlen>0){ dir=vec3Scale(dir,1/dlen); const base=parseFloat(document.getElementById('speed')?.value||'300'); const spd=base*(move.shift?3:1); state.camera.speed=spd; cam.pos=vec3Add(cam.pos,vec3Scale(dir,spd*dt)); }
     if(document.getElementById('ground')?.checked && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=parseFloat(document.getElementById('clear')?.value||'40'); if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
+    resetFixedGlState();
     gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV);
+    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
+    updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
     const waterZUsedLabel = (waterRender.raw===0 || waterRender.raw) ? (waterRender.raw*0.5) : '-';
@@ -4920,6 +5353,8 @@ Mode: ${renderMode==='C' ? 'Colormap' : (renderMode==='H' ? 'Heightmap' : 'Delta
 Grid: ${gridVisible ? formatGridValue(gridSizeMeters()) : 'off'}
 Top view lock: ${topViewLocked?'on':'off'}
 Draw calls: ${drawCalls}
+GLB instances: ${state.glb.itemInstances.size}
+GLB sync: #${state.glb.syncCount} (${state.glb.lastSyncMs.toFixed(2)} ms)
 Wrap: x=${wrapX} y=${wrapY}
 Sectors: ${sectorCount}x${sectorCount} origin=${terrainOrigin.x},${terrainOrigin.y}
 Terrain size: ${terrainSpanX()} x ${terrainSpanY()}
@@ -4947,17 +5382,73 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   cv.addEventListener("mousedown", (e) => {
     if (state.modalOpen) return; closeItemContextMenu(); const rect = cv.getBoundingClientRect(); const sx = e.clientX - rect.left; const sy = e.clientY - rect.top; if (e.button !== 0) return;
     if (state.pastePlacementActive){ applyPasteAtWorld(screenToWorld(sx, sy, state.pastePreviewWorld?.z || 0)); state.lastMouse = { sx, sy }; return; }
-    const picked = pickItemAt(sx,sy);
+    const picked = pickItemAtCanvas(sx,sy);
     if (picked){ if (e.ctrlKey){ if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id); else state.multiSelectedIds.add(picked.id); state.selectedId = picked.id; renderList(); } else selectById(picked.id); state.draggingItem = e.shiftKey; if (state.draggingItem) state.dragAnchor = screenToWorld(sx, sy, rawToWorld(picked.z||0,'z')); }
     else { state.draggingItem=false; state.boxSelecting=true; state.boxSelectAdditive=e.ctrlKey; state.boxStart={sx,sy}; state.boxCurrent={sx,sy}; if(!e.ctrlKey){state.selectedId=null; state.multiSelectedIds.clear();} renderList(); }
     state.lastMouse={sx,sy};
   });
-  cv.addEventListener("contextmenu", (e) => { e.preventDefault(); const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAt(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
-  cv.addEventListener("dblclick", (e) => { const rect=cv.getBoundingClientRect(); const picked=pickItemAt(e.clientX-rect.left,e.clientY-rect.top); if(picked){ selectById(picked.id); openModal(); } });
+  cv.addEventListener("contextmenu", (e) => { e.preventDefault(); const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAtCanvas(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
+  cv.addEventListener("dblclick", (e) => { const rect=cv.getBoundingClientRect(); const picked=pickItemAtCanvas(e.clientX-rect.left,e.clientY-rect.top); if(picked){ selectById(picked.id); openModal(); } });
   cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.pastePlacementActive){ const z=state.selectedId?rawToWorld(getSelected()?.z||0,'z'):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=rawToWorld((active[0]?.z)||0,'z'); const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; it.x=worldToRaw(rawToWorld(it.x,'x')+dx,'x'); it.y=worldToRaw(rawToWorld(it.y,'y')+dy,'y'); it.kv.position=`${it.x} ${it.y} ${it.z}`; } state.dragAnchor=nowW; renderList(); refreshLiveMisWindow(); } state.lastMouse={sx,sy}; });
   function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; if(had){ const ids=[]; for(const it of getFilteredItems()){ const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); } }
   cv.addEventListener('mouseup',stopDrag); cv.addEventListener('mouseleave',stopDrag);
-  cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const sp=document.getElementById('speed'); if(!sp) return; const cur=parseFloat(sp.value||'300'); const min=parseFloat(sp.min||'20'); const max=parseFloat(sp.max||'1200'); const step=parseFloat(sp.step||'10'); const next=Math.max(min, Math.min(max, cur*Math.exp(-e.deltaY*0.001))); const snapped=Math.round(next/step)*step; sp.value=String(Math.max(min,Math.min(max,snapped))); },{passive:false});
+  cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const sp=document.getElementById('speed'); if(!sp) return; const cur=parseFloat(sp.value||'35'); const min=parseFloat(sp.min||'5'); const max=parseFloat(sp.max||'600'); const step=parseFloat(sp.step||'5'); const next=Math.max(min, Math.min(max, cur*Math.exp(-e.deltaY*0.001))); const snapped=Math.round(next/step)*step; sp.value=String(Math.max(min,Math.min(max,snapped))); },{passive:false});
+
+  itemGizmoEl.addEventListener("mousedown", (e) => {
+    const handle = e.target.closest("[data-gizmo-mode]");
+    if (!handle) return;
+    const it = getSelected();
+    if (!it) return;
+    e.preventDefault();
+    e.stopPropagation();
+    state.gizmoDrag = {
+      mode: handle.dataset.gizmoMode,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      itemId: it.id,
+    };
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!state.gizmoDrag) return;
+    const it = getSelected();
+    if (!it || it.id !== state.gizmoDrag.itemId){ state.gizmoDrag = null; return; }
+
+    const dx = e.clientX - state.gizmoDrag.lastX;
+    const dy = e.clientY - state.gizmoDrag.lastY;
+    state.gizmoDrag.lastX = e.clientX;
+    state.gizmoDrag.lastY = e.clientY;
+
+    const currentW = { x: rawToWorld(it.x,'x'), y: rawToWorld(it.y,'y'), z: rawToWorld(it.z||0,'z') };
+    const mode = state.gizmoDrag.mode;
+    if (mode === "moveX" || mode === "moveY"){
+      const rect = cv.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const prev = screenToWorld(sx - dx, sy - dy, currentW.z);
+      const now = screenToWorld(sx, sy, currentW.z);
+      const wx = now.x - prev.x;
+      const wy = now.y - prev.y;
+      if (mode === "moveX") it.x = worldToRaw(currentW.x + wx, 'x');
+      if (mode === "moveY") it.y = worldToRaw(currentW.y + wy, 'y');
+    } else if (mode === "moveZ"){
+      const dz = -dy * 1.25;
+      it.z = worldToRaw(currentW.z + dz, 'z');
+    } else if (mode === "yaw"){
+      it.heading = (Number(it.heading) || 0) + dx * 0.5;
+    } else if (mode === "pitch"){
+      it.pitch = (Number(it.pitch) || 0) - dy * 0.5;
+    }
+
+    commitGizmoUpdate(it);
+    updateItemGizmo();
+    draw();
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (!state.gizmoDrag) return;
+    state.gizmoDrag = null;
+  });
 
   const _origLoadMisFile = loadMisFile;
   loadMisFile = async function(file, fileHandle = null){
