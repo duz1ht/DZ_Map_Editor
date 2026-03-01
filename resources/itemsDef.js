@@ -156,7 +156,7 @@ begin "VBL 7.62mm turret"
   primary_weapon WPN_EMP50VBL
 end
 
-begin "Enemy Cargo Truck #2 w
+begin "Enemy Cargo Truck #2 w"
   id 101286
   type vehicle
   graphic Etrck2
@@ -1641,7 +1641,7 @@ begin "Exocet Missile launcher"
   husk_sub_part_types 01_HULL 02_WHEEL 03_WHEEL 04_WHEEL 05_CHUNK_M 06_CHUNK_M 07_CHUNK_M 08_CHUNK_M 09_CHUNK_M 10_CHUNK_M 11_CHUNK_M 12_CHUNK_M 13_CHUNK_M 14_CHUNK_M 15_ChunkSF_M
 end
 
-begin "Anti Aircraft Gun in-tow (unmanned
+begin "Anti Aircraft Gun in-tow (unmanned"
   id 106285
   type vehicle
   graphic AAGN01
@@ -1665,7 +1665,7 @@ begin "Anti Aircraft Gun in-tow (unmanned
   husk_sub_part_types 01_HULL 02_WHEEL 03_WHEEL 04_WHEEL 05_CHUNK_M 06_CHUNK_M 07_CHUNK_M 08_CHUNK_M 09_CHUNK_M 10_CHUNK_M 11_CHUNK_M 12_CHUNK_M 13_CHUNK_M 14_CHUNK_M 15_ChunkSF_M
 end
 
-begin "Anti Aircraft Gun (manned
+begin "Anti Aircraft Gun (manned"
   id 106286
   type vehicle
   graphic AAGN02
@@ -1689,7 +1689,7 @@ begin "Anti Aircraft Gun (manned
   husk_sub_part_types 01_HULL 02_WHEEL 03_WHEEL 04_WHEEL 05_CHUNK_M 06_CHUNK_M 07_CHUNK_M 08_CHUNK_M 09_CHUNK_M 10_CHUNK_M 11_CHUNK_M 12_CHUNK_M 13_CHUNK_M 14_CHUNK_M 15_ChunkSF_M
 end
 
-begin "Anti Aircraft Gun in-tow (unmanned
+begin "Anti Aircraft Gun in-tow (unmanned"
   id 106334
   type vehicle
   graphic AAGN03
@@ -1746,7 +1746,7 @@ begin "Power Generator Housing"
 end
 
 
-begin "US
+begin "US"
   id 101130
   type building
   graphic UNBld01
@@ -1984,7 +1984,7 @@ begin "Large Warehouse only exterior2"
   graphic WareHs02
 end
 
-begin "Large Garage
+begin "Large Garage"
   id 101122
   type building
   graphic Garg01
@@ -2022,14 +2022,14 @@ begin "four Story Radio Bld in INTERCEPTION"
   render_function bldg
 end
 
-begin "Tunnle Entrance
+begin "Tunnle Entrance"
   id 101144
   type building
   attrib: Landable Reflect
   graphic R_Ent1
 end
 
-begin "Tunnle Entrance
+begin "Tunnle Entrance"
   id 101164
   type building
   attrib: Landable Reflect
@@ -2056,7 +2056,7 @@ begin "Tunnle Piece Straight 20m"
   graphic R_Tun2
 end
 
-begin "Tunnle Piece Straight 20m w
+begin "Tunnle Piece Straight 20m w"
   id 101180
   type building
   attrib: Landable Reflect
@@ -2133,7 +2133,7 @@ begin "Tunnle Piece Ramp "
   graphic R_Tun10
 end
 
-begin "Tunnle Piece 6m drop w
+begin "Tunnle Piece 6m drop w"
   id 101185
   attrib: Landable Reflect
   type building
@@ -2545,21 +2545,21 @@ begin "Mogadishu river hut3B - with moss skin"
   radarsig 1000
 end
 
-begin "Mogadishu Style shed 
+begin "Mogadishu Style shed "
   id 101108
   attrib: Landable 
   type building
   graphic MogShd1
 end
 
-begin "Mogadishu Style shed 
+begin "Mogadishu Style shed "
   id 101109
   attrib: Landable 
   type building
   graphic MogShd2
 end
 
-begin "Mogadishu Style shed 
+begin "Mogadishu Style shed "
   id 101110
   attrib: Landable 
   type building
@@ -2567,7 +2567,7 @@ begin "Mogadishu Style shed
 end
 
 
-begin "Sister Bld
+begin "Sister Bld"
   id 101080
   attrib: Landable 
   type building
@@ -2595,7 +2595,7 @@ begin "Low Poly closed Version of Olympic Hotel"
   radarsig 1000
 end
 
-begin "Sister Bld
+begin "Sister Bld"
   id 101187
   attrib: Landable SpawnPoint ChangeTeam
   type building
@@ -3152,21 +3152,21 @@ begin "Bowl for eating anim"
   attrib: notarget
 end
 
-begin "Telephone pole,single pole w
+begin "Telephone pole,single pole w"
   id 102130
   type decoration
   graphic Telepol1
   attrib: notarget
 end
 
-begin "Telephone pole,double pole w
+begin "Telephone pole,double pole w"
   id 102131
   type decoration
   graphic Telepol2
   attrib: notarget
 end
 
-begin "Telephone pole,wrecked w
+begin "Telephone pole,wrecked w"
   id 102132
   type decoration
   graphic Telepol3
@@ -4533,7 +4533,7 @@ begin "Bed with Dresser"
   attrib: notarget
  end
 
-begin "Old wall Radiator
+begin "Old wall Radiator"
   id 101541
   type decoration
   graphic Heatr01
@@ -5042,7 +5042,7 @@ begin "Stack of used Tires"
   ai_function gnrc
 end
 
-begin TireB01 Stack of burning tires #1 "
+begin "TireB01 Stack of burning tires #1"
   id 101514
   type decoration
   graphic TireB01
@@ -5051,7 +5051,7 @@ begin TireB01 Stack of burning tires #1 "
   ai_function gnrc
 end
 
-begin Tire02 Stack of used tire "
+begin "Tire02 Stack of used tire"
   id 101460
   type decoration
   graphic Tire02
@@ -5371,7 +5371,7 @@ begin "Wooden Crate with Tarp"
   ai_function gnrl
 end
 
-begin "Wooden Crate with Khat destroyable w
+begin "Wooden Crate with Khat destroyable w"
   id 102147       
   type decoration
   graphic wcrate5
@@ -5906,7 +5906,7 @@ begin "Colombian Rope Bridge (tile)"
   ai_function gnrc
 end
 
-begin "Colombian Rope Bridge (tile
+begin "Colombian Rope Bridge (tile"
   id 106274
   attrib: Landable reflect 
   hp 105
@@ -6374,7 +6374,7 @@ end
 
 
 
-begin  "Mfence1   8 ft. Section of chain link fence w
+begin  "Mfence1   8 ft. Section of chain link fence w"
   id 104313
   type decoration
   attrib: notarget
@@ -6384,7 +6384,7 @@ begin  "Mfence1   8 ft. Section of chain link fence w
   ai_function gnrl
 end
 
-begin  "Bfence1   8 ft. Section of barbed wire fence w
+begin  "Bfence1   8 ft. Section of barbed wire fence w"
   id 102136
   type decoration
   attrib: notarget
@@ -6424,7 +6424,7 @@ begin  "Bfence1P   End pole for chain link fence"
   ai_function gnrl
 end
 
-begin "16 ft. Section of chain link fence w
+begin "16 ft. Section of chain link fence w"
   id 104331
   type decoration
   attrib: notarget
@@ -7818,7 +7818,7 @@ begin "Columbian Guerilla 1"
   launchups_marker3		mflash01
 end
 
-begin "Columbian Guerilla 2 w
+begin "Columbian Guerilla 2 w"
   id 106242
   type person 
   graphic GUER2
@@ -8023,7 +8023,7 @@ begin "Columbian BodyGuard 1"
   launchups_marker3		mflash01
 end
 
-begin "Columbian BodyGuard 2 w
+begin "Columbian BodyGuard 2 w"
   id 106248
   type person 
   graphic BGRD2
@@ -8187,7 +8187,7 @@ begin "Iranian Rebel Suicide Troop 2"
   launchups_marker3		mflash01
 end
 
-begin "Iranian Rebel Suicide Troop 3 w
+begin "Iranian Rebel Suicide Troop 3 w"
   id 106270
   type person 
   graphic IRST3
@@ -8351,7 +8351,7 @@ begin "Iranian Rebel Regular 3"
   launchups_marker3		mflash01
 end
 
-begin "Iranian Rebel Regular 4 w
+begin "Iranian Rebel Regular 4 w"
   id 106271
   type person 
   graphic IRRR4
@@ -9531,7 +9531,7 @@ begin "Civilian Dummy"
 end
 
 
-begin "Civilian Man Somalian w
+begin "Civilian Man Somalian w"
   id 101767
   type person
   unit_type 9
@@ -9565,7 +9565,7 @@ begin "Civilian Man Somalian w
   SSAudio6		VX_SOLA_MAD1	
 end
 
-begin "Civilian Man Somalian w
+begin "Civilian Man Somalian w"
   id 101768
   type person
   unit_type 9
@@ -10764,7 +10764,7 @@ begin "Fire Fighter"
   max_engagement_dist 200
 end
 
-begin "Delta Force Teammate 2 w
+begin "Delta Force Teammate 2 w"
   id 101763
   type person
   unit_type 9
@@ -10811,7 +10811,7 @@ begin "Delta Force Teammate 2 w
   max_engagement_dist 200
 end
 
-begin "Delta Force Teammate 3 w
+begin "Delta Force Teammate 3 w"
   id 101764
   type person
   unit_type 9
@@ -10859,7 +10859,7 @@ begin "Delta Force Teammate 3 w
 end
 
 
-begin "Delta Force Teammate 4 w
+begin "Delta Force Teammate 4 w"
   id 101771
   type person
   unit_type 9
@@ -12292,7 +12292,7 @@ begin "Recruit"
 end
 
 
-begin "Mechanic
+begin "Mechanic"
   id 104518
   type person
   unit_type 9
@@ -12356,7 +12356,7 @@ begin "Ground Helicopter Coordinator"
   SSAudio6		FS_OBJ_R
 end
 
-begin "Combat Medic01 Soldier w
+begin "Combat Medic01 Soldier w"
   id 104520
   type person 
   unit_type 9
@@ -12440,7 +12440,7 @@ begin "Combat Medic02 Soldier no gun"
   launchups_marker3		mflash01
 end
 
-begin "Mechanic
+begin "Mechanic"
   id 104521
   type person
   unit_type 9
@@ -13784,7 +13784,7 @@ begin "snd: Fly buzzes, BZZZZZZZZZ! (place no less than 200m apart)"
   interrupt_sound_id ENV_DESERT2
 end
 
-begin "snd: LpBAD SOMALIS-SP10 (bad guys in war room. Interrupt w
+begin "snd: LpBAD SOMALIS-SP10 (bad guys in war room. Interrupt w"
   id 106179
   type marker
   move_function envs
@@ -14152,5 +14152,5 @@ begin "Power Up Ammo Pack Infinite"
 	powerupdef AmmoFull_Inf
 end
 
- 
+ 
 `;
