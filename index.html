@@ -4910,53 +4910,20 @@
   function convertNamedTopLevelObjectsToLodGroups(root){
     if (!root || !root.children?.length || !state.glb.THREE) return;
     const { THREE } = state.glb;
-    const grouped = new Map();
-    const initialChildren = Array.from(root.children);
-    const nodesUsedByNamedLods = new Set();
-    let namedGroupCount = 0;
+    const orderedNodes = Array.from(root.children).filter((child) => topLevelObjectHasMesh(child));
+    if (orderedNodes.length < 2) return;
 
-    for (const child of initialChildren){
-      const parsed = parseNamedLodLevel(child?.name);
-      if (!parsed) continue;
-      const key = parsed.baseName.toLowerCase();
-      if (!grouped.has(key)) grouped.set(key, { baseName: parsed.baseName, levels: new Map() });
-      const bucket = grouped.get(key);
-      if (!bucket.levels.has(parsed.level)) bucket.levels.set(parsed.level, child);
+    const levelEntries = orderedNodes.map((obj, level) => [level, obj]);
+    const allowedEntries = collectAllowedLodEntries(levelEntries);
+    if (allowedEntries.length < 2) return;
+
+    const baseName = String(orderedNodes[0]?.name || 'GLB_ROOT').trim() || 'GLB_ROOT';
+    const lod = new THREE.LOD();
+    lod.name = `${baseName}__LOD_GROUP_ORDERED`;
+    for (const [level, obj] of allowedEntries){
+      lod.addLevel(obj, lodDistanceForLevel(level));
     }
-
-    for (const [, bucket] of grouped){
-      if (!bucket.levels.has(0) || bucket.levels.size < 2) continue;
-      const levelEntries = Array.from(bucket.levels.entries()).sort((a,b) => a[0] - b[0]);
-      const allowedEntries = collectAllowedLodEntries(levelEntries);
-      if (allowedEntries.length < 2) continue;
-      const lod = new THREE.LOD();
-      lod.name = `${bucket.baseName}__LOD_GROUP`;
-      for (const [level, obj] of allowedEntries){
-        lod.addLevel(obj, lodDistanceForLevel(level));
-        nodesUsedByNamedLods.add(obj);
-      }
-      root.add(lod);
-      namedGroupCount += 1;
-    }
-
-    if (namedGroupCount > 0) return;
-
-    const fallbackNodes = initialChildren.filter((child) => {
-      if (nodesUsedByNamedLods.has(child)) return false;
-      return topLevelObjectHasMesh(child);
-    });
-    if (fallbackNodes.length < 2) return;
-
-    const fallbackBaseName = String(fallbackNodes[0]?.name || 'GLB_ROOT').trim() || 'GLB_ROOT';
-    const fallbackLod = new THREE.LOD();
-    fallbackLod.name = `${fallbackBaseName}__LOD_GROUP_FALLBACK`;
-    const fallbackPairs = [];
-    if (fallbackNodes[0]) fallbackPairs.push([0, fallbackNodes[0]]);
-    if (fallbackNodes[1]) fallbackPairs.push([1, fallbackNodes[1]]);
-    fallbackPairs.forEach(([level, obj]) => {
-      fallbackLod.addLevel(obj, lodDistanceForLevel(level));
-    });
-    if (fallbackPairs.length >= 2) root.add(fallbackLod);
+    root.add(lod);
   }
 
   async function ensureGlbRendererReady(){
