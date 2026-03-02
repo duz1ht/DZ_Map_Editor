@@ -5199,8 +5199,8 @@
       function drawRect(offsetX, offsetY, scaleX, scaleY, color3){ gl.uniform3f(luColor,color3[0],color3[1],color3[2]); gl.uniform2f(luOffsetXY,offsetX,offsetY); gl.uniform2f(luScaleXY,scaleX,scaleY); gl.drawArrays(gl.LINES,0,8);}
       if(showSectorsOn){
         let rectCount=0;
-        outerRects: for(let gy=overlayJ0;gy<=overlayJ1;gy++) for(let gx=overlayI0;gx<=overlayI1;gx++){
-          if(rectCount>=MAX_SECTOR_RECTS_PER_FRAME) break outerRects;
+        for (const [gx,gy] of visibleTiles){
+          if(rectCount>=MAX_SECTOR_RECTS_PER_FRAME) break;
           drawRect(ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE,SECTOR_STRIDE,SECTOR_STRIDE,[0.2,0.8,1]);
           rectCount++;
         }
