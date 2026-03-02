@@ -869,7 +869,8 @@
       <button id="modeC" class="modeBtn active" title="Colormap (R)">C</button>
       <button id="modeH" class="modeBtn" title="Heightmap (R)">H</button>
       <button id="modeD" class="modeBtn" title="Delta/Variation (R)">D</button>
-      <label class="tbCtl">Speed <input id="speed" type="range" min="12.5" max="600" step="5" value="35"></label>
+      <label class="tbCtl">Camera Speed <input id="speedLevel" type="range" min="1" max="8" step="1" value="4"></label>
+      <label class="tbCtl">Speed Scalar <input id="speedScalar" type="range" min="0.1" max="4.0" step="0.1" value="1.0"></label>
       <label class="tbCtl"><input id="ground" type="checkbox" checked> Ground clamp</label>
       <label class="tbCtl">Clearance <input id="clear" type="range" min="1" max="200" step="1" value="1"></label>
       <label class="tbCtl">Draw radius <input id="radius" type="range" min="512" max="65536" step="256" value="12288"></label>
@@ -1457,7 +1458,8 @@
   const okBtn = document.getElementById("okBtn");
   const cancelBtn = document.getElementById("cancelBtn");
   const itemContextMenu = document.getElementById("itemContextMenu");
-  const speedControlEl = document.getElementById("speed");
+  const speedLevelEl = document.getElementById("speedLevel");
+  const speedScalarEl = document.getElementById("speedScalar");
   const groundClampEl = document.getElementById("ground");
   const clearanceEl = document.getElementById("clear");
   const radiusEl = document.getElementById("radius");
@@ -1467,8 +1469,8 @@
   const showAnchorPointsEl = document.getElementById("showAnchorPoints");
 
   const renderUiState = {
-    speedMin: parseFloat(speedControlEl?.min || '12.5') || 12.5,
-    speed: parseFloat(speedControlEl?.value || '35') || 35,
+    speedLevel: Math.max(1, Math.min(8, Math.round(parseFloat(speedLevelEl?.value || '4') || 4))),
+    speedScalar: parseFloat(speedScalarEl?.value || '1.0') || 1.0,
     groundClamp: groundClampEl?.checked !== false,
     clearance: parseFloat(clearanceEl?.value || '1') || 1,
     drawRadius: parseFloat(radiusEl?.value || '12288') || 12288,
@@ -1479,8 +1481,8 @@
   };
 
   function syncRenderUiState(){
-    renderUiState.speedMin = parseFloat(speedControlEl?.min || '12.5') || 12.5;
-    renderUiState.speed = parseFloat(speedControlEl?.value || '35') || 35;
+    renderUiState.speedLevel = Math.max(1, Math.min(8, Math.round(parseFloat(speedLevelEl?.value || '4') || 4)));
+    renderUiState.speedScalar = Math.max(0.1, parseFloat(speedScalarEl?.value || '1.0') || 1.0);
     renderUiState.groundClamp = groundClampEl?.checked !== false;
     renderUiState.clearance = parseFloat(clearanceEl?.value || '1') || 1;
     renderUiState.drawRadius = parseFloat(radiusEl?.value || '12288') || 12288;
@@ -1490,7 +1492,7 @@
     renderUiState.showAnchorPoints = showAnchorPointsEl?.checked !== false;
   }
 
-  for (const el of [speedControlEl, groundClampEl, clearanceEl, radiusEl, mainAreaEl, showSectorsEl, showStatsEl, showAnchorPointsEl]){
+  for (const el of [speedLevelEl, speedScalarEl, groundClampEl, clearanceEl, radiusEl, mainAreaEl, showSectorsEl, showStatsEl, showAnchorPointsEl]){
     el?.addEventListener('input', syncRenderUiState);
     el?.addEventListener('change', syncRenderUiState);
   }
@@ -6242,7 +6244,7 @@
       fpsAccumTime = 0;
       fpsAccumFrames = 0;
     }
-    const {forwardXY,right,forward}=cameraBasis(); const canMoveWithKeys=(document.pointerLockElement===cv && state.cameraLookActive); let dir=vec3(0,0,0); if(canMoveWithKeys&&move.w) dir=vec3Add(dir,forwardXY); if(canMoveWithKeys&&move.s) dir=vec3Sub(dir,forwardXY); if(canMoveWithKeys&&move.d) dir=vec3Add(dir,right); if(canMoveWithKeys&&move.a) dir=vec3Sub(dir,right); if(canMoveWithKeys&&move.e) dir=vec3Add(dir,vec3(0,0,1)); if(canMoveWithKeys&&move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); const base=Math.max(renderUiState.speedMin, renderUiState.speed); const spd=base*(move.shift?3:1); state.camera.speed=spd; const targetVel=dlen>0?vec3Scale(dir,spd/dlen):vec3(0,0,0); const smoothBoost=1.3; const accel=12.0/smoothBoost, decel=10.0/smoothBoost; const blend=Math.min(1, (dlen>0?accel:decel)*dt); camVel=vec3Add(camVel, vec3Scale(vec3Sub(targetVel,camVel), blend)); cam.pos=vec3Add(cam.pos,vec3Scale(camVel,dt));
+    const {forwardXY,right,forward}=cameraBasis(); const canMoveWithKeys=(document.pointerLockElement===cv && state.cameraLookActive); let dir=vec3(0,0,0); if(canMoveWithKeys&&move.w) dir=vec3Add(dir,forwardXY); if(canMoveWithKeys&&move.s) dir=vec3Sub(dir,forwardXY); if(canMoveWithKeys&&move.d) dir=vec3Add(dir,right); if(canMoveWithKeys&&move.a) dir=vec3Sub(dir,right); if(canMoveWithKeys&&move.e) dir=vec3Add(dir,vec3(0,0,1)); if(canMoveWithKeys&&move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); const speedTable=[12.5,25,50,100,200,300,450,600]; const lvl=Math.max(1,Math.min(8,renderUiState.speedLevel|0)); const scalar=Math.max(0.1,renderUiState.speedScalar||1); const base=speedTable[lvl-1]*scalar; const spd=base*(move.shift?3:1); state.camera.speed=spd; const targetVel=dlen>0?vec3Scale(dir,spd/dlen):vec3(0,0,0); const smoothBoost=1.3; const accel=12.0/smoothBoost, decel=10.0/smoothBoost; const blend=Math.min(1, (dlen>0?accel:decel)*dt); camVel=vec3Add(camVel, vec3Scale(vec3Sub(targetVel,camVel), blend)); cam.pos=vec3Add(cam.pos,vec3Scale(camVel,dt));
     if(renderUiState.groundClamp && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=renderUiState.clearance; if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
     resetFixedGlState();
     gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
@@ -6390,7 +6392,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.cameraLookPending){ const mask=state.cameraLookButton===2?2:1; if(e.buttons & mask){ const start=state.cameraLookStart||{sx,sy}; const moved=Math.hypot(sx-start.sx, sy-start.sy); if(moved>3){ state.cameraLookPending=false; if(state.cameraLookButton===1) state.pendingLeftClick=null; state.cameraLookActive=true; if(document.pointerLockElement!==cv && cv.requestPointerLock) cv.requestPointerLock(); } } else if(!state.cameraLookActive){ state.cameraLookPending=false; state.cameraLookButton=0; } } if(state.pastePlacementActive){ const z=state.selectedId?rawToWorld(getSelected()?.z||0,'z'):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=rawToWorld((active[0]?.z)||0,'z'); const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; it.x=worldToRaw(rawToWorld(it.x,'x')+dx,'x'); it.y=worldToRaw(rawToWorld(it.y,'y')+dy,'y'); it.kv.position=`${it.x} ${it.y} ${it.z}`; markItemTransformDirty(it.id);} markItemsChanged({ structure: false }); state.dragAnchor=nowW; scheduleRenderList(); scheduleLiveMisRefresh(); } state.lastMouse={sx,sy}; });
   function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const shouldFinalizeClick=!!state.pendingLeftClick && !state.cameraLookActive && !state.gizmoDrag && !state.draggingItem && !had; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; state.cameraLookActive=false; state.cameraLookPending=false; state.cameraLookStart=null; state.cameraLookButton=0; if(document.pointerLockElement===cv && document.exitPointerLock) document.exitPointerLock(); if(shouldFinalizeClick){ const pickedId=state.pendingLeftClick.pickedId; selectById(pickedId != null ? pickedId : null); } state.pendingLeftClick=null; if(had){ const worldA=screenToWorld(x0,y0,0); const worldB=screenToWorld(x1,y1,0); const minX=Math.min(worldA.x,worldB.x), maxX=Math.max(worldA.x,worldB.x), minY=Math.min(worldA.y,worldB.y), maxY=Math.max(worldA.y,worldB.y); const candidates=getSpatialCandidatesByWorldRect(minX,minY,maxX,maxY); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); const ids=[]; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); refreshLiveMisWindow(false, { force: true }); } }
   cv.addEventListener('mouseup',stopDrag); cv.addEventListener('mouseleave',()=>{ state.cameraLookActive=false; stopDrag(); });
-  cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const sp=speedControlEl; if(!sp) return; const cur=parseFloat(sp.value||'35'); const min=parseFloat(sp.min||'5'); const max=parseFloat(sp.max||'600'); const step=parseFloat(sp.step||'5'); const next=Math.max(min, Math.min(max, cur*Math.exp(-e.deltaY*0.001))); const snapped=Math.round(next/step)*step; sp.value=String(Math.max(min,Math.min(max,snapped))); syncRenderUiState(); },{passive:false});
+  cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const lvl=speedLevelEl; if(!lvl) return; const cur=Math.round(parseFloat(lvl.value||'4')||4); const min=Math.round(parseFloat(lvl.min||'1')||1); const max=Math.round(parseFloat(lvl.max||'8')||8); const step=Math.round(parseFloat(lvl.step||'1')||1); const dir=e.deltaY<0?1:-1; const next=Math.max(min,Math.min(max,cur+dir*step)); lvl.value=String(next); syncRenderUiState(); },{passive:false});
 
   document.addEventListener("pointerlockchange", () => {
     if (document.pointerLockElement===cv) return;
