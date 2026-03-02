@@ -467,13 +467,11 @@ document.getElementById('gridPlus').onclick=()=>stepGridExponent(1);
 document.getElementById('gridMinus').onclick=()=>stepGridExponent(-1);
 updateGridUi();
 
-// Pointer lock + inputs
+// Inputs
 canvas.addEventListener('click',()=>{
  canvas.focus();
- if(document.pointerLockElement!==canvas) canvas.requestPointerLock();
 });
 addEventListener('keydown',e=>{
- if(e.key==='Escape' && document.pointerLockElement===canvas) document.exitPointerLock();
  const k=e.key.toLowerCase();
  if(k==='t'){
   topViewLocked = !topViewLocked;
@@ -507,8 +505,8 @@ addEventListener('keyup',e=>{
  if(k==='shift') move.shift=0;
 });
 addEventListener('mousemove',e=>{
- if(document.pointerLockElement!==canvas) return;
  if(topViewLocked) return;
+ if(!(e.buttons & 1)) return;
  cam.yaw   += e.movementX * 0.002;
  cam.pitch -= e.movementY * 0.002;
  cam.pitch=Math.max(-1.55, Math.min(1.55, cam.pitch));
@@ -1151,8 +1149,7 @@ gl.enable(gl.DEPTH_TEST);
     "Sectors: " + (sectorCount+"x"+sectorCount) + " origin=" + terrainOrigin.x + "," + terrainOrigin.y + "\n" +
     "Terrain size: " + spanX + " x " + spanY + "\n" +
         "Cam: x=" + cam.pos.x.toFixed(6) + " y=" + cam.pos.y.toFixed(6) + " z=" + cam.pos.z.toFixed(6) + "\n" +
-    "Yaw: " + cam.yaw.toFixed(2) + " Pitch: " + cam.pitch.toFixed(2) + "\n" +
-    "PointerLock: " + (document.pointerLockElement===canvas ? "on" : "off")
+    "Yaw: " + cam.yaw.toFixed(2) + " Pitch: " + cam.pitch.toFixed(2)
   );
 
  } else {
