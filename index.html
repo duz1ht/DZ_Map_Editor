@@ -5559,12 +5559,13 @@
   function clearGlbSelectionOutline(instance){
     if (!instance) return;
     instance.traverse((obj) => {
-      if (!obj.isMesh || obj.userData?._isSelectionOutlineMesh) return;
-      const outline = obj.userData._selectionOutlineMesh;
+      if (!obj.isMesh) return;
+      const outline = obj.userData._selectionOutlineLines;
       if (!outline) return;
       obj.remove(outline);
+      outline.geometry?.dispose?.();
       outline.material?.dispose?.();
-      delete obj.userData._selectionOutlineMesh;
+      delete obj.userData._selectionOutlineLines;
     });
   }
 
@@ -5572,25 +5573,23 @@
     if (!instance || !state.glb.THREE) return;
     const { THREE } = state.glb;
     instance.traverse((obj) => {
-      if (!obj.isMesh || !obj.geometry || obj.userData?._isSelectionOutlineMesh) return;
-      if (obj.userData._selectionOutlineMesh) return;
-      const outlineMat = new THREE.MeshBasicMaterial({
+      if (!obj.isMesh || !obj.geometry) return;
+      if (obj.userData._selectionOutlineLines) return;
+
+      const edgesGeo = new THREE.EdgesGeometry(obj.geometry, 35);
+      const outlineMat = new THREE.LineBasicMaterial({
         color: 0xffad00,
-        side: THREE.BackSide,
         transparent: true,
         opacity: 1,
         depthTest: true,
         depthWrite: false,
-        fog: false,
         toneMapped: false,
       });
-      const outline = new THREE.Mesh(obj.geometry, outlineMat);
-      outline.userData._isSelectionOutlineMesh = true;
-      outline.scale.setScalar(1.035);
+      const outline = new THREE.LineSegments(edgesGeo, outlineMat);
       outline.renderOrder = 20;
       outline.raycast = () => null;
       obj.add(outline);
-      obj.userData._selectionOutlineMesh = outline;
+      obj.userData._selectionOutlineLines = outline;
     });
   }
 
