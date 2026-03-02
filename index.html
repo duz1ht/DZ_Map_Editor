@@ -5559,7 +5559,7 @@
   function clearGlbSelectionOutline(instance){
     if (!instance) return;
     instance.traverse((obj) => {
-      if (!obj.isMesh) return;
+      if (!obj.isMesh || obj.userData?._isSelectionOutlineMesh) return;
       const outline = obj.userData._selectionOutlineMesh;
       if (!outline) return;
       obj.remove(outline);
@@ -5572,7 +5572,7 @@
     if (!instance || !state.glb.THREE) return;
     const { THREE } = state.glb;
     instance.traverse((obj) => {
-      if (!obj.isMesh || !obj.geometry) return;
+      if (!obj.isMesh || !obj.geometry || obj.userData?._isSelectionOutlineMesh) return;
       if (obj.userData._selectionOutlineMesh) return;
       const outlineMat = new THREE.MeshBasicMaterial({
         color: 0xffad00,
@@ -5585,6 +5585,7 @@
         toneMapped: false,
       });
       const outline = new THREE.Mesh(obj.geometry, outlineMat);
+      outline.userData._isSelectionOutlineMesh = true;
       outline.scale.setScalar(1.035);
       outline.renderOrder = 20;
       outline.raycast = () => null;
