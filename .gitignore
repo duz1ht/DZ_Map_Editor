@@ -3,6 +3,7 @@ resources/3d_items/*.glb
 resources/terrains/**/*.cpt
 resources/terrains/**/*.tga
 source_codes/
+3rd_party_implementations/
 resource.pff
 _FILES.PFF
 localres.pff
