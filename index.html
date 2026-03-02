@@ -5339,10 +5339,10 @@
       .join(", ");
   }
 
-  function createWhiteWireframeMaterialFrom(baseMat){
+  function createWhiteWireframeMaterialFrom(baseMat, colorHex = 0xffffff){
     const { THREE } = state.glb;
     const mat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      color: colorHex,
       wireframe: true,
       transparent: !!baseMat?.transparent,
       opacity: Number.isFinite(baseMat?.opacity) ? baseMat.opacity : 1,
@@ -5359,6 +5359,8 @@
 
   function applyWireframeToGlbObject(root){
     if (!root) return;
+    const selectedColor = 0xffff00;
+    const defaultColor = 0xffffff;
     root.traverse((obj) => {
       if (!obj.isMesh || !obj.material) return;
       if (state.glb.wireframeEnabled){
@@ -5366,11 +5368,12 @@
           obj.userData._wireframeOriginalMaterial = obj.material;
         }
         const base = obj.userData._wireframeOriginalMaterial;
-        if (Array.isArray(base)){
-          obj.material = base.map((m) => createWhiteWireframeMaterialFrom(m));
-        } else {
-          obj.material = createWhiteWireframeMaterialFrom(base);
-        }
+        const wireColor = root.userData._selectedGlbVisual ? selectedColor : defaultColor;
+        const current = obj.material;
+        if (Array.isArray(base)) obj.material = base.map((m) => createWhiteWireframeMaterialFrom(m, wireColor));
+        else obj.material = createWhiteWireframeMaterialFrom(base, wireColor);
+        if (Array.isArray(current)) current.forEach((m) => m?.dispose?.());
+        else if (current && current !== base) current.dispose?.();
         return;
       }
       if (Object.prototype.hasOwnProperty.call(obj.userData, "_wireframeOriginalMaterial")){
@@ -5390,12 +5393,27 @@
     for (const instance of state.glb.itemInstances.values()){
       applyWireframeToGlbObject(instance);
     }
-    if (!next && state.glb.ready){
+    if (state.glb.ready){
       state.glb.lastSelectedVisualId = null;
       updateSelectedGlbVisual();
     }
     if (showGlbWireframeEl) showGlbWireframeEl.checked = next;
     addLog(`[3d_items] wireframe ${next ? "on" : "off"}`);
+  }
+
+
+  function cleanupGlbInstanceVisualState(instance){
+    if (!instance) return;
+    clearGlbSelectionOutline(instance);
+    instance.traverse((obj) => {
+      if (!obj.isMesh) return;
+      if (!Object.prototype.hasOwnProperty.call(obj.userData, "_wireframeOriginalMaterial")) return;
+      const current = obj.material;
+      obj.material = obj.userData._wireframeOriginalMaterial;
+      delete obj.userData._wireframeOriginalMaterial;
+      if (Array.isArray(current)) current.forEach((m) => m?.dispose?.());
+      else current?.dispose?.();
+    });
   }
 
   async function syncGlbItems(){
@@ -5409,6 +5427,7 @@
 
       for (const [itemId, obj] of state.glb.itemInstances.entries()){
         if (wantedIds.has(itemId)) continue;
+        cleanupGlbInstanceVisualState(obj);
         state.glb.scene.remove(obj);
         state.glb.itemInstances.delete(itemId);
       }
@@ -5416,6 +5435,7 @@
       for (const { it, graphic } of entries){
         let instance = state.glb.itemInstances.get(it.id) || null;
         if (instance && instance.userData.graphic !== graphic){
+          cleanupGlbInstanceVisualState(instance);
           state.glb.scene.remove(instance);
           state.glb.itemInstances.delete(it.id);
           instance = null;
@@ -5536,32 +5556,53 @@
     camera.matrixWorld.copy(view).invert();
   }
 
-  function tintMaterialSelection(material, selected){
-    if (!material || !material.color) return;
-    if (state.glb.wireframeEnabled){
-      material.color.setHex(0xffffff);
-      return;
-    }
-    if (!Object.prototype.hasOwnProperty.call(material.userData, "_baseColorHex")){
-      material.userData._baseColorHex = material.color.getHex();
-    }
-    const base = material.userData._baseColorHex;
-    if (!selected){
-      material.color.setHex(base);
-      return;
-    }
-    const c = material.color;
-    c.setHex(base);
-    c.lerp(new state.glb.THREE.Color(0x7fa6ff), 0.5);
+  function clearGlbSelectionOutline(instance){
+    if (!instance) return;
+    instance.traverse((obj) => {
+      if (!obj.isMesh) return;
+      const outline = obj.userData._selectionOutlineMesh;
+      if (!outline) return;
+      obj.remove(outline);
+      outline.material?.dispose?.();
+      delete obj.userData._selectionOutlineMesh;
+    });
+  }
+
+  function ensureGlbSelectionOutline(instance){
+    if (!instance || !state.glb.THREE) return;
+    const { THREE } = state.glb;
+    instance.traverse((obj) => {
+      if (!obj.isMesh || !obj.geometry) return;
+      if (obj.userData._selectionOutlineMesh) return;
+      const outlineMat = new THREE.MeshBasicMaterial({
+        color: 0xffad00,
+        side: THREE.BackSide,
+        transparent: true,
+        opacity: 1,
+        depthTest: true,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false,
+      });
+      const outline = new THREE.Mesh(obj.geometry, outlineMat);
+      outline.scale.setScalar(1.035);
+      outline.renderOrder = 20;
+      outline.raycast = () => null;
+      obj.add(outline);
+      obj.userData._selectionOutlineMesh = outline;
+    });
   }
 
   function setGlbInstanceSelected(instance, selected){
     if (!instance) return;
-    instance.traverse((obj) => {
-      if (!obj.isMesh) return;
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      for (const m of mats) tintMaterialSelection(m, selected);
-    });
+    instance.userData._selectedGlbVisual = !!selected;
+    if (state.glb.wireframeEnabled){
+      clearGlbSelectionOutline(instance);
+      applyWireframeToGlbObject(instance);
+      return;
+    }
+    if (selected) ensureGlbSelectionOutline(instance);
+    else clearGlbSelectionOutline(instance);
   }
 
   function updateSelectedGlbVisual(){
