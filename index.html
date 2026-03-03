@@ -6654,27 +6654,10 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
 
     const picked = pickItemAtCanvas(sx,sy);
 
-    if (!e.ctrlKey){
-      selectById(picked ? picked.id : null);
-      state.lastMouse = { sx, sy };
-      return;
-    }
-
-    if (picked){
-      if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id);
-      else state.multiSelectedIds.add(picked.id);
-      state.selectedId = picked.id;
-      renderList();
-      state.draggingItem = false;
-      state.lastMouse = { sx, sy };
-      return;
-    }
-
     state.draggingItem = false;
-    state.boxSelecting = true;
-    state.boxSelectAdditive = true;
-    state.boxStart = { sx, sy };
-    state.boxCurrent = { sx, sy };
+    state.boxSelecting = false;
+    state.boxSelectAdditive = false;
+    selectById(picked ? picked.id : null);
     state.lastMouse = { sx, sy };
   });
   cv.addEventListener("contextmenu", (e) => { e.preventDefault(); if(state.cameraLookActive || (state.cameraLookPending&&state.cameraLookButton===2)) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAtCanvas(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
