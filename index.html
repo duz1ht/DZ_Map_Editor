@@ -5913,9 +5913,9 @@
     const camDist = vec3Len(vec3Sub(center, cam.pos));
     const t = Math.max(0, Math.min(1, (camDist - gizmoNearDist) / Math.max(1, gizmoFarDist - gizmoNearDist)));
 
-    const axisLenPx = 54 + (70 - 54) * t;
-    const yawRadius = 28.8 + (34 - 28.8) * t;
-    const pitchRadius = 21.6 + (28 - 21.6) * t;
+    const axisLenPx = 75.6 + (91.6 - 75.6) * t;
+    const yawRadius = 40.32 + (47.6 - 40.32) * t;
+    const pitchRadius = 30.24 + (39.2 - 30.24) * t;
 
     const c = worldToScreen(center.x, center.y, center.z);
     if (!c.visible){ state.gizmoVisual = null; return; }
