@@ -3295,11 +3295,6 @@
   }
 
   function refreshLiveMisWindow(resetBaseline=false, options = {}){
-    const force = !!options.force;
-    if (!force && !state.liveMisOpen){
-      state.liveMisDirty = true;
-      return;
-    }
     state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
     state.liveMisDirty = false;
     if (misRealtimeConsoleEl){
