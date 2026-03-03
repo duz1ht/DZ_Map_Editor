@@ -2323,6 +2323,26 @@
     requestRender();
   }
 
+  async function loadAndApplyItemCatalogs(){
+    const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
+    const defs = parseItemsDef(defText);
+    const otherItemsText = await loadTextResource("resources/otheritems.js");
+    const otherItemDefs = otherItemsText ? parseItemsDef(otherItemsText) : [];
+    const mergedDefs = defs.concat(otherItemDefs);
+    if (!mergedDefs.length){
+      defStatusEl.textContent = "Warning: embedded catalog is empty (ITEMS.DEF).";
+      addLog("WARNING: Embedded ITEMS.DEF parsed with 0 defs.");
+      return { defsCount: 0, otherDefsCount: 0 };
+    }
+    applyDefs(mergedDefs);
+    if (otherItemDefs.length){
+      addLog(`Loaded fallback otheritems.js (${otherItemDefs.length} defs)`);
+    } else {
+      addLog("WARNING: otheritems.js unavailable or empty; fallback defs not loaded.");
+    }
+    return { defsCount: defs.length, otherDefsCount: otherItemDefs.length };
+  }
+
   function buildSubtypeOptionsFromDEF(){
     // Sub-Type now becomes "catalog": value = type_id (DEF id)
     const groups = {};
@@ -4554,6 +4574,7 @@
         const handle = await window.showDirectoryPicker({ mode: "read" });
         state.editorFolderHandle = handle;
         statusEl.textContent = `Editor folder set: ${handle.name}`;
+        await loadAndApplyItemCatalogs();
         await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames(), preloadEnvironmentFiles()]);
         await refreshGeneralTerrainOptions();
         renderMenuBar();
@@ -6674,20 +6695,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     initTheme();
     addLog("Editor boot started.");
     try{
-      const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
-      const defs = parseItemsDef(defText);
-      const otherItemsText = await loadTextResource("resources/otheritems.js");
-      const otherItemDefs = otherItemsText ? parseItemsDef(otherItemsText) : [];
-      const mergedDefs = defs.concat(otherItemDefs);
-      if (mergedDefs.length){
-        applyDefs(mergedDefs);
-        if (otherItemDefs.length){
-          addLog(`Loaded fallback otheritems.js (${otherItemDefs.length} defs)`);
-        }
-      } else {
-        defStatusEl.textContent = "Warning: embedded catalog is empty (ITEMS.DEF).";
-        addLog("WARNING: Embedded ITEMS.DEF parsed with 0 defs.");
-      }
+      await loadAndApplyItemCatalogs();
     } catch (err){
       console.error(err);
       defStatusEl.textContent = "Error loading embedded catalog (see console).";
