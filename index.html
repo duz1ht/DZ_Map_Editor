@@ -684,6 +684,16 @@
       max-width:98px;
       justify-self:end;
     }
+    .posDualInputs{
+      display:grid;
+      grid-template-columns:auto auto;
+      gap:6px;
+      justify-self:end;
+    }
+    .posDualInputs input{
+      width:74px;
+      min-width:0;
+    }
     .tinyInput{ width:44px; }
     .narrowInput{ max-width:72px; }
     .midInput{ max-width:140px; }
@@ -1095,20 +1105,29 @@
           <div class="grid2">
             <div style="display:grid; gap:10px; align-content:start;">
               <fieldset>
-                <legend>Position</legend>
+                <legend>Position (game units)</legend>
                 <div class="section">
                   <div class="stackRows">
                     <div class="kvRow">
                       <div class="inlineLabel" style="margin:0;">X:</div>
-                      <input id="ui_posx" class="compactInput" />
+                      <div class="posDualInputs">
+                        <input id="ui_posx" class="compactInput" />
+                        <input id="ui_posx_frac" class="compactInput" />
+                      </div>
                     </div>
                     <div class="kvRow">
                       <div class="inlineLabel" style="margin:0;">Y:</div>
-                      <input id="ui_posy" class="compactInput" />
+                      <div class="posDualInputs">
+                        <input id="ui_posy" class="compactInput" />
+                        <input id="ui_posy_frac" class="compactInput" />
+                      </div>
                     </div>
                     <div class="kvRow">
                       <div class="inlineLabel" style="margin:0;">Z:</div>
-                      <input id="ui_posz" class="compactInput" />
+                      <div class="posDualInputs">
+                        <input id="ui_posz" class="compactInput" />
+                        <input id="ui_posz_frac" class="compactInput" />
+                      </div>
                     </div>
                   </div>
                   <div class="row" style="margin:2px 0 0 0;">
@@ -1556,8 +1575,11 @@
     presenceHint: document.getElementById("ui_presenceHint"),
 
     posx: document.getElementById("ui_posx"),
+    posxFrac: document.getElementById("ui_posx_frac"),
     posy: document.getElementById("ui_posy"),
+    posyFrac: document.getElementById("ui_posy_frac"),
     posz: document.getElementById("ui_posz"),
+    poszFrac: document.getElementById("ui_posz_frac"),
     absHeight: document.getElementById("ui_absHeight"),
     lock: document.getElementById("ui_lock"),
 
@@ -1683,6 +1705,32 @@
   function parseFloatSafe(v){
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
+  }
+
+  function parseIntSafe(v){
+    const n = Math.trunc(Number(v));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function parseUInt16Safe(v){
+    const n = parseIntSafe(v);
+    return Math.min(0xFFFF, Math.max(0, n));
+  }
+
+  function toInt32(v){
+    return Number(v) | 0;
+  }
+
+  function splitFixedPositionRaw(raw){
+    const signed = toInt32(raw);
+    return {
+      whole: signed >> 16,
+      fraction: signed & 0xFFFF,
+    };
+  }
+
+  function joinFixedPositionRaw(whole, fraction){
+    return ((parseIntSafe(whole) << 16) | parseUInt16Safe(fraction)) | 0;
   }
 
 
@@ -3941,11 +3989,20 @@
 
     // Position
     setEnabled(ui.posx, kvHas(it, "position"));
+    setEnabled(ui.posxFrac, kvHas(it, "position"));
     setEnabled(ui.posy, kvHas(it, "position"));
+    setEnabled(ui.posyFrac, kvHas(it, "position"));
     setEnabled(ui.posz, kvHas(it, "position"));
-    setValueIf(ui.posx, it.x);
-    setValueIf(ui.posy, it.y);
-    setValueIf(ui.posz, it.z);
+    setEnabled(ui.poszFrac, kvHas(it, "position"));
+    const posXSplit = splitFixedPositionRaw(it.x);
+    const posYSplit = splitFixedPositionRaw(it.y);
+    const posZSplit = splitFixedPositionRaw(it.z);
+    setValueIf(ui.posx, posXSplit.whole);
+    setValueIf(ui.posxFrac, posXSplit.fraction);
+    setValueIf(ui.posy, posYSplit.whole);
+    setValueIf(ui.posyFrac, posYSplit.fraction);
+    setValueIf(ui.posz, posZSplit.whole);
+    setValueIf(ui.poszFrac, posZSplit.fraction);
 
     // Locks
     setEnabled(ui.lock, kvHas(it, "height_lock"));
@@ -4065,9 +4122,9 @@
     if (kvHas(it, "layer")) it.kv.layer = ui.layer.value;
 
     if (kvHas(it, "position")){
-      it.x = parseFloatSafe(ui.posx.value);
-      it.y = parseFloatSafe(ui.posy.value);
-      it.z = parseFloatSafe(ui.posz.value);
+      it.x = joinFixedPositionRaw(ui.posx.value, ui.posxFrac.value);
+      it.y = joinFixedPositionRaw(ui.posy.value, ui.posyFrac.value);
+      it.z = joinFixedPositionRaw(ui.posz.value, ui.poszFrac.value);
       it.kv.position = `${it.x} ${it.y} ${it.z}`;
     }
 
@@ -4441,6 +4498,8 @@
 
   searchEl?.addEventListener("input", () => { invalidateFilteredItemsCache(); renderList(); requestRender(); });
   searchEl?.addEventListener("keydown", (event) => {
+    // While typing in the search box, do not bubble keys to global canvas shortcuts.
+    event.stopPropagation();
     if (event.key !== "Enter") return;
     event.preventDefault();
     invalidateFilteredItemsCache();
@@ -6518,10 +6577,10 @@ Terrain cull (frustum/back): ${state.terrainPerf?.culledFrustum ?? '-'} / ${stat
 GLB instances: ${state.glb.itemInstances.size}
 GLB sync: #${state.glb.syncCount} (${state.glb.lastSyncMs.toFixed(2)} ms)
 GLB total/render: ${state.glb.lastStats?.totalItems ?? '-'} / ${state.glb.lastStats?.renderableItems ?? '-'}
-GLB sem graphic: ${state.glb.lastStats?.skippedMissingGraphic ?? '-'}
-GLB sem type_id: ${state.glb.lastStats?.skippedMissingTypeId ?? '-'}
-GLB sem def(type_id): ${state.glb.lastStats?.skippedDefNotFoundForTypeId ?? '-'}
-GLB sem instância pós-sync: ${state.glb.lastStats?.missingInstancesAfterSync ?? '-'}
+GLB missing graphic: ${state.glb.lastStats?.skippedMissingGraphic ?? '-'}
+GLB missing type_id: ${state.glb.lastStats?.skippedMissingTypeId ?? '-'}
+GLB missing def(type_id): ${state.glb.lastStats?.skippedDefNotFoundForTypeId ?? '-'}
+GLB missing instance post-sync: ${state.glb.lastStats?.missingInstancesAfterSync ?? '-'}
 Wrap: x=${wrapX} y=${wrapY}
 Sectors: ${sectorCount}x${sectorCount} origin=${terrainOrigin.x},${terrainOrigin.y}
 Terrain size: ${terrainSpanX()} x ${terrainSpanY()}
