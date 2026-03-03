@@ -6654,31 +6654,25 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
 
     const picked = pickItemAtCanvas(sx,sy);
 
-    if (!e.ctrlKey && !e.shiftKey){
+    if (!e.ctrlKey){
       selectById(picked ? picked.id : null);
       state.lastMouse = { sx, sy };
       return;
     }
 
-    // Fluxos modificados por teclas preservam comportamento anterior.
     if (picked){
-      if (e.ctrlKey){
-        if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id);
-        else state.multiSelectedIds.add(picked.id);
-        state.selectedId = picked.id;
-        renderList();
-      } else {
-        selectById(picked.id);
-      }
-      state.draggingItem = e.shiftKey;
-      if (state.draggingItem) state.dragAnchor = screenToWorld(sx, sy, rawToWorld(picked.z||0,'z'));
+      if (state.multiSelectedIds.has(picked.id)) state.multiSelectedIds.delete(picked.id);
+      else state.multiSelectedIds.add(picked.id);
+      state.selectedId = picked.id;
+      renderList();
+      state.draggingItem = false;
       state.lastMouse = { sx, sy };
       return;
     }
 
     state.draggingItem = false;
     state.boxSelecting = true;
-    state.boxSelectAdditive = e.ctrlKey;
+    state.boxSelectAdditive = true;
     state.boxStart = { sx, sy };
     state.boxCurrent = { sx, sy };
     state.lastMouse = { sx, sy };
