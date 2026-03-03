@@ -6018,6 +6018,12 @@
     const w1 = screenToWorld(c.sx + 1, c.sy, center.z);
     const unitsPerPixel = Math.max(0.01, Math.hypot(w1.x - w0.x, w1.y - w0.y));
 
+    const snapStep = Math.PI / 2;
+    const snappedYaw = Math.round(cam.yaw / snapStep) * snapStep;
+    const viewForward = { x: Math.sin(snappedYaw), y: Math.cos(snappedYaw), z: 0 };
+    const viewRight = { x: Math.cos(snappedYaw), y: -Math.sin(snappedYaw), z: 0 };
+    const viewUp = { x: 0, y: 0, z: 1 };
+
     function drawRotationArc3D(axisA, axisB, radiusPx, color, startDeg, endDeg){
       const radiusW = radiusPx * unitsPerPixel;
       const points = [];
@@ -6061,9 +6067,9 @@
       return { sx: c.sx, sy: c.sy, t: 10, points, r: radiusPx };
     }
 
-    const rotX = drawRotationArc3D({x:0,y:1,z:0}, {x:0,y:0,z:1}, pitchRadius * 0.92, '#ff6b6b', -150, 30);
-    const rotY = drawRotationArc3D({x:1,y:0,z:0}, {x:0,y:0,z:1}, pitchRadius * 1.08, '#6bff8f', 30, 210);
-    const rotZ = drawRotationArc3D({x:1,y:0,z:0}, {x:0,y:1,z:0}, yawRadius * 1.24, '#77a8ff', 210, 390);
+    const rotX = drawRotationArc3D(viewRight, viewUp, pitchRadius * 0.92, '#ff6b6b', -150, 30);
+    const rotY = drawRotationArc3D(viewForward, viewUp, pitchRadius * 1.08, '#6bff8f', 30, 210);
+    const rotZ = drawRotationArc3D(viewRight, viewForward, yawRadius * 1.24, '#77a8ff', 210, 390);
 
     gizmoCtx.fillStyle = '#ffffff';
     gizmoCtx.beginPath();
