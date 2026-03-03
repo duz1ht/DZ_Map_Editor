@@ -1324,6 +1324,7 @@
     pastePreviewWorld: null,
     gizmoDrag: null,
     gizmoVisual: null,
+    gizmoAxisScreenDirs: null,
     transformMode: "translate",
 
     gameStrings: new Map(),
@@ -5920,18 +5921,31 @@
     if (!c.visible){ state.gizmoVisual = null; return; }
 
     const axisProbe = 20;
-    function axisDir(dx, dy, dz, fallback){
-      const p = worldToScreen(center.x + dx, center.y + dy, center.z + dz);
-      if (!p.visible) return fallback;
-      const vx = p.sx - c.sx;
-      const vy = p.sy - c.sy;
-      const l = Math.hypot(vx, vy);
-      if (l <= 1e-4) return fallback;
-      return { x: vx / l, y: vy / l };
+    const prevDirs = state.gizmoAxisScreenDirs || {};
+    function axisDir(dx, dy, dz, fallback, prev){
+      const pPlus = worldToScreen(center.x + dx, center.y + dy, center.z + dz);
+      if (pPlus.visible){
+        const vx = pPlus.sx - c.sx;
+        const vy = pPlus.sy - c.sy;
+        const l = Math.hypot(vx, vy);
+        if (l > 1e-4) return { x: vx / l, y: vy / l };
+      }
+
+      const pMinus = worldToScreen(center.x - dx, center.y - dy, center.z - dz);
+      if (pMinus.visible){
+        const vx = c.sx - pMinus.sx;
+        const vy = c.sy - pMinus.sy;
+        const l = Math.hypot(vx, vy);
+        if (l > 1e-4) return { x: vx / l, y: vy / l };
+      }
+
+      if (prev && Number.isFinite(prev.x) && Number.isFinite(prev.y)) return prev;
+      return fallback;
     }
-    const xDir = axisDir(axisProbe, 0, 0, { x: 1, y: 0 });
-    const yDir = axisDir(0, axisProbe, 0, { x: 0, y: -1 });
-    const zDir = axisDir(0, 0, axisProbe, { x: 0.6, y: -0.8 });
+    const xDir = axisDir(axisProbe, 0, 0, { x: 1, y: 0 }, prevDirs.x);
+    const yDir = axisDir(0, axisProbe, 0, { x: 0, y: -1 }, prevDirs.y);
+    const zDir = axisDir(0, 0, axisProbe, { x: 0.6, y: -0.8 }, prevDirs.z);
+    state.gizmoAxisScreenDirs = { x: xDir, y: yDir, z: zDir };
 
     const xTip = { visible: true, sx: c.sx + xDir.x * axisLenPx, sy: c.sy + xDir.y * axisLenPx };
     const yTip = { visible: true, sx: c.sx + yDir.x * axisLenPx, sy: c.sy + yDir.y * axisLenPx };
