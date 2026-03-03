@@ -3071,14 +3071,16 @@
             }
           }
 
-          let heading = 0, pitch = 0;
+          let heading = 0, pitch = 0, roll = 0;
           if (kv.facing){
             const f = kv.facing.split(/\s+/).map(Number);
             if (f.length >= 1 && Number.isFinite(f[0])) heading = f[0];
             if (f.length >= 2 && Number.isFinite(f[1])) pitch = f[1];
+            if (f.length >= 3 && Number.isFinite(f[2])) roll = f[2];
           } else if (kv.rot){
             heading = parseFloatSafe(kv.rot);
           }
+          if (kv.roll && Number.isFinite(parseFloatSafe(kv.roll))) roll = parseFloatSafe(kv.roll);
 
           items.push({
             id: items.length ? items[items.length-1].id + 1 : 1,
@@ -3088,6 +3090,7 @@
             x,y,z,
             heading,
             pitch,
+            roll,
           });
         }
 
@@ -3135,7 +3138,8 @@
         if ("facing" in kv){
           const parts = String(kv.facing).split(/\s+/).map(Number);
           const b = (parts.length >= 2 && Number.isFinite(parts[1])) ? parts[1] : (it.pitch ?? 0);
-          kv.facing = `${it.heading} ${b}`;
+          const c = (parts.length >= 3 && Number.isFinite(parts[2])) ? parts[2] : (it.roll ?? 0);
+          kv.facing = `${it.heading} ${b} ${c}`;
         } else if ("rot" in kv){
           kv.rot = String(it.heading);
         }
@@ -4034,9 +4038,10 @@
     if (applyOrientation){
       it.heading = parseFloatSafe(ui.heading.value);
       it.pitch = parseFloatSafe(ui.pitch.value);
+      if (!Number.isFinite(it.roll)) it.roll = 0;
 
       if (kvHas(it, "facing") || !kvHas(it, "rot")){
-        it.kv.facing = `${it.heading} ${it.pitch}`;
+        it.kv.facing = `${it.heading} ${it.pitch} ${Number(it.roll) || 0}`;
       } else {
         it.kv.rot = String(it.heading);
       }
@@ -5294,9 +5299,11 @@
     const yawRad = ((-(Number(it.heading) || 0)) + 180) * Math.PI / 180;
     const pitchCalibratedDeg = (-(Number(it.pitch) || 0)) + 90;
     const pitchRad = pitchCalibratedDeg * Math.PI / 180;
+    const rollRad = (-(Number(it.roll) || 0)) * Math.PI / 180;
     obj.rotation.order = "ZXY";
     obj.rotation.z = yawRad;
     obj.rotation.x = pitchRad;
+    obj.rotation.y = rollRad;
   }
 
   function parseNamedLodLevel(name){
@@ -5886,8 +5893,9 @@
 
   function applyItemOrientationToKv(it){
     if (!it) return;
-    if (kvHas(it, "facing") || !kvHas(it, "rot")) it.kv.facing = `${it.heading} ${it.pitch}`;
+    if (kvHas(it, "facing") || !kvHas(it, "rot")) it.kv.facing = `${it.heading} ${it.pitch} ${Number(it.roll) || 0}`;
     else it.kv.rot = String(it.heading);
+    if (kvHas(it, "roll")) it.kv.roll = String(Number(it.roll) || 0);
   }
 
   function updateItemGizmo(){
@@ -6006,17 +6014,31 @@
       return;
     }
 
-    gizmoCtx.strokeStyle = '#ff6b6b';
-    gizmoCtx.lineWidth = 6;
-    gizmoCtx.beginPath();
-    gizmoCtx.ellipse(c.sx, c.sy, pitchRadius * 0.55, pitchRadius, 0, 0, Math.PI * 2);
-    gizmoCtx.stroke();
+    function drawRotationRing(dirA, dirB, radius, color){
+      const nA = Math.hypot(dirA.x, dirA.y) || 1;
+      const nB = Math.hypot(dirB.x, dirB.y) || 1;
+      const ux = dirA.x / nA, uy = dirA.y / nA;
+      const vx = dirB.x / nB, vy = dirB.y / nB;
+      const points = [];
+      const steps = 72;
+      gizmoCtx.strokeStyle = color;
+      gizmoCtx.lineWidth = 5;
+      gizmoCtx.beginPath();
+      for (let i=0;i<=steps;i++){
+        const a = (i / steps) * Math.PI * 2;
+        const px = c.sx + (ux * Math.cos(a) + vx * Math.sin(a)) * radius;
+        const py = c.sy + (uy * Math.cos(a) + vy * Math.sin(a)) * radius;
+        points.push({ sx:px, sy:py });
+        if (i===0) gizmoCtx.moveTo(px, py);
+        else gizmoCtx.lineTo(px, py);
+      }
+      gizmoCtx.stroke();
+      return { sx: c.sx, sy: c.sy, t: 9, points, ux, uy, vx, vy, r: radius };
+    }
 
-    gizmoCtx.strokeStyle = '#ffd166';
-    gizmoCtx.lineWidth = 6;
-    gizmoCtx.beginPath();
-    gizmoCtx.arc(c.sx, c.sy, yawRadius, 0, Math.PI * 2);
-    gizmoCtx.stroke();
+    const rotX = drawRotationRing(yDir, zDir, pitchRadius, '#ff6b6b');
+    const rotY = drawRotationRing(xDir, zDir, pitchRadius, '#6bff8f');
+    const rotZ = drawRotationRing(xDir, yDir, yawRadius, '#77a8ff');
 
     gizmoCtx.fillStyle = '#ffffff';
     gizmoCtx.beginPath();
@@ -6026,10 +6048,7 @@
     state.gizmoVisual = {
       mode: 'rotate',
       center: { sx: c.sx, sy: c.sy },
-      handles: {
-        rotYaw: { sx: c.sx, sy: c.sy, r: yawRadius, t: 8, ring: true },
-        rotPitch: { sx: c.sx, sy: c.sy, rx: pitchRadius * 0.55, ry: pitchRadius, t: 7, ellipse: true }
-      }
+      handles: { rotX, rotY, rotZ }
     };
   }
 
@@ -6488,15 +6507,16 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       return null;
     }
 
-    if (h.rotYaw){
-      const d = dist(sx,sy,h.rotYaw.sx,h.rotYaw.sy);
-      if (Math.abs(d - h.rotYaw.r) <= (h.rotYaw.t || 8)) return "rotYaw";
-    }
-    if (h.rotPitch){
-      const nx = (sx - h.rotPitch.sx) / Math.max(1, h.rotPitch.rx);
-      const ny = (sy - h.rotPitch.sy) / Math.max(1, h.rotPitch.ry);
-      const v = Math.abs((nx*nx + ny*ny) - 1);
-      if (v <= 0.22) return "rotPitch";
+    for (const mode of ["rotX","rotY","rotZ"]){
+      const hh = h[mode];
+      if (!hh || !Array.isArray(hh.points) || hh.points.length < 2) continue;
+      let best = Infinity;
+      for (let i=1;i<hh.points.length;i++){
+        const p0 = hh.points[i-1], p1 = hh.points[i];
+        const near = distToSegment(sx, sy, p0.sx, p0.sy, p1.sx, p1.sy);
+        if (near < best) best = near;
+      }
+      if (best <= (hh.t || 9)) return mode;
     }
     return null;
   }
@@ -6548,10 +6568,32 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       const unitsPerPixel = Math.max(0.05, Math.hypot(p1.x - p0.x, p1.y - p0.y));
       const dz = -dy * unitsPerPixel;
       it.z = worldToRaw(currentW.z + dz, 'z');
-    } else if (mode === "rotYaw"){
-      it.heading = (Number(it.heading) || 0) - dx * 0.5;
-    } else if (mode === "rotPitch"){
-      it.pitch = (Number(it.pitch) || 0) + dy * 0.5;
+    } else if (mode === "rotX" || mode === "rotY" || mode === "rotZ"){
+      const handle = state.gizmoVisual?.handles?.[mode];
+      const rect = cv.getBoundingClientRect();
+      const prevSx = e.clientX - rect.left - dx;
+      const prevSy = e.clientY - rect.top - dy;
+      const nowSx = e.clientX - rect.left;
+      const nowSy = e.clientY - rect.top;
+      const cx = handle?.sx ?? (state.gizmoVisual?.center?.sx || nowSx);
+      const cy = handle?.sy ?? (state.gizmoVisual?.center?.sy || nowSy);
+      function ringAngle(px, py){
+        if (handle && Number.isFinite(handle.ux) && Number.isFinite(handle.uy) && Number.isFinite(handle.vx) && Number.isFinite(handle.vy)){
+          const rx = px - cx;
+          const ry = py - cy;
+          const du = rx * handle.ux + ry * handle.uy;
+          const dv = rx * handle.vx + ry * handle.vy;
+          return Math.atan2(dv, du);
+        }
+        return Math.atan2(py - cy, px - cx);
+      }
+      let da = ringAngle(nowSx, nowSy) - ringAngle(prevSx, prevSy);
+      if (da > Math.PI) da -= Math.PI * 2;
+      if (da < -Math.PI) da += Math.PI * 2;
+      const deltaDeg = da * (180 / Math.PI);
+      if (mode === "rotX") it.pitch = (Number(it.pitch) || 0) + deltaDeg;
+      if (mode === "rotY") it.roll = (Number(it.roll) || 0) + deltaDeg;
+      if (mode === "rotZ") it.heading = (Number(it.heading) || 0) - deltaDeg;
     }
 
     commitGizmoUpdate(it);
