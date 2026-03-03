@@ -5394,12 +5394,13 @@
         renderer.autoClear = false;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.0;
+        renderer.toneMappingExposure = 1.2;
 
         const scene3d = new THREE.Scene();
-        scene3d.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.65));
-        const dir1 = new THREE.DirectionalLight(0xffffff, 1.1); dir1.position.set(5, 8, 6); scene3d.add(dir1);
-        const dir2 = new THREE.DirectionalLight(0xffffff, 0.6); dir2.position.set(-6, 3, -5); scene3d.add(dir2);
+        scene3d.add(new THREE.HemisphereLight(0xf6f8ff, 0x4f657d, 1.05));
+        scene3d.add(new THREE.AmbientLight(0xffffff, 0.22));
+        const dir1 = new THREE.DirectionalLight(0xffffff, 0.95); dir1.position.set(5, 8, 6); scene3d.add(dir1);
+        const dir2 = new THREE.DirectionalLight(0xffffff, 0.8); dir2.position.set(-6, 3, -5); scene3d.add(dir2);
 
         const camera3d = new THREE.PerspectiveCamera(60, 1, 0.01, 20000);
         camera3d.matrixAutoUpdate = false;
@@ -5515,15 +5516,32 @@
           if (m.emissiveMap) m.emissiveMap.colorSpace = state.glb.THREE.SRGBColorSpace;
 
           // Evita shaders PBR complexos que falham em alguns drivers WebGL1.
-          return new state.glb.THREE.MeshLambertMaterial({
+          // Preferimos Phong para manter resposta especular e reduzir faces "apagadas".
+          const emissiveBase = m.emissive ? m.emissive.clone() : new state.glb.THREE.Color(0x000000);
+          if (emissiveBase.r < 0.02 && emissiveBase.g < 0.02 && emissiveBase.b < 0.02){
+            emissiveBase.setRGB(0.02, 0.02, 0.02);
+          }
+          return new state.glb.THREE.MeshPhongMaterial({
             map: m.map || null,
             color: m.color ? m.color.clone() : new state.glb.THREE.Color(0xffffff),
-            emissive: m.emissive ? m.emissive.clone() : new state.glb.THREE.Color(0x000000),
+            emissive: emissiveBase,
             emissiveMap: m.emissiveMap || null,
+            normalMap: m.normalMap || null,
+            normalScale: m.normalScale ? m.normalScale.clone() : undefined,
+            aoMap: m.aoMap || null,
+            aoMapIntensity: Number.isFinite(m.aoMapIntensity) ? m.aoMapIntensity : 1,
+            lightMap: m.lightMap || null,
+            lightMapIntensity: Number.isFinite(m.lightMapIntensity) ? m.lightMapIntensity : 1,
+            specularMap: m.specularMap || null,
+            envMap: m.envMap || null,
+            envMapIntensity: Number.isFinite(m.envMapIntensity) ? m.envMapIntensity : 1,
+            shininess: Number.isFinite(m.shininess) ? m.shininess : 24,
             transparent: !!m.transparent,
             opacity: Number.isFinite(m.opacity) ? m.opacity : 1,
             side: m.side,
             alphaTest: m.alphaTest || 0,
+            vertexColors: !!m.vertexColors,
+            flatShading: !!m.flatShading,
           });
         });
 
