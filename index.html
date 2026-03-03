@@ -1374,10 +1374,6 @@
       activeLodLevels: [0, 1],
       lodConfigLogged: false,
       wireframeEnabled: false,
-      logDetailOptions: {
-        showItemsMissingDefForType: false,
-        showItemsMissingGraphicInDefAndItem: false,
-      },
       scratchProjectionMatrix: null,
       scratchViewMatrix: null,
       raycaster: null,
@@ -1843,35 +1839,32 @@
 
   function renderLogsFilterBar(){
     if (!logsFilterBar) return;
-    const categories = Array.from(state.logFilters.keys()).sort((a,b) => a.localeCompare(b));
-    const categoryChips = categories.map((cat) => {
+    const preferredOrder = ["general", "resources", "terrain", "3d_items", "missing_3d_items", "warning", "error"];
+    ensureLogFilter("3d_items");
+    ensureLogFilter("missing_3d_items");
+
+    const known = Array.from(state.logFilters.keys());
+    const ordered = [];
+    for (const cat of preferredOrder){
+      if (known.includes(cat)) ordered.push(cat);
+    }
+    for (const cat of known.sort((a,b) => a.localeCompare(b))){
+      if (!ordered.includes(cat)) ordered.push(cat);
+    }
+
+    const categoryChips = ordered.map((cat) => {
       const safe = cat.replace(/[^a-z0-9_-]/gi, "_");
       const checked = state.logFilters.get(cat) !== false ? "checked" : "";
       return `<label class="logsFilterChip" title="Mostrar categoria: ${escapeHtml(cat)}"><input type="checkbox" data-log-filter="${safe}" data-log-category="${escapeHtml(cat)}" ${checked}/> ${escapeHtml(cat)}</label>`;
     }).join("");
 
-    const detailOptions = state.glb?.logDetailOptions || {};
-    const detailChips = [
-      `<label class="logsFilterChip" title="Mostrar no log quais itens estão sem DEF para o type_id"><input type="checkbox" data-log-detail-option="showItemsMissingDefForType" ${detailOptions.showItemsMissingDefForType ? 'checked' : ''}/> detalhar sem_def_para_type</label>`,
-      `<label class="logsFilterChip" title="Mostrar no log quais itens estão sem graphic tanto no DEF quanto no item"><input type="checkbox" data-log-detail-option="showItemsMissingGraphicInDefAndItem" ${detailOptions.showItemsMissingGraphicInDefAndItem ? 'checked' : ''}/> detalhar sem_graphic_def_item</label>`
-    ].join("");
-
-    logsFilterBar.innerHTML = `${categoryChips}${detailChips}`;
+    logsFilterBar.innerHTML = categoryChips;
 
     logsFilterBar.querySelectorAll("input[data-log-filter]").forEach((el) => {
       el.addEventListener("change", (ev) => {
         const category = (ev.target.dataset.logCategory || "").toLowerCase();
         state.logFilters.set(category, !!ev.target.checked);
         renderLogsWindow();
-      });
-    });
-
-    logsFilterBar.querySelectorAll("input[data-log-detail-option]").forEach((el) => {
-      el.addEventListener("change", (ev) => {
-        const key = ev.target.dataset.logDetailOption;
-        if (!key || !state.glb.logDetailOptions || !(key in state.glb.logDetailOptions)) return;
-        state.glb.logDetailOptions[key] = !!ev.target.checked;
-        addLog(`[3d_items] detalhamento ${key}=${state.glb.logDetailOptions[key] ? 'on' : 'off'}`);
       });
     });
   }
@@ -2235,7 +2228,14 @@
     const tid = kvHas(it, "type_id") ? String(it.kv.type_id) : "";
     if (!tid) return null;
     const mappedDefId = toDefIdFromMisTypeId(tid);
-    return state.defsById.get(mappedDefId) || state.defsById.get(tid) || null;
+    const mappedDef = state.defsById.get(mappedDefId) || null;
+    const otherItemsDef = state.defsById.get(tid) || null;
+    if (mappedDef){
+      if (String(mappedDef.graphic || "").trim()) return mappedDef;
+      if (otherItemsDef && String(otherItemsDef.graphic || "").trim()) return otherItemsDef;
+      return mappedDef;
+    }
+    return otherItemsDef;
   }
 
   // DEF parser (ITEMS.DEF)
@@ -2256,6 +2256,7 @@
         cur = {
           name: mBegin[1],
           id: "",
+          typeId: "",
           type: "",
           graphic: "",
           attrib: [],
@@ -2265,7 +2266,8 @@
       }
 
       if (/^end\b/i.test(t)){
-        if (cur && cur.id){
+        if (cur && (cur.id || cur.typeId)){
+          if (!cur.id) cur.id = cur.typeId;
           defs.push(cur);
         }
         cur = null;
@@ -2291,6 +2293,7 @@
         cur.kv[k] = v;
 
         if (k === "id") cur.id = v;
+        if (k === "type_id") cur.typeId = v;
         if (k === "type") cur.type = v;
         if (k === "graphic") cur.graphic = v;
 
@@ -2318,6 +2321,26 @@
     renderList();
     if (state.modalOpen) renderItemWindow();
     requestRender();
+  }
+
+  async function loadAndApplyItemCatalogs(){
+    const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
+    const defs = parseItemsDef(defText);
+    const otherItemsText = await loadTextResource("resources/otheritems.js");
+    const otherItemDefs = otherItemsText ? parseItemsDef(otherItemsText) : [];
+    const mergedDefs = defs.concat(otherItemDefs);
+    if (!mergedDefs.length){
+      defStatusEl.textContent = "Warning: embedded catalog is empty (ITEMS.DEF).";
+      addLog("WARNING: Embedded ITEMS.DEF parsed with 0 defs.");
+      return { defsCount: 0, otherDefsCount: 0 };
+    }
+    applyDefs(mergedDefs);
+    if (otherItemDefs.length){
+      addLog(`Loaded fallback otheritems.js (${otherItemDefs.length} defs)`);
+    } else {
+      addLog("WARNING: otheritems.js unavailable or empty; fallback defs not loaded.");
+    }
+    return { defsCount: defs.length, otherDefsCount: otherItemDefs.length };
   }
 
   function buildSubtypeOptionsFromDEF(){
@@ -3295,11 +3318,6 @@
   }
 
   function refreshLiveMisWindow(resetBaseline=false, options = {}){
-    const force = !!options.force;
-    if (!force && !state.liveMisOpen){
-      state.liveMisDirty = true;
-      return;
-    }
     state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
     state.liveMisDirty = false;
     if (misRealtimeConsoleEl){
@@ -4556,6 +4574,7 @@
         const handle = await window.showDirectoryPicker({ mode: "read" });
         state.editorFolderHandle = handle;
         statusEl.textContent = `Editor folder set: ${handle.name}`;
+        await loadAndApplyItemCatalogs();
         await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames(), preloadEnvironmentFiles()]);
         await refreshGeneralTerrainOptions();
         renderMenuBar();
@@ -5717,12 +5736,14 @@
       state.glb.lastStats = syncReport;
       state.glb.lastSyncReport = syncReport;
       addLog(`[3d_items] cobertura GLB: total=${syncReport.totalItems} renderizaveis=${syncReport.renderableItems} instancias=${syncReport.finalInstances} sem_graphic=${syncReport.skippedMissingGraphic} sem_type_id=${syncReport.skippedMissingTypeId} sem_def_para_type=${syncReport.skippedDefNotFoundForTypeId} sem_graphic_def_item=${syncReport.skippedMissingGraphicInDefAndItem} ausentes_pos_sync=${syncReport.missingInstancesAfterSync} graficos_distintos=${syncReport.distinctGraphics} top=${topGraphics.join(', ') || '<none>'}`);
-      addLog(`[3d_items] arquivos GLB ausentes (${syncReport.missingGlbFiles.length}): ${syncReport.missingGlbFiles.join(', ') || '<none>'}`);
-      if (state.glb.logDetailOptions?.showItemsMissingDefForType){
-        addLog(`[3d_items] itens sem_def_para_type (${syncReport.itemsMissingDefForType.length}): ${formatGlbStatItems(syncReport.itemsMissingDefForType)}`);
-      }
-      if (state.glb.logDetailOptions?.showItemsMissingGraphicInDefAndItem){
-        addLog(`[3d_items] itens sem_graphic_def_item (${syncReport.itemsMissingGraphicInDefAndItem.length}): ${formatGlbStatItems(syncReport.itemsMissingGraphicInDefAndItem)}`);
+      addLog(`[3d_items] itens sem_def_para_type (${syncReport.itemsMissingDefForType.length}): ${formatGlbStatItems(syncReport.itemsMissingDefForType)}`);
+      addLog(`[3d_items] itens sem_graphic_def_item (${syncReport.itemsMissingGraphicInDefAndItem.length}): ${formatGlbStatItems(syncReport.itemsMissingGraphicInDefAndItem)}`);
+      if (!syncReport.missingGlbFiles.length){
+        addLog(`[missing_3d_items] none`);
+      } else {
+        for (const path of syncReport.missingGlbFiles){
+          addLog(`[missing_3d_items] ${path}`);
+        }
       }
 
       state.glb.structureDirty = false;
@@ -6674,14 +6695,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     initTheme();
     addLog("Editor boot started.");
     try{
-      const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
-      const defs = parseItemsDef(defText);
-      if (defs && defs.length){
-        applyDefs(defs);
-      } else {
-        defStatusEl.textContent = "Warning: embedded catalog is empty (ITEMS.DEF).";
-        addLog("WARNING: Embedded ITEMS.DEF parsed with 0 defs.");
-      }
+      await loadAndApplyItemCatalogs();
     } catch (err){
       console.error(err);
       defStatusEl.textContent = "Error loading embedded catalog (see console).";
