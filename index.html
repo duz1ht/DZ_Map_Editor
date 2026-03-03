@@ -1324,6 +1324,8 @@
     pastePreviewWorld: null,
     gizmoDrag: null,
     gizmoVisual: null,
+    gizmoAxisScreenDirs: null,
+    transformMode: "translate",
 
     gameStrings: new Map(),
     weaponDefs: new Map(),
@@ -4032,7 +4034,6 @@
     if (applyOrientation){
       it.heading = parseFloatSafe(ui.heading.value);
       it.pitch = parseFloatSafe(ui.pitch.value);
-
       if (kvHas(it, "facing") || !kvHas(it, "rot")){
         it.kv.facing = `${it.heading} ${it.pitch}`;
       } else {
@@ -5911,27 +5912,39 @@
     const camDist = vec3Len(vec3Sub(center, cam.pos));
     const t = Math.max(0, Math.min(1, (camDist - gizmoNearDist) / Math.max(1, gizmoFarDist - gizmoNearDist)));
 
-    // Escala visual em pixels: perto = menor, longe = maior.
-    const axisLenPx = 54 + (70 - 54) * t;
-    const yawRadius = 28.8 + (34 - 28.8) * t;
-    const pitchRadius = 21.6 + (28 - 21.6) * t;
+    const axisLenPx = 75.6 + (91.6 - 75.6) * t;
+    const yawRadius = 48.384 + (57.12 - 48.384) * t;
+    const pitchRadius = 36.288 + (47.04 - 36.288) * t;
 
     const c = worldToScreen(center.x, center.y, center.z);
     if (!c.visible){ state.gizmoVisual = null; return; }
 
     const axisProbe = 20;
-    function axisDir(dx, dy, dz, fallback){
-      const p = worldToScreen(center.x + dx, center.y + dy, center.z + dz);
-      if (!p.visible) return fallback;
-      const vx = p.sx - c.sx;
-      const vy = p.sy - c.sy;
-      const l = Math.hypot(vx, vy);
-      if (l <= 1e-4) return fallback;
-      return { x: vx / l, y: vy / l };
+    const prevDirs = state.gizmoAxisScreenDirs || {};
+    function axisDir(dx, dy, dz, fallback, prev){
+      const pPlus = worldToScreen(center.x + dx, center.y + dy, center.z + dz);
+      if (pPlus.visible){
+        const vx = pPlus.sx - c.sx;
+        const vy = pPlus.sy - c.sy;
+        const l = Math.hypot(vx, vy);
+        if (l > 1e-4) return { x: vx / l, y: vy / l };
+      }
+
+      const pMinus = worldToScreen(center.x - dx, center.y - dy, center.z - dz);
+      if (pMinus.visible){
+        const vx = c.sx - pMinus.sx;
+        const vy = c.sy - pMinus.sy;
+        const l = Math.hypot(vx, vy);
+        if (l > 1e-4) return { x: vx / l, y: vy / l };
+      }
+
+      if (prev && Number.isFinite(prev.x) && Number.isFinite(prev.y)) return prev;
+      return fallback;
     }
-    const xDir = axisDir(axisProbe, 0, 0, { x: 1, y: 0 });
-    const yDir = axisDir(0, axisProbe, 0, { x: 0, y: -1 });
-    const zDir = axisDir(0, 0, axisProbe, { x: 0.6, y: -0.8 });
+    const xDir = axisDir(axisProbe, 0, 0, { x: 1, y: 0 }, prevDirs.x);
+    const yDir = axisDir(0, axisProbe, 0, { x: 0, y: -1 }, prevDirs.y);
+    const zDir = axisDir(0, 0, axisProbe, { x: 0.6, y: -0.8 }, prevDirs.z);
+    state.gizmoAxisScreenDirs = { x: xDir, y: yDir, z: zDir };
 
     const xTip = { visible: true, sx: c.sx + xDir.x * axisLenPx, sy: c.sy + xDir.y * axisLenPx };
     const yTip = { visible: true, sx: c.sx + yDir.x * axisLenPx, sy: c.sy + yDir.y * axisLenPx };
@@ -5951,21 +5964,112 @@
       gizmoCtx.fill();
     }
 
-    drawAxis(xTip, '#ff6b6b');
-    drawAxis(yTip, '#6bff8f');
-    drawAxis(zTip, '#77a8ff');
+    if (state.transformMode === 'translate'){
+      drawAxis(xTip, '#ff6b6b');
+      drawAxis(yTip, '#6bff8f');
+      drawAxis(zTip, '#77a8ff');
 
-    gizmoCtx.strokeStyle = '#ffd166';
-    gizmoCtx.lineWidth = 6;
-    gizmoCtx.beginPath();
-    gizmoCtx.arc(c.sx, c.sy, yawRadius, 0, Math.PI * 2);
-    gizmoCtx.stroke();
+      const planeLen = axisLenPx * 0.45;
+      function planeHandle(aDir, bDir, color){
+        const p1 = { sx: c.sx + aDir.x * planeLen, sy: c.sy + aDir.y * planeLen };
+        const p2 = { sx: p1.sx + bDir.x * planeLen, sy: p1.sy + bDir.y * planeLen };
+        const p3 = { sx: c.sx + bDir.x * planeLen, sy: c.sy + bDir.y * planeLen };
+        gizmoCtx.fillStyle = color;
+        gizmoCtx.globalAlpha = 0.25;
+        gizmoCtx.beginPath();
+        gizmoCtx.moveTo(c.sx, c.sy);
+        gizmoCtx.lineTo(p1.sx, p1.sy);
+        gizmoCtx.lineTo(p2.sx, p2.sy);
+        gizmoCtx.lineTo(p3.sx, p3.sy);
+        gizmoCtx.closePath();
+        gizmoCtx.fill();
+        gizmoCtx.globalAlpha = 1;
+        return { sx: (p1.sx+p2.sx+p3.sx+c.sx)/4, sy: (p1.sy+p2.sy+p3.sy+c.sy)/4, r: 11 };
+      }
+      const moveXY = planeHandle(xDir, yDir, '#f6f269');
+      const moveXZ = planeHandle(xDir, zDir, '#b38cff');
+      const moveYZ = planeHandle(yDir, zDir, '#89e7ff');
 
-    gizmoCtx.strokeStyle = '#7ce4ff';
-    gizmoCtx.lineWidth = 6;
-    gizmoCtx.beginPath();
-    gizmoCtx.ellipse(c.sx, c.sy, pitchRadius * 0.55, pitchRadius, 0, 0, Math.PI * 2);
-    gizmoCtx.stroke();
+      state.gizmoVisual = {
+        mode: 'translate',
+        center: { sx: c.sx, sy: c.sy },
+        handles: {
+          moveX: xTip.visible ? { sx: xTip.sx, sy: xTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: xTip.sx, ly1: xTip.sy } : null,
+          moveY: yTip.visible ? { sx: yTip.sx, sy: yTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: yTip.sx, ly1: yTip.sy } : null,
+          moveZ: zTip.visible ? { sx: zTip.sx, sy: zTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: zTip.sx, ly1: zTip.sy } : null,
+          moveXY,
+          moveXZ,
+          moveYZ,
+        }
+      };
+      return;
+    }
+
+    const w0 = screenToWorld(c.sx, c.sy, center.z);
+    const w1 = screenToWorld(c.sx + 1, c.sy, center.z);
+    const unitsPerPixel = Math.max(0.01, Math.hypot(w1.x - w0.x, w1.y - w0.y));
+
+    const snapStep = Math.PI / 2;
+    const snappedYaw = Math.round(cam.yaw / snapStep) * snapStep;
+    const viewForward = { x: Math.sin(snappedYaw), y: Math.cos(snappedYaw), z: 0 };
+    const viewRight = { x: Math.cos(snappedYaw), y: -Math.sin(snappedYaw), z: 0 };
+    const viewUp = { x: 0, y: 0, z: 1 };
+    const camToItem = vec3Norm(vec3Sub(center, cam.pos));
+
+    function drawRotationArc3D(axisA, axisB, radiusPx, color, startDeg, endDeg, dragSign = 1){
+      const radiusW = radiusPx * unitsPerPixel;
+      const points = [];
+      const steps = 72;
+      const a0 = startDeg * Math.PI / 180;
+      const a1 = endDeg * Math.PI / 180;
+      for (let i=0;i<=steps;i++){
+        const a = a0 + (a1 - a0) * (i / steps);
+        const wx = center.x + (axisA.x * Math.cos(a) + axisB.x * Math.sin(a)) * radiusW;
+        const wy = center.y + (axisA.y * Math.cos(a) + axisB.y * Math.sin(a)) * radiusW;
+        const wz = center.z + (axisA.z * Math.cos(a) + axisB.z * Math.sin(a)) * radiusW;
+        const p = worldToScreen(wx, wy, wz);
+        points.push({ sx: p.sx, sy: p.sy, visible: !!p.visible });
+      }
+
+      gizmoCtx.lineWidth = 5;
+      gizmoCtx.strokeStyle = '#000000';
+      gizmoCtx.globalAlpha = 0.28;
+      let open = false;
+      for (let i=1;i<points.length;i++){
+        const p0 = points[i-1], p1 = points[i];
+        if (!p0.visible || !p1.visible){ if (open){ gizmoCtx.stroke(); open = false; } continue; }
+        if (!open){ gizmoCtx.beginPath(); gizmoCtx.moveTo(p0.sx, p0.sy); open = true; }
+        gizmoCtx.lineTo(p1.sx, p1.sy);
+      }
+      if (open) gizmoCtx.stroke();
+
+      gizmoCtx.lineWidth = 3.4;
+      gizmoCtx.strokeStyle = color;
+      gizmoCtx.globalAlpha = 0.98;
+      open = false;
+      for (let i=1;i<points.length;i++){
+        const p0 = points[i-1], p1 = points[i];
+        if (!p0.visible || !p1.visible){ if (open){ gizmoCtx.stroke(); open = false; } continue; }
+        if (!open){ gizmoCtx.beginPath(); gizmoCtx.moveTo(p0.sx, p0.sy); open = true; }
+        gizmoCtx.lineTo(p1.sx, p1.sy);
+      }
+      if (open) gizmoCtx.stroke();
+      gizmoCtx.globalAlpha = 1;
+
+      return { sx: c.sx, sy: c.sy, t: 10, points, r: radiusPx, dragSign };
+    }
+
+    const rotXNormal = vec3Norm(vec3Cross(viewRight, viewUp));
+    const rotZNormal = vec3Norm(vec3Cross(viewRight, viewForward));
+    const rotXSign = vec3Dot(rotXNormal, camToItem) >= 0 ? 1 : -1;
+    const rotZSign = vec3Dot(rotZNormal, camToItem) >= 0 ? 1 : -1;
+
+    const cameraToObjectSide = vec3Dot(vec3Sub(cam.pos, center), viewRight);
+    const rotXStart = cameraToObjectSide >= 0 ? -90 : 90;
+    const rotXEnd = cameraToObjectSide >= 0 ? 90 : 270;
+
+    const rotX = drawRotationArc3D(viewRight, viewUp, pitchRadius * 0.92, '#ff6b6b', rotXStart, rotXEnd, rotXSign);
+    const rotZ = drawRotationArc3D(viewRight, viewForward, yawRadius * 1.24, '#77a8ff', 210, 390, rotZSign);
 
     gizmoCtx.fillStyle = '#ffffff';
     gizmoCtx.beginPath();
@@ -5973,14 +6077,9 @@
     gizmoCtx.fill();
 
     state.gizmoVisual = {
+      mode: 'rotate',
       center: { sx: c.sx, sy: c.sy },
-      handles: {
-        moveX: xTip.visible ? { sx: xTip.sx, sy: xTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: xTip.sx, ly1: xTip.sy } : null,
-        moveY: yTip.visible ? { sx: yTip.sx, sy: yTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: yTip.sx, ly1: yTip.sy } : null,
-        moveZ: zTip.visible ? { sx: zTip.sx, sy: zTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: zTip.sx, ly1: zTip.sy } : null,
-        yaw: { sx: c.sx, sy: c.sy, r: yawRadius, t: 8, ring: true },
-        pitch: { sx: c.sx, sy: c.sy, rx: pitchRadius * 0.55, ry: pitchRadius, t: 7, ellipse: true }
-      }
+      handles: { rotX, rotZ }
     };
   }
 
@@ -6298,7 +6397,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   startRenderLoop();
 
   cv.addEventListener('click',()=>{ cv.focus(); });
-  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='g'){ gridVisible=!gridVisible; } if(k==='i'&&showStatsEl){ showStatsEl.checked=!showStatsEl.checked; syncRenderUiState(); } if(k==='h'&&showAnchorPointsEl){ showAnchorPointsEl.checked=!showAnchorPointsEl.checked; syncRenderUiState(); } if(k==='f'){ setGlbWireframeEnabled(!state.glb.wireframeEnabled); } if(k==='w') move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e') move.e=1; if(k==='shift') move.shift=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
+  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); const lookActive=(document.pointerLockElement===cv&&state.cameraLookActive); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='g'){ gridVisible=!gridVisible; } if(k==='i'&&showStatsEl){ showStatsEl.checked=!showStatsEl.checked; syncRenderUiState(); } if(k==='h'&&showAnchorPointsEl){ showAnchorPointsEl.checked=!showAnchorPointsEl.checked; syncRenderUiState(); } if(k==='f'){ setGlbWireframeEnabled(!state.glb.wireframeEnabled); } if(k==='w'&&!lookActive){ state.transformMode='translate'; updateItemGizmo(); } if(k==='e'&&!lookActive){ state.transformMode='rotate'; updateItemGizmo(); } if(k==='w'&&lookActive) move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e'&&lookActive) move.e=1; if(k==='shift') move.shift=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
   addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); if(k==='w') move.w=0; if(k==='a') move.a=0; if(k==='s') move.s=0; if(k==='d') move.d=0; if(k==='q') move.q=0; if(k==='e') move.e=0; if(k==='shift') move.shift=0; state.keysDown.delete(e.code); });
   addEventListener('mousemove',e=>{ if(document.pointerLockElement!==cv) return; if(topViewLocked) return; if(!state.cameraLookActive) return; if(state.modalOpen||state.draggingItem||state.boxSelecting||state.gizmoDrag||state.pastePlacementActive) return; cam.yaw += e.movementX*0.002; cam.pitch -= e.movementY*0.002; cam.pitch=Math.max(-1.55,Math.min(1.55,cam.pitch)); });
 
@@ -6421,24 +6520,34 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       const cy = y0 + t*dy;
       return Math.hypot(px - cx, py - cy);
     }
-    for (const mode of ["moveX","moveY","moveZ"]){
-      const hh = h[mode];
-      if (!hh) continue;
-      if (dist(sx,sy,hh.sx,hh.sy) <= (hh.r || 10)) return mode;
-      if (Number.isFinite(hh.lx0) && Number.isFinite(hh.ly0) && Number.isFinite(hh.lx1) && Number.isFinite(hh.ly1)){
-        const near = distToSegment(sx, sy, hh.lx0, hh.ly0, hh.lx1, hh.ly1);
-        if (near <= 10) return mode;
+
+    if (state.gizmoVisual.mode === 'translate'){
+      for (const mode of ["moveX","moveY","moveZ"]){
+        const hh = h[mode];
+        if (!hh) continue;
+        if (dist(sx,sy,hh.sx,hh.sy) <= (hh.r || 10)) return mode;
+        if (Number.isFinite(hh.lx0) && Number.isFinite(hh.ly0) && Number.isFinite(hh.lx1) && Number.isFinite(hh.ly1)){
+          const near = distToSegment(sx, sy, hh.lx0, hh.ly0, hh.lx1, hh.ly1);
+          if (near <= 10) return mode;
+        }
       }
+      for (const mode of ["moveXY","moveXZ","moveYZ"]){
+        const hh = h[mode];
+        if (hh && dist(sx,sy,hh.sx,hh.sy) <= (hh.r || 11)) return mode;
+      }
+      return null;
     }
-    if (h.yaw){
-      const d = dist(sx,sy,h.yaw.sx,h.yaw.sy);
-      if (Math.abs(d - h.yaw.r) <= (h.yaw.t || 8)) return "yaw";
-    }
-    if (h.pitch){
-      const nx = (sx - h.pitch.sx) / Math.max(1, h.pitch.rx);
-      const ny = (sy - h.pitch.sy) / Math.max(1, h.pitch.ry);
-      const v = Math.abs((nx*nx + ny*ny) - 1);
-      if (v <= 0.22) return "pitch";
+
+    for (const mode of ["rotX","rotZ"]){
+      const hh = h[mode];
+      if (!hh || !Array.isArray(hh.points) || hh.points.length < 2) continue;
+      let best = Infinity;
+      for (let i=1;i<hh.points.length;i++){
+        const p0 = hh.points[i-1], p1 = hh.points[i];
+        const near = distToSegment(sx, sy, p0.sx, p0.sy, p1.sx, p1.sy);
+        if (near < best) best = near;
+      }
+      if (best <= (hh.t || 9)) return mode;
     }
     return null;
   }
@@ -6465,13 +6574,61 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       const wy = now.y - prev.y;
       if (mode === "moveX") it.x = worldToRaw(currentW.x + wx, 'x');
       if (mode === "moveY") it.y = worldToRaw(currentW.y + wy, 'y');
+    } else if (mode === "moveXY"){
+      const rect = cv.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const prev = screenToWorld(sx - dx, sy - dy, currentW.z);
+      const now = screenToWorld(sx, sy, currentW.z);
+      it.x = worldToRaw(currentW.x + (now.x - prev.x), 'x');
+      it.y = worldToRaw(currentW.y + (now.y - prev.y), 'y');
+    } else if (mode === "moveXZ"){
+      const scale = 1.1;
+      it.x = worldToRaw(currentW.x + (dx * scale), 'x');
+      it.z = worldToRaw(currentW.z - (dy * scale), 'z');
+    } else if (mode === "moveYZ"){
+      const scale = 1.1;
+      it.y = worldToRaw(currentW.y + (dx * scale), 'y');
+      it.z = worldToRaw(currentW.z - (dy * scale), 'z');
     } else if (mode === "moveZ"){
-      const dz = -dy * 1.25;
+      const rect = cv.getBoundingClientRect();
+      const sampleSx = Math.max(1, Math.min(rect.width - 2, state.gizmoVisual?.center?.sx ?? (e.clientX - rect.left)));
+      const sampleSy = Math.max(1, Math.min(rect.height - 2, state.gizmoVisual?.center?.sy ?? (e.clientY - rect.top)));
+      const p0 = screenToWorld(sampleSx, sampleSy, currentW.z);
+      const p1 = screenToWorld(sampleSx, sampleSy + 1, currentW.z);
+      const rawUnitsPerPixel = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+      const unitsPerPixel = Math.min(3.0, Math.max(0.03, Number.isFinite(rawUnitsPerPixel) ? rawUnitsPerPixel : 0.03));
+      const zSensitivity = 0.25;
+      const safeDy = Math.max(-36, Math.min(36, dy));
+      const maxStep = Math.max(0.5, Math.min(unitsPerPixel * 12, 16));
+      const dz = Math.max(-maxStep, Math.min(maxStep, -safeDy * unitsPerPixel * zSensitivity));
       it.z = worldToRaw(currentW.z + dz, 'z');
-    } else if (mode === "yaw"){
-      it.heading = (Number(it.heading) || 0) - dx * 0.5;
-    } else if (mode === "pitch"){
-      it.pitch = (Number(it.pitch) || 0) + dy * 0.5;
+    } else if (mode === "rotX" || mode === "rotZ"){
+      const handle = state.gizmoVisual?.handles?.[mode];
+      const rect = cv.getBoundingClientRect();
+      const prevSx = e.clientX - rect.left - dx;
+      const prevSy = e.clientY - rect.top - dy;
+      const nowSx = e.clientX - rect.left;
+      const nowSy = e.clientY - rect.top;
+      const cx = handle?.sx ?? (state.gizmoVisual?.center?.sx || nowSx);
+      const cy = handle?.sy ?? (state.gizmoVisual?.center?.sy || nowSy);
+      function ringAngle(px, py){
+        if (handle && Number.isFinite(handle.ux) && Number.isFinite(handle.uy) && Number.isFinite(handle.vx) && Number.isFinite(handle.vy)){
+          const rx = px - cx;
+          const ry = py - cy;
+          const du = rx * handle.ux + ry * handle.uy;
+          const dv = rx * handle.vx + ry * handle.vy;
+          return Math.atan2(dv, du);
+        }
+        return Math.atan2(py - cy, px - cx);
+      }
+      let da = ringAngle(nowSx, nowSy) - ringAngle(prevSx, prevSy);
+      if (da > Math.PI) da -= Math.PI * 2;
+      if (da < -Math.PI) da += Math.PI * 2;
+      const dragSign = Number(handle?.dragSign) || 1;
+      const deltaDeg = da * (180 / Math.PI) * dragSign;
+      if (mode === "rotX") it.pitch = (Number(it.pitch) || 0) + deltaDeg;
+      if (mode === "rotZ") it.heading = (Number(it.heading) || 0) - deltaDeg;
     }
 
     commitGizmoUpdate(it);
