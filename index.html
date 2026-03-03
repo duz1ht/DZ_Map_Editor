@@ -2376,9 +2376,8 @@
   }
 
   function formatCoord(v){
-    const n = Number(v);
-    if (!Number.isFinite(n)) return "";
-    return String(Math.round(n * 1000) / 1000);
+    if (v === undefined || v === null || v === "") return "";
+    return String(v);
   }
 
   function renderSelectedInfoPanel(){
@@ -2400,25 +2399,17 @@
     const def = getDefForItem(item);
     const itemName = String(def?.name || item?.kv?.name || item?.kv?.iai_name || item?.kv?.model || "");
     const lines = [
-      `Item #${state.selectedInfoIndex + 1}:`,
-      `Name: ${itemName}`,
-      `SSN: ${readKvValue(item, "ssn", "social_security_number")}`,
-      `Type: ${readKvValue(item, "type_id")}`,
-      `Heading: ${readKvValue(item, "heading")}`,
-      `Waypoint: ${readKvValue(item, "waypoint_id", "waypoint", "wp")}`,
-      `X: ${formatCoord(item?.x)}`,
-      `Y: ${formatCoord(item?.y)}`,
-      `Z: ${formatCoord(item?.z)}`,
+      `Item #${state.selectedInfoIndex + 1}: ${itemName}`,
+      `SSN: ${readKvValue(item, "ssn", "social_security_number")} | Type: ${readKvValue(item, "type_id")}`,
+      `Heading: ${readKvValue(item, "heading")} | Pitch: ${readKvValue(item, "pitch")}`,
+      `X: ${formatCoord(item?.x)} | Y: ${formatCoord(item?.y)} | Z: ${formatCoord(item?.z)}`,
       "",
       `Group: ${readKvValue(item, "group")}`,
       `Blink Groups: ${readKvValue(item, "blink_groups", "blink_group")}`,
-      "",
       `Layer: ${readKvValue(item, "layer")}`,
       "",
-      "Dimensions:",
-      `Length: ${readKvValue(item, "length")}`,
-      `Width: ${readKvValue(item, "width")}`,
-      `Height: ${readKvValue(item, "height")}`,
+      "3D model dimensions:",
+      `Length: ${readKvValue(item, "length")} | Width: ${readKvValue(item, "width")} | Height: ${readKvValue(item, "height")}`,
       "",
       `Terrain Elev: ${readKvValue(item, "terrain_elev", "terrain_elevation")}`,
     ];
