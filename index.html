@@ -409,6 +409,38 @@
     #misRealtimeConsole .diffAdded{ color:var(--console-added); }
     #misRealtimeConsole .diffRemoved{ color:var(--console-removed); }
     #misRealtimeConsole .diffStamp{ color:var(--console-stamp); }
+    #selectedInfoPanel{
+      margin-top:12px;
+      border:1px solid var(--line);
+      background:var(--panel);
+      border-radius:var(--radius-md);
+      padding:8px;
+      display:grid;
+      gap:8px;
+    }
+    #selectedInfoHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      font-size:12px;
+      font-weight:600;
+      color:var(--text-strong);
+    }
+    #selectedInfoNav{ display:flex; align-items:center; gap:4px; }
+    #selectedInfoNav button{ min-width:24px; height:24px; padding:0; }
+    #selectedInfoBody{
+      margin:0;
+      white-space:pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:11px;
+      line-height:1.35;
+      border:1px solid var(--line-soft);
+      border-radius:var(--radius-sm);
+      background:var(--surface-subtle);
+      padding:8px;
+      min-height:180px;
+    }
     .itemCard{
       padding:8px;
       border:1px solid var(--line);
@@ -881,7 +913,19 @@
 <div class="hint" id="defStatus" style="margin-top:6px;">Item catalog loaded (embedded ITEMS.DEF).</div>
 
     <div class="row" style="margin-top:10px;">
-      <input id="search" placeholder="Search by type_id, type, name" />
+      <input id="search" placeholder="Search by type_id, id, name" />
+    </div>
+
+    <div id="selectedInfoPanel">
+      <div id="selectedInfoHeader">
+        <span id="selectedInfoTitle">Selected: 0</span>
+        <div id="selectedInfoNav">
+          <button id="selectedInfoPrevBtn" type="button" class="modeBtn" title="Item anterior">◀</button>
+          <span id="selectedInfoIndex">0/0</span>
+          <button id="selectedInfoNextBtn" type="button" class="modeBtn" title="Próximo item">▶</button>
+        </div>
+      </div>
+      <pre id="selectedInfoBody">Nenhum item selecionado.</pre>
     </div>
 
     <div id="misRealtimePanel">
@@ -1338,6 +1382,7 @@
     items: [],
     selectedId: null,
     multiSelectedIds: new Set(),
+    selectedInfoIndex: 0,
     camera: { x: 0, y: 0, z: 800000, yaw: 0, pitch: -0.35, speed: 3000000 },
     keysDown: new Set(),
     pointerLocked: false,
@@ -1454,6 +1499,11 @@
   const defStatusEl = document.getElementById("defStatus");
   const searchEl = document.getElementById("search");
   const listEl = document.getElementById("list");
+  const selectedInfoTitleEl = document.getElementById("selectedInfoTitle");
+  const selectedInfoBodyEl = document.getElementById("selectedInfoBody");
+  const selectedInfoPrevBtn = document.getElementById("selectedInfoPrevBtn");
+  const selectedInfoNextBtn = document.getElementById("selectedInfoNextBtn");
+  const selectedInfoIndexEl = document.getElementById("selectedInfoIndex");
   const misRealtimeConsoleEl = document.getElementById("misRealtimeConsole");
   const misRealtimeClearBtn = document.getElementById("misRealtimeClearBtn");
   const exportBtn = document.getElementById("exportBtn");
@@ -2300,6 +2350,85 @@
 
   function getSelected(){
     return state.items.find(x => x.id === state.selectedId) || null;
+  }
+
+  function getSelectedItems(){
+    const ids = state.multiSelectedIds.size
+      ? Array.from(state.multiSelectedIds)
+      : (state.selectedId != null ? [state.selectedId] : []);
+    const selectedSet = new Set(ids);
+    const ordered = state.items.filter((it) => selectedSet.has(it.id));
+    if (state.selectedId != null){
+      const idx = ordered.findIndex((it) => it.id === state.selectedId);
+      if (idx > 0){
+        const [current] = ordered.splice(idx, 1);
+        ordered.unshift(current);
+      }
+    }
+    return ordered;
+  }
+
+  function readKvValue(it, ...keys){
+    for (const key of keys){
+      if (kvHas(it, key)) return String(it.kv[key] ?? "");
+    }
+    return "";
+  }
+
+  function formatCoord(v){
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "";
+    return String(Math.round(n * 1000) / 1000);
+  }
+
+  function renderSelectedInfoPanel(){
+    const selectedItems = getSelectedItems();
+    const count = selectedItems.length;
+    if (selectedInfoTitleEl) selectedInfoTitleEl.textContent = `Selected: ${count}`;
+
+    if (!count){
+      state.selectedInfoIndex = 0;
+      if (selectedInfoIndexEl) selectedInfoIndexEl.textContent = "0/0";
+      if (selectedInfoBodyEl) selectedInfoBodyEl.textContent = "Nenhum item selecionado.";
+      if (selectedInfoPrevBtn) selectedInfoPrevBtn.disabled = true;
+      if (selectedInfoNextBtn) selectedInfoNextBtn.disabled = true;
+      return;
+    }
+
+    state.selectedInfoIndex = Math.max(0, Math.min(state.selectedInfoIndex, count - 1));
+    const item = selectedItems[state.selectedInfoIndex];
+    const def = getDefForItem(item);
+    const itemName = String(def?.name || item?.kv?.name || item?.kv?.iai_name || item?.kv?.model || "");
+    const lines = [
+      `Item #${state.selectedInfoIndex + 1}:`,
+      `Name: ${itemName}`,
+      `SSN: ${readKvValue(item, "ssn", "social_security_number")}`,
+      `Type: ${readKvValue(item, "type_id")}`,
+      `Heading: ${readKvValue(item, "heading")}`,
+      `Waypoint: ${readKvValue(item, "waypoint_id", "waypoint", "wp")}`,
+      `X: ${formatCoord(item?.x)}`,
+      `Y: ${formatCoord(item?.y)}`,
+      `Z: ${formatCoord(item?.z)}`,
+      "",
+      `Group: ${readKvValue(item, "group")}`,
+      `Blink Groups: ${readKvValue(item, "blink_groups", "blink_group")}`,
+      "",
+      `Layer: ${readKvValue(item, "layer")}`,
+      "",
+      "Dimensions:",
+      `Length: ${readKvValue(item, "length")}`,
+      `Width: ${readKvValue(item, "width")}`,
+      `Height: ${readKvValue(item, "height")}`,
+      "",
+      `Terrain Elev: ${readKvValue(item, "terrain_elev", "terrain_elevation")}`,
+    ];
+
+    if (selectedInfoIndexEl) selectedInfoIndexEl.textContent = `${state.selectedInfoIndex + 1}/${count}`;
+    if (selectedInfoBodyEl) selectedInfoBodyEl.textContent = lines.join("\n");
+
+    const canNav = count > 1;
+    if (selectedInfoPrevBtn) selectedInfoPrevBtn.disabled = !canNav;
+    if (selectedInfoNextBtn) selectedInfoNextBtn.disabled = !canNav;
   }
 
   function toDefIdFromMisTypeId(typeId){
@@ -3827,9 +3956,17 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  function selectById(id){
-    state.selectedId = id;
-    state.multiSelectedIds = new Set(id != null ? [id] : []);
+  function selectById(id, options = {}){
+    const additive = !!options.additive;
+    if (!additive){
+      state.selectedId = id;
+      state.multiSelectedIds = new Set(id != null ? [id] : []);
+      state.selectedInfoIndex = 0;
+    } else if (id != null){
+      if (!state.multiSelectedIds.has(id)) state.multiSelectedIds.add(id);
+      state.selectedId = id;
+      state.selectedInfoIndex = 0;
+    }
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
     renderList();
@@ -3871,6 +4008,7 @@
   }
 
   function renderList(){
+    renderSelectedInfoPanel();
     if (!listEl) return;
     const items = getFilteredItems();
     listEl.innerHTML = items.slice(0, 1200).map(it => {
@@ -3892,7 +4030,11 @@
     }).join("");
 
     listEl.querySelectorAll(".itemCard").forEach(el => {
-      el.addEventListener("click", () => selectById(Number(el.dataset.id)));
+      el.addEventListener("click", (evt) => {
+        const id = Number(el.dataset.id);
+        const canAdd = evt.shiftKey && state.selectedId != null && id !== state.selectedId;
+        selectById(id, { additive: canAdd });
+      });
       el.addEventListener("dblclick", () => {
         selectById(Number(el.dataset.id));
         openModal();
@@ -4508,6 +4650,20 @@
     selectById(best.id);
     focusCameraNearItem(best);
     statusEl.textContent = `Selecionado #${best.id} via busca.`;
+  });
+
+  selectedInfoPrevBtn?.addEventListener("click", () => {
+    const total = getSelectedItems().length;
+    if (total <= 1) return;
+    state.selectedInfoIndex = (state.selectedInfoIndex - 1 + total) % total;
+    renderSelectedInfoPanel();
+  });
+
+  selectedInfoNextBtn?.addEventListener("click", () => {
+    const total = getSelectedItems().length;
+    if (total <= 1) return;
+    state.selectedInfoIndex = (state.selectedInfoIndex + 1) % total;
+    renderSelectedInfoPanel();
   });
 
   sectionCloseBtn.addEventListener("click", closeSectionEditor);
@@ -6621,7 +6777,8 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     state.draggingItem = false;
     state.boxSelecting = false;
     state.boxSelectAdditive = false;
-    selectById(picked ? picked.id : null);
+    const additiveSelection = !!(e.shiftKey && picked && state.selectedId != null && picked.id !== state.selectedId && state.multiSelectedIds.has(state.selectedId));
+    selectById(picked ? picked.id : null, { additive: additiveSelection });
     state.lastMouse = { sx, sy };
   });
   cv.addEventListener("contextmenu", (e) => { e.preventDefault(); if(state.cameraLookActive || (state.cameraLookPending&&state.cameraLookButton===2)) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAtCanvas(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
