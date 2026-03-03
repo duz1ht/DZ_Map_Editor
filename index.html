@@ -6063,7 +6063,12 @@
     const rotZNormal = vec3Norm(vec3Cross(viewRight, viewForward));
     const rotXSign = vec3Dot(rotXNormal, camToItem) >= 0 ? 1 : -1;
     const rotZSign = vec3Dot(rotZNormal, camToItem) >= 0 ? 1 : -1;
-    const rotX = drawRotationArc3D(viewRight, viewUp, pitchRadius * 0.92, '#ff6b6b', 30, 210, rotXSign);
+
+    const cameraToObjectSide = vec3Dot(vec3Sub(cam.pos, center), viewRight);
+    const rotXStart = cameraToObjectSide >= 0 ? -90 : 90;
+    const rotXEnd = cameraToObjectSide >= 0 ? 90 : 270;
+
+    const rotX = drawRotationArc3D(viewRight, viewUp, pitchRadius * 0.92, '#ff6b6b', rotXStart, rotXEnd, rotXSign);
     const rotZ = drawRotationArc3D(viewRight, viewForward, yawRadius * 1.24, '#77a8ff', 210, 390, rotZSign);
 
     gizmoCtx.fillStyle = '#ffffff';
