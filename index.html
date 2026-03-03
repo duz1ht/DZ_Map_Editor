@@ -2235,7 +2235,14 @@
     const tid = kvHas(it, "type_id") ? String(it.kv.type_id) : "";
     if (!tid) return null;
     const mappedDefId = toDefIdFromMisTypeId(tid);
-    return state.defsById.get(mappedDefId) || state.defsById.get(tid) || null;
+    const mappedDef = state.defsById.get(mappedDefId) || null;
+    const otherItemsDef = state.defsById.get(tid) || null;
+    if (mappedDef){
+      if (String(mappedDef.graphic || "").trim()) return mappedDef;
+      if (otherItemsDef && String(otherItemsDef.graphic || "").trim()) return otherItemsDef;
+      return mappedDef;
+    }
+    return otherItemsDef;
   }
 
   // DEF parser (ITEMS.DEF)
@@ -2256,6 +2263,7 @@
         cur = {
           name: mBegin[1],
           id: "",
+          typeId: "",
           type: "",
           graphic: "",
           attrib: [],
@@ -2265,7 +2273,8 @@
       }
 
       if (/^end\b/i.test(t)){
-        if (cur && cur.id){
+        if (cur && (cur.id || cur.typeId)){
+          if (!cur.id) cur.id = cur.typeId;
           defs.push(cur);
         }
         cur = null;
@@ -2291,6 +2300,7 @@
         cur.kv[k] = v;
 
         if (k === "id") cur.id = v;
+        if (k === "type_id") cur.typeId = v;
         if (k === "type") cur.type = v;
         if (k === "graphic") cur.graphic = v;
 
@@ -6671,8 +6681,14 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     try{
       const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
       const defs = parseItemsDef(defText);
-      if (defs && defs.length){
-        applyDefs(defs);
+      const otherItemsText = await loadTextResource("resources/otheritems.js");
+      const otherItemDefs = otherItemsText ? parseItemsDef(otherItemsText) : [];
+      const mergedDefs = defs.concat(otherItemDefs);
+      if (mergedDefs.length){
+        applyDefs(mergedDefs);
+        if (otherItemDefs.length){
+          addLog(`Loaded fallback otheritems.js (${otherItemDefs.length} defs)`);
+        }
       } else {
         defStatusEl.textContent = "Warning: embedded catalog is empty (ITEMS.DEF).";
         addLog("WARNING: Embedded ITEMS.DEF parsed with 0 defs.");
