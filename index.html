@@ -6577,10 +6577,10 @@ Terrain cull (frustum/back): ${state.terrainPerf?.culledFrustum ?? '-'} / ${stat
 GLB instances: ${state.glb.itemInstances.size}
 GLB sync: #${state.glb.syncCount} (${state.glb.lastSyncMs.toFixed(2)} ms)
 GLB total/render: ${state.glb.lastStats?.totalItems ?? '-'} / ${state.glb.lastStats?.renderableItems ?? '-'}
-GLB sem graphic: ${state.glb.lastStats?.skippedMissingGraphic ?? '-'}
-GLB sem type_id: ${state.glb.lastStats?.skippedMissingTypeId ?? '-'}
-GLB sem def(type_id): ${state.glb.lastStats?.skippedDefNotFoundForTypeId ?? '-'}
-GLB sem instância pós-sync: ${state.glb.lastStats?.missingInstancesAfterSync ?? '-'}
+GLB missing graphic: ${state.glb.lastStats?.skippedMissingGraphic ?? '-'}
+GLB missing type_id: ${state.glb.lastStats?.skippedMissingTypeId ?? '-'}
+GLB missing def(type_id): ${state.glb.lastStats?.skippedDefNotFoundForTypeId ?? '-'}
+GLB missing instance post-sync: ${state.glb.lastStats?.missingInstancesAfterSync ?? '-'}
 Wrap: x=${wrapX} y=${wrapY}
 Sectors: ${sectorCount}x${sectorCount} origin=${terrainOrigin.x},${terrainOrigin.y}
 Terrain size: ${terrainSpanX()} x ${terrainSpanY()}
