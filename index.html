@@ -334,6 +334,40 @@
       display:grid;
       gap:6px;
     }
+    #misRealtimeTabsWrap{ display:grid; gap:8px; }
+    #misRealtimeTabs{ display:flex; gap:6px; }
+    .misTabBtn{
+      flex:1;
+      font-size:12px;
+      padding:5px 8px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-sm);
+      background:var(--surface);
+      color:var(--text);
+    }
+    .misTabBtn.active{
+      background:var(--accent-soft);
+      border-color:var(--accent);
+      color:var(--text-strong);
+      font-weight:600;
+    }
+    .misTabPanel{
+      display:none;
+      border:1px solid var(--line);
+      border-radius:var(--radius-sm);
+      background:var(--panel-alt);
+      padding:8px;
+    }
+    .misTabPanel.active{ display:block; }
+    #showOptionsGrid{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:4px;
+      max-height:210px;
+      overflow:auto;
+      font-size:12px;
+    }
+    #showOptionsGrid label{ display:flex; align-items:center; gap:6px; }
     #misRealtimePanel{
       margin-top:12px;
       border:1px solid var(--line);
@@ -842,15 +876,44 @@
 
 <div class="hint" id="defStatus" style="margin-top:6px;">Item catalog loaded (embedded ITEMS.DEF).</div>
 
-    <div class="row" style="margin-top:10px;">
-      <input id="search" placeholder="Search by type_id, type, name" />
-    </div>
+    <div id="misRealtimeTabsWrap" style="margin-top:10px;">
+      <div id="misRealtimeTabs" role="tablist" aria-label="MIS Realtime tabs">
+        <button type="button" class="misTabBtn active" data-tab="show" role="tab" aria-selected="true">Show</button>
+        <button type="button" class="misTabBtn" data-tab="filter" role="tab" aria-selected="false">Filter</button>
+        <button type="button" class="misTabBtn" data-tab="tiler" role="tab" aria-selected="false">Tiler</button>
+      </div>
 
-    <div class="row">
-      <select id="typeFilter">
-        <option value="">All types</option>
-      </select>
-      <button id="exportBtn">Go to</button>
+      <div class="misTabPanel active" data-panel="show" role="tabpanel">
+        <div id="showOptionsGrid">
+          <label><input type="checkbox" id="showCharTiles"> Char Tiles</label>
+          <label><input type="checkbox" id="showFoliage"> Foliage</label>
+          <label><input type="checkbox" id="showVehicles"> Vehicles</label>
+          <label><input type="checkbox" id="showPeople"> People</label>
+          <label><input type="checkbox" id="showBuildings"> Buildings</label>
+          <label><input type="checkbox" id="showObjects"> Objects</label>
+          <label><input type="checkbox" id="showDecorations"> Decorations</label>
+          <label><input type="checkbox" id="showMarkers"> Markers</label>
+          <label><input type="checkbox" id="showWpDistance"> WP Distance</label>
+          <label><input type="checkbox" id="showFovCones"> FOV Cones</label>
+          <label><input type="checkbox" id="showAreaTriggers"> Area Triggers</label>
+          <label><input type="checkbox" id="showWater"> Water</label>
+          <label><input type="checkbox" id="showTeamBlue"> Team Blue</label>
+          <label><input type="checkbox" id="showTeamRed"> Team Red</label>
+          <label><input type="checkbox" id="showTeamGreen"> Team Green</label>
+          <label><input type="checkbox" id="showCollisionModels"> Colision Models</label>
+          <label><input type="checkbox" id="showAbsoluteMode"> Absolute Mode</label>
+        </div>
+      </div>
+
+      <div class="misTabPanel" data-panel="filter" role="tabpanel" aria-hidden="true">
+        <div class="row" style="margin-top:0;">
+          <input id="search" placeholder="Search by type_id, type, name" />
+        </div>
+      </div>
+
+      <div class="misTabPanel" data-panel="tiler" role="tabpanel" aria-hidden="true">
+        <div class="hint">Tiler tab (placeholder).</div>
+      </div>
     </div>
 
     <div id="misRealtimePanel">
@@ -883,6 +946,7 @@
       <label class="tbCtl"><input id="showStats" type="checkbox" checked> Map Info (I):</label>
       <label class="tbCtl"><input id="showGlbWireframe" type="checkbox"> Wireframe mode (F)</label>
       <label class="tbCtl"><input id="showAnchorPoints" type="checkbox" checked> Anchor points (H)</label>
+      <button id="exportBtn" type="button" class="modeBtn">Go to</button>
       <div id="status">No file loaded.</div>
     </div>
 
@@ -1389,10 +1453,12 @@
   const fileMisEl = document.getElementById("fileMis");
   const defStatusEl = document.getElementById("defStatus");
   const searchEl = document.getElementById("search");
-  const typeFilterEl = document.getElementById("typeFilter");
   const listEl = document.getElementById("list");
   const misRealtimeConsoleEl = document.getElementById("misRealtimeConsole");
   const misRealtimeClearBtn = document.getElementById("misRealtimeClearBtn");
+  const misRealtimeTabsEl = document.getElementById("misRealtimeTabs");
+  const misTabButtons = Array.from(document.querySelectorAll(".misTabBtn"));
+  const misTabPanels = Array.from(document.querySelectorAll(".misTabPanel"));
   const exportBtn = document.getElementById("exportBtn");
   const statusEl = document.getElementById("status");
   const sectionOverlay = document.getElementById("sectionOverlay");
@@ -1780,9 +1846,8 @@
   }
 
   function getFilteredItems(){
-    const q = (searchEl.value || "").trim().toLowerCase();
-    const tf = typeFilterEl.value || "";
-    const key = `${state.itemsVersion}|${state.defLoaded ? 1 : 0}|${q}|${tf}`;
+    const q = (searchEl?.value || "").trim().toLowerCase();
+    const key = `${state.itemsVersion}|${state.defLoaded ? 1 : 0}|${q}`;
     if (state.filteredItemsCache && state.filteredItemsKey === key) return state.filteredItemsCache;
 
     const filtered = (state.items || []).filter(it => {
@@ -1792,12 +1857,6 @@
       const name = (it.kv.name || it.kv.iai_name || "").toString();
       const defName = def?.name ? String(def.name) : "";
       const graphic = def?.graphic ? String(def.graphic) : "";
-
-      if (tf){
-        if (state.defLoaded){
-          if (defType !== tf) return false;
-        } else if (tid !== tf) return false;
-      }
 
       if (!q) return true;
       return (
@@ -2320,7 +2379,6 @@
     defStatusEl.textContent = `ITEMS.DEF loaded. defs: ${state.defsSorted.length}`;
     addLog(`Loaded embedded ITEMS.DEF (${state.defsSorted.length} defs)`);
     buildSubtypeOptionsFromDEF();
-    buildTypeFilterOptions();
     renderList();
     if (state.modalOpen) renderItemWindow();
     requestRender();
@@ -3035,23 +3093,6 @@
   buildGeneralConditionRows(giWinRows, "giWin");
   buildGeneralConditionRows(giLoseRows, "giLose");
 
-  function buildTypeFilterOptions(){
-    // Filtro "type" da esquerda:
-    // if DEF is loaded: use DEF types (object/marker/vehicle...)
-    // otherwise: use distinct type_id values from mis
-    if (state.defLoaded){
-      const types = Array.from(state.defTypes).sort();
-      typeFilterEl.innerHTML =
-        `<option value="">All types</option>` +
-        types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
-    } else {
-      const typeIds = Array.from(new Set(state.items.map(x => (x.kv.type_id || "").toString()).filter(Boolean))).sort((a,b)=>Number(a)-Number(b));
-      typeFilterEl.innerHTML =
-        `<option value="">All types</option>` +
-        typeIds.map(t => `<option value="${escapeHtml(t)}">type_id ${escapeHtml(t)}</option>`).join("");
-    }
-  }
-
   // MIS parsing
   function parseMIS(text){
     const lines = text.replace(/\r\n/g, "\n").split("\n");
@@ -3421,6 +3462,20 @@
       return escapeHtml(line);
     }).join("\n");
     misRealtimeConsoleEl.innerHTML = html;
+  }
+
+  function setMisRealtimeTab(name){
+    const tab = String(name || "show").toLowerCase();
+    misTabButtons.forEach((btn) => {
+      const active = btn.dataset.tab === tab;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    misTabPanels.forEach((panel) => {
+      const active = panel.dataset.panel === tab;
+      panel.classList.toggle("active", active);
+      panel.setAttribute("aria-hidden", active ? "false" : "true");
+    });
   }
 
   function openLiveMisWindow(){
@@ -4340,6 +4395,13 @@
 
   ui.delBtn.addEventListener("click", deleteSelectedItem);
 
+  misRealtimeTabsEl?.addEventListener("click", (event) => {
+    const btn = event.target.closest(".misTabBtn");
+    if (!btn) return;
+    setMisRealtimeTab(btn.dataset.tab || "show");
+  });
+  setMisRealtimeTab("show");
+
   exportBtn.addEventListener("click", () => {
     const current = `${Math.round(state.camera.x)} ${Math.round(state.camera.y)} ${Math.round(state.camera.z)}`;
     const raw = window.prompt("Go to (X Y Z):", current);
@@ -4357,8 +4419,7 @@
     statusEl.textContent = `Camera movida para X=${x.toFixed(2)} Y=${y.toFixed(2)} Z=${z.toFixed(2)}`;
   });
 
-  searchEl.addEventListener("input", () => { invalidateFilteredItemsCache(); renderList(); requestRender(); });
-  typeFilterEl.addEventListener("change", () => { invalidateFilteredItemsCache(); renderList(); requestRender(); });
+  searchEl?.addEventListener("input", () => { invalidateFilteredItemsCache(); renderList(); requestRender(); });
 
   sectionCloseBtn.addEventListener("click", closeSectionEditor);
   sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
@@ -4816,7 +4877,6 @@
     buildLayerOptions();
     buildWaypointList();
     buildGroupOptions();
-    buildTypeFilterOptions();
 
     statusEl.textContent = `${file.name} loaded. items: ${state.items.length}`;
     fitView();
