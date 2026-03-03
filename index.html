@@ -1364,9 +1364,6 @@
             </div>
           </div>
 
-          <div class="small" style="margin-top:8px;">
-            Gray fields: the key does not exist in this .mis item (same behavior as the official editor). When DEF is loaded, Type and Graphic come from the catalog via type_id.
-          </div>
         </div>
       </div>
 
@@ -4090,9 +4087,7 @@
 
     const title = def?.name ? def.name : (kvHas(it, "name") ? it.kv.name : (kvHas(it, "iai_name") ? it.kv.iai_name : "(sem name)"));
     ui.itemTitle.textContent = title;
-    ui.presenceHint.textContent = state.defLoaded
-      ? "Gray fields: the key does not exist in this .mis item. Type/Graphic/Sub-Type come from DEF via type_id."
-      : "Gray fields: the key does not exist in this .mis item. Load ITEMS.DEF to populate Type/Graphic/Sub-Type.";
+    ui.presenceHint.textContent = "";
 
     setEnabled(ui.layer, kvHas(it, "layer"));
     if (kvHas(it, "layer")) ui.layer.value = String(it.kv.layer);
