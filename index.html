@@ -1479,7 +1479,7 @@
       transformDirtyIds: new Set(),
       syncCount: 0,
       lastSyncMs: 0,
-      lastSelectedVisualId: null,
+      lastSelectedVisualIds: new Set(),
       lastStats: null,
       lastSyncReport: null,
       lodDistances: [0, 280, 500],
@@ -5943,7 +5943,7 @@
       applyWireframeToGlbObject(instance);
     }
     if (state.glb.ready){
-      state.glb.lastSelectedVisualId = null;
+      state.glb.lastSelectedVisualIds.clear();
       updateSelectedGlbVisual();
     }
     if (showGlbWireframeEl) showGlbWireframeEl.checked = next;
@@ -6160,13 +6160,45 @@
 
   function updateSelectedGlbVisual(){
     if (!state.glb.ready) return;
-    const current = state.selectedId;
-    if (state.glb.lastSelectedVisualId === current) return;
-    const prevInstance = state.glb.itemInstances.get(state.glb.lastSelectedVisualId);
-    setGlbInstanceSelected(prevInstance, false);
-    const curInstance = state.glb.itemInstances.get(current);
-    setGlbInstanceSelected(curInstance, true);
-    state.glb.lastSelectedVisualId = current ?? null;
+    const nextIds = new Set(
+      state.multiSelectedIds.size
+        ? Array.from(state.multiSelectedIds)
+        : (state.selectedId != null ? [state.selectedId] : [])
+    );
+    const prevIds = state.glb.lastSelectedVisualIds || new Set();
+
+    let changed = nextIds.size !== prevIds.size;
+    if (!changed){
+      for (const id of nextIds){
+        if (!prevIds.has(id)){
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed){
+      for (const nextId of nextIds){
+        const instance = state.glb.itemInstances.get(nextId);
+        if (!instance || !instance.userData || instance.userData._selectedGlbVisual !== true){
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed) return;
+
+    for (const prevId of prevIds){
+      if (nextIds.has(prevId)) continue;
+      const prevInstance = state.glb.itemInstances.get(prevId);
+      setGlbInstanceSelected(prevInstance, false);
+    }
+    for (const nextId of nextIds){
+      if (prevIds.has(nextId)) continue;
+      const nextInstance = state.glb.itemInstances.get(nextId);
+      setGlbInstanceSelected(nextInstance, true);
+    }
+
+    state.glb.lastSelectedVisualIds = nextIds;
   }
 
   function getItemIdFromObject3D(obj){
