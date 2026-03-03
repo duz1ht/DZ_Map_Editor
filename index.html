@@ -237,7 +237,7 @@
     }
     #camDebug{
       position:absolute;
-      left:10px;
+      right:10px;
       bottom:10px;
       z-index:5;
       background:rgba(0,0,0,.55);
@@ -248,6 +248,15 @@
       font-size:12px;
       white-space:pre;
       pointer-events:none;
+    }
+    #showPanelBtn{
+      position:absolute;
+      top:10px;
+      left:10px;
+      z-index:10;
+      min-width:52px;
+      height:24px;
+      padding:0 10px;
     }
     #fpsCounter{
       position:absolute;
@@ -334,6 +343,25 @@
       display:grid;
       gap:6px;
     }
+    #canvasShowPanel{
+      position:absolute;
+      top:12px;
+      left:12px;
+      z-index:9;
+      width:min(280px, calc(100% - 24px));
+      max-height:min(68vh, 520px);
+      overflow:auto;
+      display:none;
+      border:1px solid var(--line);
+      border-radius:var(--radius-md);
+      background:var(--panel);
+      color:var(--text);
+      box-shadow:var(--shadow-md);
+      padding:10px;
+    }
+    #canvasShowPanel.open{ display:block; }
+    #canvasShowPanelList{ display:grid; grid-template-columns:1fr; gap:4px; font-size:12px; }
+    #canvasShowPanelList label{ display:flex; align-items:center; gap:6px; }
     #misRealtimePanel{
       margin-top:12px;
       border:1px solid var(--line);
@@ -341,7 +369,10 @@
       color:var(--console-text);
       border-radius:var(--radius-md);
       padding:8px;
+      height:360px;
       min-height:360px;
+      max-height:360px;
+      overflow:hidden;
       display:grid;
       grid-template-rows:auto 1fr;
       gap:8px;
@@ -843,13 +874,6 @@
       <input id="search" placeholder="Search by type_id, type, name" />
     </div>
 
-    <div class="row">
-      <select id="typeFilter">
-        <option value="">All types</option>
-      </select>
-      <button id="exportBtn">Go to</button>
-    </div>
-
     <div id="misRealtimePanel">
       <div id="misRealtimeHeader">
         <div id="misRealtimeTitle">MIS Realtime Changes</div>
@@ -880,14 +904,38 @@
       <label class="tbCtl"><input id="showStats" type="checkbox" checked> Map Info (I):</label>
       <label class="tbCtl"><input id="showGlbWireframe" type="checkbox"> Wireframe mode (F)</label>
       <label class="tbCtl"><input id="showAnchorPoints" type="checkbox" checked> Anchor points (H)</label>
+      <button id="exportBtn" type="button" class="modeBtn">Go to</button>
       <div id="status">No file loaded.</div>
     </div>
 
     <div id="canvasWrap">
+      <button id="showPanelBtn" type="button" class="modeBtn">Show</button>
       <canvas id="cv"></canvas>
       <div id="camDebug"></div>
       <div id="fpsCounter">0 FPS</div>
       <canvas id="gizmoCanvas" aria-hidden="true"></canvas>
+
+      <div id="canvasShowPanel" aria-hidden="true">
+        <div id="canvasShowPanelList">
+          <label><input type="checkbox" id="showCharTiles"> Char Tiles</label>
+          <label><input type="checkbox" id="showFoliage"> Foliage</label>
+          <label><input type="checkbox" id="showVehicles"> Vehicles</label>
+          <label><input type="checkbox" id="showPeople"> People</label>
+          <label><input type="checkbox" id="showBuildings"> Buildings</label>
+          <label><input type="checkbox" id="showObjects"> Objects</label>
+          <label><input type="checkbox" id="showDecorations"> Decorations</label>
+          <label><input type="checkbox" id="showMarkers"> Markers</label>
+          <label><input type="checkbox" id="showWpDistance"> WP Distance</label>
+          <label><input type="checkbox" id="showFovCones"> FOV Cones</label>
+          <label><input type="checkbox" id="showAreaTriggers"> Area Triggers</label>
+          <label><input type="checkbox" id="showWater"> Water</label>
+          <label><input type="checkbox" id="showTeamBlue"> Team Blue</label>
+          <label><input type="checkbox" id="showTeamRed"> Team Red</label>
+          <label><input type="checkbox" id="showTeamGreen"> Team Green</label>
+          <label><input type="checkbox" id="showCollisionModels"> Colision Models</label>
+          <label><input type="checkbox" id="showAbsoluteMode"> Absolute Mode</label>
+        </div>
+      </div>
 
       <div id="sectionOverlay" aria-hidden="true">
         <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
@@ -1386,11 +1434,13 @@
   const fileMisEl = document.getElementById("fileMis");
   const defStatusEl = document.getElementById("defStatus");
   const searchEl = document.getElementById("search");
-  const typeFilterEl = document.getElementById("typeFilter");
   const listEl = document.getElementById("list");
   const misRealtimeConsoleEl = document.getElementById("misRealtimeConsole");
   const misRealtimeClearBtn = document.getElementById("misRealtimeClearBtn");
   const exportBtn = document.getElementById("exportBtn");
+  const showPanelBtn = document.getElementById("showPanelBtn");
+  const canvasShowPanelEl = document.getElementById("canvasShowPanel");
+  const canvasWrapEl = document.getElementById("canvasWrap");
   const statusEl = document.getElementById("status");
   const sectionOverlay = document.getElementById("sectionOverlay");
   const sectionWindow = document.getElementById("sectionWindow");
@@ -1777,9 +1827,8 @@
   }
 
   function getFilteredItems(){
-    const q = (searchEl.value || "").trim().toLowerCase();
-    const tf = typeFilterEl.value || "";
-    const key = `${state.itemsVersion}|${state.defLoaded ? 1 : 0}|${q}|${tf}`;
+    const q = (searchEl?.value || "").trim().toLowerCase();
+    const key = `${state.itemsVersion}|${state.defLoaded ? 1 : 0}|${q}`;
     if (state.filteredItemsCache && state.filteredItemsKey === key) return state.filteredItemsCache;
 
     const filtered = (state.items || []).filter(it => {
@@ -1789,12 +1838,6 @@
       const name = (it.kv.name || it.kv.iai_name || "").toString();
       const defName = def?.name ? String(def.name) : "";
       const graphic = def?.graphic ? String(def.graphic) : "";
-
-      if (tf){
-        if (state.defLoaded){
-          if (defType !== tf) return false;
-        } else if (tid !== tf) return false;
-      }
 
       if (!q) return true;
       return (
@@ -2317,7 +2360,6 @@
     defStatusEl.textContent = `ITEMS.DEF loaded. defs: ${state.defsSorted.length}`;
     addLog(`Loaded embedded ITEMS.DEF (${state.defsSorted.length} defs)`);
     buildSubtypeOptionsFromDEF();
-    buildTypeFilterOptions();
     renderList();
     if (state.modalOpen) renderItemWindow();
     requestRender();
@@ -3031,23 +3073,6 @@
   buildWaypointColorOptions();
   buildGeneralConditionRows(giWinRows, "giWin");
   buildGeneralConditionRows(giLoseRows, "giLose");
-
-  function buildTypeFilterOptions(){
-    // Filtro "type" da esquerda:
-    // if DEF is loaded: use DEF types (object/marker/vehicle...)
-    // otherwise: use distinct type_id values from mis
-    if (state.defLoaded){
-      const types = Array.from(state.defTypes).sort();
-      typeFilterEl.innerHTML =
-        `<option value="">All types</option>` +
-        types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
-    } else {
-      const typeIds = Array.from(new Set(state.items.map(x => (x.kv.type_id || "").toString()).filter(Boolean))).sort((a,b)=>Number(a)-Number(b));
-      typeFilterEl.innerHTML =
-        `<option value="">All types</option>` +
-        typeIds.map(t => `<option value="${escapeHtml(t)}">type_id ${escapeHtml(t)}</option>`).join("");
-    }
-  }
 
   // MIS parsing
   function parseMIS(text){
@@ -4337,6 +4362,66 @@
 
   ui.delBtn.addEventListener("click", deleteSelectedItem);
 
+  function positionCanvasShowPanel(){
+    if (!canvasShowPanelEl || !showPanelBtn || !canvasWrapEl) return;
+    const wrapRect = canvasWrapEl.getBoundingClientRect();
+    const btnRect = showPanelBtn.getBoundingClientRect();
+    const top = Math.max(8, (btnRect.bottom - wrapRect.top) + 6);
+    const left = Math.max(8, btnRect.left - wrapRect.left);
+    canvasShowPanelEl.style.top = `${Math.round(top)}px`;
+    canvasShowPanelEl.style.left = `${Math.round(left)}px`;
+  }
+
+  function setCanvasShowPanelOpen(open){
+    const visible = !!open;
+    if (visible) positionCanvasShowPanel();
+    canvasShowPanelEl?.classList.toggle("open", visible);
+    canvasShowPanelEl?.setAttribute("aria-hidden", visible ? "false" : "true");
+    showPanelBtn?.classList.toggle("active", visible);
+  }
+
+  function focusCameraNearItem(it){
+    if (!it) return;
+    const x = rawToWorld(it.x, 'x');
+    const y = rawToWorld(it.y, 'y');
+    const z = rawToWorld(it.z || 0, 'z');
+    const offset = 72;
+    cam.pos = vec3(x + offset, y + offset, z + 32);
+    const dx = x - cam.pos.x;
+    const dy = y - cam.pos.y;
+    const dz = z - cam.pos.z;
+    const horiz = Math.max(1e-6, Math.hypot(dx, dy));
+    cam.yaw = Math.atan2(dx, dy);
+    cam.pitch = Math.max(-1.55, Math.min(1.55, Math.atan2(dz, horiz)));
+    state.camera.x = cam.pos.x;
+    state.camera.y = cam.pos.y;
+    state.camera.z = cam.pos.z;
+    state.camera.yaw = cam.yaw;
+    state.camera.pitch = cam.pitch;
+    requestRender();
+  }
+
+  showPanelBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const next = !canvasShowPanelEl?.classList.contains("open");
+    setCanvasShowPanelOpen(next);
+  });
+
+  canvasShowPanelEl?.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+  document.addEventListener("mousedown", (event) => {
+    if (!canvasShowPanelEl?.classList.contains("open")) return;
+    if (canvasShowPanelEl.contains(event.target) || showPanelBtn?.contains(event.target)) return;
+    setCanvasShowPanelOpen(false);
+  });
+
+  addEventListener("resize", () => {
+    if (!canvasShowPanelEl?.classList.contains("open")) return;
+    positionCanvasShowPanel();
+  });
+
   exportBtn.addEventListener("click", () => {
     const current = `${Math.round(state.camera.x)} ${Math.round(state.camera.y)} ${Math.round(state.camera.z)}`;
     const raw = window.prompt("Go to (X Y Z):", current);
@@ -4354,8 +4439,27 @@
     statusEl.textContent = `Camera movida para X=${x.toFixed(2)} Y=${y.toFixed(2)} Z=${z.toFixed(2)}`;
   });
 
-  searchEl.addEventListener("input", () => { invalidateFilteredItemsCache(); renderList(); requestRender(); });
-  typeFilterEl.addEventListener("change", () => { invalidateFilteredItemsCache(); renderList(); requestRender(); });
+  searchEl?.addEventListener("input", () => { invalidateFilteredItemsCache(); renderList(); requestRender(); });
+  searchEl?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    invalidateFilteredItemsCache();
+    const query = (searchEl.value || "").trim().toLowerCase();
+    const items = getFilteredItems();
+    if (!items.length){
+      statusEl.textContent = query
+        ? `Nenhum item encontrado para "${query}".`
+        : "Nenhum item encontrado.";
+      return;
+    }
+    const directId = Number(query);
+    const best = Number.isFinite(directId)
+      ? items.find((it) => Number(it.id) === directId) || items[0]
+      : items[0];
+    selectById(best.id);
+    focusCameraNearItem(best);
+    statusEl.textContent = `Selecionado #${best.id} via busca.`;
+  });
 
   sectionCloseBtn.addEventListener("click", closeSectionEditor);
   sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
@@ -4813,7 +4917,6 @@
     buildLayerOptions();
     buildWaypointList();
     buildGroupOptions();
-    buildTypeFilterOptions();
 
     statusEl.textContent = `${file.name} loaded. items: ${state.items.length}`;
     fitView();
@@ -5394,12 +5497,13 @@
         renderer.autoClear = false;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.0;
+        renderer.toneMappingExposure = 1.2;
 
         const scene3d = new THREE.Scene();
-        scene3d.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.65));
-        const dir1 = new THREE.DirectionalLight(0xffffff, 1.1); dir1.position.set(5, 8, 6); scene3d.add(dir1);
-        const dir2 = new THREE.DirectionalLight(0xffffff, 0.6); dir2.position.set(-6, 3, -5); scene3d.add(dir2);
+        scene3d.add(new THREE.HemisphereLight(0xf6f8ff, 0x4f657d, 1.05));
+        scene3d.add(new THREE.AmbientLight(0xffffff, 0.22));
+        const dir1 = new THREE.DirectionalLight(0xffffff, 0.95); dir1.position.set(5, 8, 6); scene3d.add(dir1);
+        const dir2 = new THREE.DirectionalLight(0xffffff, 0.8); dir2.position.set(-6, 3, -5); scene3d.add(dir2);
 
         const camera3d = new THREE.PerspectiveCamera(60, 1, 0.01, 20000);
         camera3d.matrixAutoUpdate = false;
@@ -5515,15 +5619,32 @@
           if (m.emissiveMap) m.emissiveMap.colorSpace = state.glb.THREE.SRGBColorSpace;
 
           // Evita shaders PBR complexos que falham em alguns drivers WebGL1.
-          return new state.glb.THREE.MeshLambertMaterial({
+          // Preferimos Phong para manter resposta especular e reduzir faces "apagadas".
+          const emissiveBase = m.emissive ? m.emissive.clone() : new state.glb.THREE.Color(0x000000);
+          if (emissiveBase.r < 0.02 && emissiveBase.g < 0.02 && emissiveBase.b < 0.02){
+            emissiveBase.setRGB(0.02, 0.02, 0.02);
+          }
+          return new state.glb.THREE.MeshPhongMaterial({
             map: m.map || null,
             color: m.color ? m.color.clone() : new state.glb.THREE.Color(0xffffff),
-            emissive: m.emissive ? m.emissive.clone() : new state.glb.THREE.Color(0x000000),
+            emissive: emissiveBase,
             emissiveMap: m.emissiveMap || null,
+            normalMap: m.normalMap || null,
+            normalScale: m.normalScale ? m.normalScale.clone() : undefined,
+            aoMap: m.aoMap || null,
+            aoMapIntensity: Number.isFinite(m.aoMapIntensity) ? m.aoMapIntensity : 1,
+            lightMap: m.lightMap || null,
+            lightMapIntensity: Number.isFinite(m.lightMapIntensity) ? m.lightMapIntensity : 1,
+            specularMap: m.specularMap || null,
+            envMap: m.envMap || null,
+            envMapIntensity: Number.isFinite(m.envMapIntensity) ? m.envMapIntensity : 1,
+            shininess: Number.isFinite(m.shininess) ? m.shininess : 24,
             transparent: !!m.transparent,
             opacity: Number.isFinite(m.opacity) ? m.opacity : 1,
             side: m.side,
             alphaTest: m.alphaTest || 0,
+            vertexColors: !!m.vertexColors,
+            flatShading: !!m.flatShading,
           });
         });
 
