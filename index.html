@@ -6526,7 +6526,13 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       it.y = worldToRaw(currentW.y + (dx * scale), 'y');
       it.z = worldToRaw(currentW.z - (dy * scale), 'z');
     } else if (mode === "moveZ"){
-      const dz = -dy * 1.25;
+      const rect = cv.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const p0 = screenToWorld(sx, sy, currentW.z);
+      const p1 = screenToWorld(sx, sy + 1, currentW.z);
+      const unitsPerPixel = Math.max(0.05, Math.hypot(p1.x - p0.x, p1.y - p0.y));
+      const dz = -dy * unitsPerPixel;
       it.z = worldToRaw(currentW.z + dz, 'z');
     } else if (mode === "rotYaw"){
       it.heading = (Number(it.heading) || 0) - dx * 0.5;
