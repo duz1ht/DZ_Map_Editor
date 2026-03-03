@@ -1131,9 +1131,10 @@
             </div>
 
             <div>Type: <span id="ui_type" class="metaValue">-</span></div>
+            <div>Type ID: <span id="ui_typeId" class="metaValue">-</span></div>
 
             <div class="subTypeWrap">
-              <label class="inlineLabel" for="ui_subtype">Sub-Type:</label>
+              <label class="inlineLabel" for="ui_subtype">Item 3D Object:</label>
               <select id="ui_subtype"></select>
             </div>
 
@@ -1616,6 +1617,7 @@
     graphic: document.getElementById("ui_graphic"),
     layer: document.getElementById("ui_layer"),
     type: document.getElementById("ui_type"),
+    typeId: document.getElementById("ui_typeId"),
     subtype: document.getElementById("ui_subtype"),
     nextssn: document.getElementById("ui_nextssn"),
     itemTitle: document.getElementById("ui_itemTitle"),
@@ -4070,6 +4072,7 @@
     if (!it){
       ui.itemTitle.textContent = "No item selected.";
       ui.presenceHint.textContent = "";
+      setValueIf(ui.typeId, "-");
       return;
     }
 
@@ -4084,6 +4087,7 @@
 
     const typeText = def?.type ? def.type : (kvHas(it, "type_id") ? `type_id ${it.kv.type_id}` : "");
     setValueIf(ui.type, typeText);
+    setValueIf(ui.typeId, kvHas(it, "type_id") ? String(it.kv.type_id) : "-");
 
     const title = def?.name ? def.name : (kvHas(it, "name") ? it.kv.name : (kvHas(it, "iai_name") ? it.kv.iai_name : "(sem name)"));
     ui.itemTitle.textContent = title;
