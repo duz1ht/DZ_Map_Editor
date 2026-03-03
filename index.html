@@ -249,6 +249,15 @@
       white-space:pre;
       pointer-events:none;
     }
+    #showPanelBtn{
+      position:absolute;
+      top:10px;
+      left:10px;
+      z-index:10;
+      min-width:52px;
+      height:24px;
+      padding:0 10px;
+    }
     #fpsCounter{
       position:absolute;
       top:10px;
@@ -892,7 +901,6 @@
       <label class="tbCtl">Draw radius <input id="radius" type="range" min="512" max="65536" step="256" value="12288"></label>
       <label class="tbCtl"><input id="mainArea" type="checkbox"> Main area</label>
       <label class="tbCtl"><input id="showSectors" type="checkbox"> Show Sectors</label>
-      <button id="showPanelBtn" type="button" class="modeBtn">Show</button>
       <label class="tbCtl">TRN Mesh step <select id="step"><option>1</option><option>2</option><option selected>4</option><option>8</option><option>16</option></select></label>
       <label class="tbCtl"><input id="showStats" type="checkbox" checked> Map Info (I):</label>
       <label class="tbCtl"><input id="showGlbWireframe" type="checkbox"> Wireframe mode (F)</label>
@@ -902,6 +910,7 @@
     </div>
 
     <div id="canvasWrap">
+      <button id="showPanelBtn" type="button" class="modeBtn">Show</button>
       <canvas id="cv"></canvas>
       <div id="camDebug"></div>
       <div id="fpsCounter">0 FPS</div>
@@ -4361,6 +4370,27 @@
     showPanelBtn?.classList.toggle("active", visible);
   }
 
+  function focusCameraNearItem(it){
+    if (!it) return;
+    const x = rawToWorld(it.x, 'x');
+    const y = rawToWorld(it.y, 'y');
+    const z = rawToWorld(it.z || 0, 'z');
+    const offset = 72;
+    cam.pos = vec3(x + offset, y + offset, z + 32);
+    const dx = x - cam.pos.x;
+    const dy = y - cam.pos.y;
+    const dz = z - cam.pos.z;
+    const horiz = Math.max(1e-6, Math.hypot(dx, dy));
+    cam.yaw = Math.atan2(dx, dy);
+    cam.pitch = Math.max(-1.55, Math.min(1.55, Math.atan2(dz, horiz)));
+    state.camera.x = cam.pos.x;
+    state.camera.y = cam.pos.y;
+    state.camera.z = cam.pos.z;
+    state.camera.yaw = cam.yaw;
+    state.camera.pitch = cam.pitch;
+    requestRender();
+  }
+
   showPanelBtn?.addEventListener("click", (event) => {
     event.stopPropagation();
     const next = !canvasShowPanelEl?.classList.contains("open");
@@ -4395,6 +4425,26 @@
   });
 
   searchEl?.addEventListener("input", () => { invalidateFilteredItemsCache(); renderList(); requestRender(); });
+  searchEl?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    invalidateFilteredItemsCache();
+    const query = (searchEl.value || "").trim().toLowerCase();
+    const items = getFilteredItems();
+    if (!items.length){
+      statusEl.textContent = query
+        ? `Nenhum item encontrado para "${query}".`
+        : "Nenhum item encontrado.";
+      return;
+    }
+    const directId = Number(query);
+    const best = Number.isFinite(directId)
+      ? items.find((it) => Number(it.id) === directId) || items[0]
+      : items[0];
+    selectById(best.id);
+    focusCameraNearItem(best);
+    statusEl.textContent = `Selecionado #${best.id} via busca.`;
+  });
 
   sectionCloseBtn.addEventListener("click", closeSectionEditor);
   sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
