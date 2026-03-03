@@ -1324,6 +1324,7 @@
     pastePreviewWorld: null,
     gizmoDrag: null,
     gizmoVisual: null,
+    transformMode: "translate",
 
     gameStrings: new Map(),
     weaponDefs: new Map(),
@@ -5911,7 +5912,6 @@
     const camDist = vec3Len(vec3Sub(center, cam.pos));
     const t = Math.max(0, Math.min(1, (camDist - gizmoNearDist) / Math.max(1, gizmoFarDist - gizmoNearDist)));
 
-    // Escala visual em pixels: perto = menor, longe = maior.
     const axisLenPx = 54 + (70 - 54) * t;
     const yawRadius = 28.8 + (34 - 28.8) * t;
     const pitchRadius = 21.6 + (28 - 21.6) * t;
@@ -5951,20 +5951,57 @@
       gizmoCtx.fill();
     }
 
-    drawAxis(xTip, '#ff6b6b');
-    drawAxis(yTip, '#6bff8f');
-    drawAxis(zTip, '#77a8ff');
+    if (state.transformMode === 'translate'){
+      drawAxis(xTip, '#ff6b6b');
+      drawAxis(yTip, '#6bff8f');
+      drawAxis(zTip, '#77a8ff');
+
+      const planeLen = axisLenPx * 0.45;
+      function planeHandle(aDir, bDir, color){
+        const p1 = { sx: c.sx + aDir.x * planeLen, sy: c.sy + aDir.y * planeLen };
+        const p2 = { sx: p1.sx + bDir.x * planeLen, sy: p1.sy + bDir.y * planeLen };
+        const p3 = { sx: c.sx + bDir.x * planeLen, sy: c.sy + bDir.y * planeLen };
+        gizmoCtx.fillStyle = color;
+        gizmoCtx.globalAlpha = 0.25;
+        gizmoCtx.beginPath();
+        gizmoCtx.moveTo(c.sx, c.sy);
+        gizmoCtx.lineTo(p1.sx, p1.sy);
+        gizmoCtx.lineTo(p2.sx, p2.sy);
+        gizmoCtx.lineTo(p3.sx, p3.sy);
+        gizmoCtx.closePath();
+        gizmoCtx.fill();
+        gizmoCtx.globalAlpha = 1;
+        return { sx: (p1.sx+p2.sx+p3.sx+c.sx)/4, sy: (p1.sy+p2.sy+p3.sy+c.sy)/4, r: 11 };
+      }
+      const moveXY = planeHandle(xDir, yDir, '#f6f269');
+      const moveXZ = planeHandle(xDir, zDir, '#b38cff');
+      const moveYZ = planeHandle(yDir, zDir, '#89e7ff');
+
+      state.gizmoVisual = {
+        mode: 'translate',
+        center: { sx: c.sx, sy: c.sy },
+        handles: {
+          moveX: xTip.visible ? { sx: xTip.sx, sy: xTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: xTip.sx, ly1: xTip.sy } : null,
+          moveY: yTip.visible ? { sx: yTip.sx, sy: yTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: yTip.sx, ly1: yTip.sy } : null,
+          moveZ: zTip.visible ? { sx: zTip.sx, sy: zTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: zTip.sx, ly1: zTip.sy } : null,
+          moveXY,
+          moveXZ,
+          moveYZ,
+        }
+      };
+      return;
+    }
+
+    gizmoCtx.strokeStyle = '#ff6b6b';
+    gizmoCtx.lineWidth = 6;
+    gizmoCtx.beginPath();
+    gizmoCtx.ellipse(c.sx, c.sy, pitchRadius * 0.55, pitchRadius, 0, 0, Math.PI * 2);
+    gizmoCtx.stroke();
 
     gizmoCtx.strokeStyle = '#ffd166';
     gizmoCtx.lineWidth = 6;
     gizmoCtx.beginPath();
     gizmoCtx.arc(c.sx, c.sy, yawRadius, 0, Math.PI * 2);
-    gizmoCtx.stroke();
-
-    gizmoCtx.strokeStyle = '#7ce4ff';
-    gizmoCtx.lineWidth = 6;
-    gizmoCtx.beginPath();
-    gizmoCtx.ellipse(c.sx, c.sy, pitchRadius * 0.55, pitchRadius, 0, 0, Math.PI * 2);
     gizmoCtx.stroke();
 
     gizmoCtx.fillStyle = '#ffffff';
@@ -5973,13 +6010,11 @@
     gizmoCtx.fill();
 
     state.gizmoVisual = {
+      mode: 'rotate',
       center: { sx: c.sx, sy: c.sy },
       handles: {
-        moveX: xTip.visible ? { sx: xTip.sx, sy: xTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: xTip.sx, ly1: xTip.sy } : null,
-        moveY: yTip.visible ? { sx: yTip.sx, sy: yTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: yTip.sx, ly1: yTip.sy } : null,
-        moveZ: zTip.visible ? { sx: zTip.sx, sy: zTip.sy, r: 6, lx0: c.sx, ly0: c.sy, lx1: zTip.sx, ly1: zTip.sy } : null,
-        yaw: { sx: c.sx, sy: c.sy, r: yawRadius, t: 8, ring: true },
-        pitch: { sx: c.sx, sy: c.sy, rx: pitchRadius * 0.55, ry: pitchRadius, t: 7, ellipse: true }
+        rotYaw: { sx: c.sx, sy: c.sy, r: yawRadius, t: 8, ring: true },
+        rotPitch: { sx: c.sx, sy: c.sy, rx: pitchRadius * 0.55, ry: pitchRadius, t: 7, ellipse: true }
       }
     };
   }
@@ -6298,7 +6333,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   startRenderLoop();
 
   cv.addEventListener('click',()=>{ cv.focus(); });
-  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='g'){ gridVisible=!gridVisible; } if(k==='i'&&showStatsEl){ showStatsEl.checked=!showStatsEl.checked; syncRenderUiState(); } if(k==='h'&&showAnchorPointsEl){ showAnchorPointsEl.checked=!showAnchorPointsEl.checked; syncRenderUiState(); } if(k==='f'){ setGlbWireframeEnabled(!state.glb.wireframeEnabled); } if(k==='w') move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e') move.e=1; if(k==='shift') move.shift=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
+  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); const lookActive=(document.pointerLockElement===cv&&state.cameraLookActive); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='g'){ gridVisible=!gridVisible; } if(k==='i'&&showStatsEl){ showStatsEl.checked=!showStatsEl.checked; syncRenderUiState(); } if(k==='h'&&showAnchorPointsEl){ showAnchorPointsEl.checked=!showAnchorPointsEl.checked; syncRenderUiState(); } if(k==='f'){ setGlbWireframeEnabled(!state.glb.wireframeEnabled); } if(k==='w'&&!lookActive){ state.transformMode='translate'; updateItemGizmo(); } if(k==='e'&&!lookActive){ state.transformMode='rotate'; updateItemGizmo(); } if(k==='w'&&lookActive) move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e'&&lookActive) move.e=1; if(k==='shift') move.shift=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
   addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); if(k==='w') move.w=0; if(k==='a') move.a=0; if(k==='s') move.s=0; if(k==='d') move.d=0; if(k==='q') move.q=0; if(k==='e') move.e=0; if(k==='shift') move.shift=0; state.keysDown.delete(e.code); });
   addEventListener('mousemove',e=>{ if(document.pointerLockElement!==cv) return; if(topViewLocked) return; if(!state.cameraLookActive) return; if(state.modalOpen||state.draggingItem||state.boxSelecting||state.gizmoDrag||state.pastePlacementActive) return; cam.yaw += e.movementX*0.002; cam.pitch -= e.movementY*0.002; cam.pitch=Math.max(-1.55,Math.min(1.55,cam.pitch)); });
 
@@ -6421,24 +6456,33 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       const cy = y0 + t*dy;
       return Math.hypot(px - cx, py - cy);
     }
-    for (const mode of ["moveX","moveY","moveZ"]){
-      const hh = h[mode];
-      if (!hh) continue;
-      if (dist(sx,sy,hh.sx,hh.sy) <= (hh.r || 10)) return mode;
-      if (Number.isFinite(hh.lx0) && Number.isFinite(hh.ly0) && Number.isFinite(hh.lx1) && Number.isFinite(hh.ly1)){
-        const near = distToSegment(sx, sy, hh.lx0, hh.ly0, hh.lx1, hh.ly1);
-        if (near <= 10) return mode;
+
+    if (state.gizmoVisual.mode === 'translate'){
+      for (const mode of ["moveX","moveY","moveZ"]){
+        const hh = h[mode];
+        if (!hh) continue;
+        if (dist(sx,sy,hh.sx,hh.sy) <= (hh.r || 10)) return mode;
+        if (Number.isFinite(hh.lx0) && Number.isFinite(hh.ly0) && Number.isFinite(hh.lx1) && Number.isFinite(hh.ly1)){
+          const near = distToSegment(sx, sy, hh.lx0, hh.ly0, hh.lx1, hh.ly1);
+          if (near <= 10) return mode;
+        }
       }
+      for (const mode of ["moveXY","moveXZ","moveYZ"]){
+        const hh = h[mode];
+        if (hh && dist(sx,sy,hh.sx,hh.sy) <= (hh.r || 11)) return mode;
+      }
+      return null;
     }
-    if (h.yaw){
-      const d = dist(sx,sy,h.yaw.sx,h.yaw.sy);
-      if (Math.abs(d - h.yaw.r) <= (h.yaw.t || 8)) return "yaw";
+
+    if (h.rotYaw){
+      const d = dist(sx,sy,h.rotYaw.sx,h.rotYaw.sy);
+      if (Math.abs(d - h.rotYaw.r) <= (h.rotYaw.t || 8)) return "rotYaw";
     }
-    if (h.pitch){
-      const nx = (sx - h.pitch.sx) / Math.max(1, h.pitch.rx);
-      const ny = (sy - h.pitch.sy) / Math.max(1, h.pitch.ry);
+    if (h.rotPitch){
+      const nx = (sx - h.rotPitch.sx) / Math.max(1, h.rotPitch.rx);
+      const ny = (sy - h.rotPitch.sy) / Math.max(1, h.rotPitch.ry);
       const v = Math.abs((nx*nx + ny*ny) - 1);
-      if (v <= 0.22) return "pitch";
+      if (v <= 0.22) return "rotPitch";
     }
     return null;
   }
@@ -6465,12 +6509,28 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       const wy = now.y - prev.y;
       if (mode === "moveX") it.x = worldToRaw(currentW.x + wx, 'x');
       if (mode === "moveY") it.y = worldToRaw(currentW.y + wy, 'y');
+    } else if (mode === "moveXY"){
+      const rect = cv.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const prev = screenToWorld(sx - dx, sy - dy, currentW.z);
+      const now = screenToWorld(sx, sy, currentW.z);
+      it.x = worldToRaw(currentW.x + (now.x - prev.x), 'x');
+      it.y = worldToRaw(currentW.y + (now.y - prev.y), 'y');
+    } else if (mode === "moveXZ"){
+      const scale = 1.1;
+      it.x = worldToRaw(currentW.x + (dx * scale), 'x');
+      it.z = worldToRaw(currentW.z - (dy * scale), 'z');
+    } else if (mode === "moveYZ"){
+      const scale = 1.1;
+      it.y = worldToRaw(currentW.y + (dx * scale), 'y');
+      it.z = worldToRaw(currentW.z - (dy * scale), 'z');
     } else if (mode === "moveZ"){
       const dz = -dy * 1.25;
       it.z = worldToRaw(currentW.z + dz, 'z');
-    } else if (mode === "yaw"){
+    } else if (mode === "rotYaw"){
       it.heading = (Number(it.heading) || 0) - dx * 0.5;
-    } else if (mode === "pitch"){
+    } else if (mode === "rotPitch"){
       it.pitch = (Number(it.pitch) || 0) + dy * 0.5;
     }
 
