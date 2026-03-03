@@ -1440,6 +1440,7 @@
   const exportBtn = document.getElementById("exportBtn");
   const showPanelBtn = document.getElementById("showPanelBtn");
   const canvasShowPanelEl = document.getElementById("canvasShowPanel");
+  const canvasWrapEl = document.getElementById("canvasWrap");
   const statusEl = document.getElementById("status");
   const sectionOverlay = document.getElementById("sectionOverlay");
   const sectionWindow = document.getElementById("sectionWindow");
@@ -4361,8 +4362,19 @@
 
   ui.delBtn.addEventListener("click", deleteSelectedItem);
 
+  function positionCanvasShowPanel(){
+    if (!canvasShowPanelEl || !showPanelBtn || !canvasWrapEl) return;
+    const wrapRect = canvasWrapEl.getBoundingClientRect();
+    const btnRect = showPanelBtn.getBoundingClientRect();
+    const top = Math.max(8, (btnRect.bottom - wrapRect.top) + 6);
+    const left = Math.max(8, btnRect.left - wrapRect.left);
+    canvasShowPanelEl.style.top = `${Math.round(top)}px`;
+    canvasShowPanelEl.style.left = `${Math.round(left)}px`;
+  }
+
   function setCanvasShowPanelOpen(open){
     const visible = !!open;
+    if (visible) positionCanvasShowPanel();
     canvasShowPanelEl?.classList.toggle("open", visible);
     canvasShowPanelEl?.setAttribute("aria-hidden", visible ? "false" : "true");
     showPanelBtn?.classList.toggle("active", visible);
@@ -4403,6 +4415,11 @@
     if (!canvasShowPanelEl?.classList.contains("open")) return;
     if (canvasShowPanelEl.contains(event.target) || showPanelBtn?.contains(event.target)) return;
     setCanvasShowPanelOpen(false);
+  });
+
+  addEventListener("resize", () => {
+    if (!canvasShowPanelEl?.classList.contains("open")) return;
+    positionCanvasShowPanel();
   });
 
   exportBtn.addEventListener("click", () => {
