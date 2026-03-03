@@ -6020,20 +6020,42 @@
       const ux = dirA.x / nA, uy = dirA.y / nA;
       const vx = dirB.x / nB, vy = dirB.y / nB;
       const points = [];
-      const steps = 72;
-      gizmoCtx.strokeStyle = color;
-      gizmoCtx.lineWidth = 5;
-      gizmoCtx.beginPath();
-      for (let i=0;i<=steps;i++){
-        const a = (i / steps) * Math.PI * 2;
-        const px = c.sx + (ux * Math.cos(a) + vx * Math.sin(a)) * radius;
-        const py = c.sy + (uy * Math.cos(a) + vy * Math.sin(a)) * radius;
-        points.push({ sx:px, sy:py });
-        if (i===0) gizmoCtx.moveTo(px, py);
-        else gizmoCtx.lineTo(px, py);
+      const steps = 96;
+
+      function pointAt(a){
+        return {
+          sx: c.sx + (ux * Math.cos(a) + vx * Math.sin(a)) * radius,
+          sy: c.sy + (uy * Math.cos(a) + vy * Math.sin(a)) * radius,
+          a,
+          front: Math.sin(a) >= 0,
+        };
       }
-      gizmoCtx.stroke();
-      return { sx: c.sx, sy: c.sy, t: 9, points, ux, uy, vx, vy, r: radius };
+      for (let i=0;i<=steps;i++) points.push(pointAt((i / steps) * Math.PI * 2));
+
+      function drawSegments(isFront, width, stroke, alpha){
+        gizmoCtx.lineWidth = width;
+        gizmoCtx.strokeStyle = stroke;
+        gizmoCtx.globalAlpha = alpha;
+        let open = false;
+        for (let i=1;i<points.length;i++){
+          const p0 = points[i-1], p1 = points[i];
+          if (p0.front !== isFront || p1.front !== isFront){
+            if (open){ gizmoCtx.stroke(); open = false; }
+            continue;
+          }
+          if (!open){ gizmoCtx.beginPath(); gizmoCtx.moveTo(p0.sx, p0.sy); open = true; }
+          gizmoCtx.lineTo(p1.sx, p1.sy);
+        }
+        if (open) gizmoCtx.stroke();
+      }
+
+      drawSegments(false, 7, '#000000', 0.22);
+      drawSegments(false, 4, color, 0.4);
+      drawSegments(true, 7, '#000000', 0.34);
+      drawSegments(true, 4.5, color, 1);
+      gizmoCtx.globalAlpha = 1;
+
+      return { sx: c.sx, sy: c.sy, t: 10, points, ux, uy, vx, vy, r: radius };
     }
 
     const rotX = drawRotationRing(yDir, zDir, pitchRadius, '#ff6b6b');
