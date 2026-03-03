@@ -6448,6 +6448,21 @@
     scheduleRenderList();
   }
 
+  function commitGizmoUpdates(items){
+    const valid = (items || []).filter(Boolean);
+    if (!valid.length) return;
+    for (const it of valid){
+      if (kvHas(it, "position")) it.kv.position = `${it.x} ${it.y} ${it.z}`;
+      applyItemOrientationToKv(it);
+      const sec = getItemSectionByStartFast(it.start);
+      if (sec) sec.kv = { ...it.kv };
+      markItemTransformDirty(it.id);
+    }
+    markItemsChanged({ structure: false });
+    scheduleLiveMisRefresh();
+    scheduleRenderList();
+  }
+
   function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
@@ -6792,7 +6807,10 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     if (!state.pastePlacementActive){
       const gizmoMode = pickGizmoModeAt(e.clientX, e.clientY);
       if (gizmoMode && state.selectedId != null){
-        state.gizmoDrag = { mode: gizmoMode, lastX: e.clientX, lastY: e.clientY, itemId: state.selectedId };
+        const dragItemIds = state.multiSelectedIds.size
+          ? Array.from(state.multiSelectedIds)
+          : [state.selectedId];
+        state.gizmoDrag = { mode: gizmoMode, lastX: e.clientX, lastY: e.clientY, itemId: state.selectedId, itemIds: dragItemIds };
         state.lastMouse = { sx, sy };
         return;
       }
@@ -6881,64 +6899,76 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
 
   window.addEventListener("mousemove", (e) => {
     if (!state.gizmoDrag) return;
-    const it = getItemByIdFast(state.gizmoDrag.itemId);
-    if (!it || state.selectedId !== state.gizmoDrag.itemId){ state.gizmoDrag = null; return; }
+    const dragIds = Array.isArray(state.gizmoDrag.itemIds) && state.gizmoDrag.itemIds.length
+      ? state.gizmoDrag.itemIds
+      : (state.gizmoDrag.itemId != null ? [state.gizmoDrag.itemId] : []);
+    const activeItems = dragIds
+      .map((id) => getItemByIdFast(id))
+      .filter(Boolean);
+    if (!activeItems.length || !activeItems.some((it) => it.id === state.selectedId)){
+      state.gizmoDrag = null;
+      return;
+    }
 
     const dx = e.clientX - state.gizmoDrag.lastX;
     const dy = e.clientY - state.gizmoDrag.lastY;
     state.gizmoDrag.lastX = e.clientX;
     state.gizmoDrag.lastY = e.clientY;
 
-    const currentW = { x: rawToWorld(it.x,'x'), y: rawToWorld(it.y,'y'), z: rawToWorld(it.z||0,'z') };
     const mode = state.gizmoDrag.mode;
-    if (mode === "moveX" || mode === "moveY"){
-      const rect = cv.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      const prev = screenToWorld(sx - dx, sy - dy, currentW.z);
-      const now = screenToWorld(sx, sy, currentW.z);
-      const wx = now.x - prev.x;
-      const wy = now.y - prev.y;
-      if (mode === "moveX") it.x = worldToRaw(currentW.x + wx, 'x');
-      if (mode === "moveY") it.y = worldToRaw(currentW.y + wy, 'y');
-    } else if (mode === "moveXY"){
-      const rect = cv.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      const prev = screenToWorld(sx - dx, sy - dy, currentW.z);
-      const now = screenToWorld(sx, sy, currentW.z);
-      it.x = worldToRaw(currentW.x + (now.x - prev.x), 'x');
-      it.y = worldToRaw(currentW.y + (now.y - prev.y), 'y');
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    if (mode === "moveX" || mode === "moveY" || mode === "moveXY"){
+      const anchor = activeItems[0];
+      const anchorW = { x: rawToWorld(anchor.x,'x'), y: rawToWorld(anchor.y,'y'), z: rawToWorld(anchor.z||0,'z') };
+      const prev = screenToWorld(sx - dx, sy - dy, anchorW.z);
+      const now = screenToWorld(sx, sy, anchorW.z);
+      const moveDx = now.x - prev.x;
+      const moveDy = now.y - prev.y;
+      for (const it of activeItems){
+        const currentW = { x: rawToWorld(it.x,'x'), y: rawToWorld(it.y,'y') };
+        if (mode === "moveX" || mode === "moveXY") it.x = worldToRaw(currentW.x + moveDx, 'x');
+        if (mode === "moveY" || mode === "moveXY") it.y = worldToRaw(currentW.y + moveDy, 'y');
+      }
     } else if (mode === "moveXZ"){
       const scale = 1.1;
-      it.x = worldToRaw(currentW.x + (dx * scale), 'x');
-      it.z = worldToRaw(currentW.z - (dy * scale), 'z');
+      for (const it of activeItems){
+        const currentW = { x: rawToWorld(it.x,'x'), z: rawToWorld(it.z||0,'z') };
+        it.x = worldToRaw(currentW.x + (dx * scale), 'x');
+        it.z = worldToRaw(currentW.z - (dy * scale), 'z');
+      }
     } else if (mode === "moveYZ"){
       const scale = 1.1;
-      it.y = worldToRaw(currentW.y + (dx * scale), 'y');
-      it.z = worldToRaw(currentW.z - (dy * scale), 'z');
+      for (const it of activeItems){
+        const currentW = { y: rawToWorld(it.y,'y'), z: rawToWorld(it.z||0,'z') };
+        it.y = worldToRaw(currentW.y + (dx * scale), 'y');
+        it.z = worldToRaw(currentW.z - (dy * scale), 'z');
+      }
     } else if (mode === "moveZ"){
-      const rect = cv.getBoundingClientRect();
-      const sampleSx = Math.max(1, Math.min(rect.width - 2, state.gizmoVisual?.center?.sx ?? (e.clientX - rect.left)));
-      const sampleSy = Math.max(1, Math.min(rect.height - 2, state.gizmoVisual?.center?.sy ?? (e.clientY - rect.top)));
-      const p0 = screenToWorld(sampleSx, sampleSy, currentW.z);
-      const p1 = screenToWorld(sampleSx, sampleSy + 1, currentW.z);
+      const anchor = activeItems[0];
+      const anchorZ = rawToWorld(anchor.z||0,'z');
+      const sampleSx = Math.max(1, Math.min(rect.width - 2, state.gizmoVisual?.center?.sx ?? sx));
+      const sampleSy = Math.max(1, Math.min(rect.height - 2, state.gizmoVisual?.center?.sy ?? sy));
+      const p0 = screenToWorld(sampleSx, sampleSy, anchorZ);
+      const p1 = screenToWorld(sampleSx, sampleSy + 1, anchorZ);
       const rawUnitsPerPixel = Math.hypot(p1.x - p0.x, p1.y - p0.y);
       const unitsPerPixel = Math.min(3.0, Math.max(0.03, Number.isFinite(rawUnitsPerPixel) ? rawUnitsPerPixel : 0.03));
       const zSensitivity = 0.25;
       const safeDy = Math.max(-36, Math.min(36, dy));
       const maxStep = Math.max(0.5, Math.min(unitsPerPixel * 12, 16));
       const dz = Math.max(-maxStep, Math.min(maxStep, -safeDy * unitsPerPixel * zSensitivity));
-      it.z = worldToRaw(currentW.z + dz, 'z');
+      for (const it of activeItems){
+        const currentZ = rawToWorld(it.z||0,'z');
+        it.z = worldToRaw(currentZ + dz, 'z');
+      }
     } else if (mode === "rotX" || mode === "rotZ"){
       const handle = state.gizmoVisual?.handles?.[mode];
-      const rect = cv.getBoundingClientRect();
-      const prevSx = e.clientX - rect.left - dx;
-      const prevSy = e.clientY - rect.top - dy;
-      const nowSx = e.clientX - rect.left;
-      const nowSy = e.clientY - rect.top;
-      const cx = handle?.sx ?? (state.gizmoVisual?.center?.sx || nowSx);
-      const cy = handle?.sy ?? (state.gizmoVisual?.center?.sy || nowSy);
+      const prevSx = sx - dx;
+      const prevSy = sy - dy;
+      const cx = handle?.sx ?? (state.gizmoVisual?.center?.sx || sx);
+      const cy = handle?.sy ?? (state.gizmoVisual?.center?.sy || sy);
       function ringAngle(px, py){
         if (handle && Number.isFinite(handle.ux) && Number.isFinite(handle.uy) && Number.isFinite(handle.vx) && Number.isFinite(handle.vy)){
           const rx = px - cx;
@@ -6949,16 +6979,18 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
         }
         return Math.atan2(py - cy, px - cx);
       }
-      let da = ringAngle(nowSx, nowSy) - ringAngle(prevSx, prevSy);
+      let da = ringAngle(sx, sy) - ringAngle(prevSx, prevSy);
       if (da > Math.PI) da -= Math.PI * 2;
       if (da < -Math.PI) da += Math.PI * 2;
       const dragSign = Number(handle?.dragSign) || 1;
       const deltaDeg = da * (180 / Math.PI) * dragSign;
-      if (mode === "rotX") it.pitch = (Number(it.pitch) || 0) + deltaDeg;
-      if (mode === "rotZ") it.heading = (Number(it.heading) || 0) - deltaDeg;
+      for (const it of activeItems){
+        if (mode === "rotX") it.pitch = (Number(it.pitch) || 0) + deltaDeg;
+        if (mode === "rotZ") it.heading = (Number(it.heading) || 0) - deltaDeg;
+      }
     }
 
-    commitGizmoUpdate(it);
+    commitGizmoUpdates(activeItems);
     updateItemGizmo();
   });
 
