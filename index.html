@@ -3071,16 +3071,14 @@
             }
           }
 
-          let heading = 0, pitch = 0, roll = 0;
+          let heading = 0, pitch = 0;
           if (kv.facing){
             const f = kv.facing.split(/\s+/).map(Number);
             if (f.length >= 1 && Number.isFinite(f[0])) heading = f[0];
             if (f.length >= 2 && Number.isFinite(f[1])) pitch = f[1];
-            if (f.length >= 3 && Number.isFinite(f[2])) roll = f[2];
           } else if (kv.rot){
             heading = parseFloatSafe(kv.rot);
           }
-          if (kv.roll && Number.isFinite(parseFloatSafe(kv.roll))) roll = parseFloatSafe(kv.roll);
 
           items.push({
             id: items.length ? items[items.length-1].id + 1 : 1,
@@ -3090,7 +3088,6 @@
             x,y,z,
             heading,
             pitch,
-            roll,
           });
         }
 
@@ -3138,8 +3135,7 @@
         if ("facing" in kv){
           const parts = String(kv.facing).split(/\s+/).map(Number);
           const b = (parts.length >= 2 && Number.isFinite(parts[1])) ? parts[1] : (it.pitch ?? 0);
-          const c = (parts.length >= 3 && Number.isFinite(parts[2])) ? parts[2] : (it.roll ?? 0);
-          kv.facing = `${it.heading} ${b} ${c}`;
+          kv.facing = `${it.heading} ${b}`;
         } else if ("rot" in kv){
           kv.rot = String(it.heading);
         }
@@ -4038,10 +4034,8 @@
     if (applyOrientation){
       it.heading = parseFloatSafe(ui.heading.value);
       it.pitch = parseFloatSafe(ui.pitch.value);
-      if (!Number.isFinite(it.roll)) it.roll = 0;
-
       if (kvHas(it, "facing") || !kvHas(it, "rot")){
-        it.kv.facing = `${it.heading} ${it.pitch} ${Number(it.roll) || 0}`;
+        it.kv.facing = `${it.heading} ${it.pitch}`;
       } else {
         it.kv.rot = String(it.heading);
       }
@@ -5299,11 +5293,9 @@
     const yawRad = ((-(Number(it.heading) || 0)) + 180) * Math.PI / 180;
     const pitchCalibratedDeg = (-(Number(it.pitch) || 0)) + 90;
     const pitchRad = pitchCalibratedDeg * Math.PI / 180;
-    const rollRad = (-(Number(it.roll) || 0)) * Math.PI / 180;
     obj.rotation.order = "ZXY";
     obj.rotation.z = yawRad;
     obj.rotation.x = pitchRad;
-    obj.rotation.y = rollRad;
   }
 
   function parseNamedLodLevel(name){
@@ -5893,9 +5885,8 @@
 
   function applyItemOrientationToKv(it){
     if (!it) return;
-    if (kvHas(it, "facing") || !kvHas(it, "rot")) it.kv.facing = `${it.heading} ${it.pitch} ${Number(it.roll) || 0}`;
+    if (kvHas(it, "facing") || !kvHas(it, "rot")) it.kv.facing = `${it.heading} ${it.pitch}`;
     else it.kv.rot = String(it.heading);
-    if (kvHas(it, "roll")) it.kv.roll = String(Number(it.roll) || 0);
   }
 
   function updateItemGizmo(){
@@ -6068,7 +6059,6 @@
     }
 
     const rotX = drawRotationArc3D(viewRight, viewUp, pitchRadius * 0.92, '#ff6b6b', -150, 30);
-    const rotY = drawRotationArc3D(viewForward, viewUp, pitchRadius * 1.08, '#6bff8f', 30, 210);
     const rotZ = drawRotationArc3D(viewRight, viewForward, yawRadius * 1.24, '#77a8ff', 210, 390);
 
     gizmoCtx.fillStyle = '#ffffff';
@@ -6079,7 +6069,7 @@
     state.gizmoVisual = {
       mode: 'rotate',
       center: { sx: c.sx, sy: c.sy },
-      handles: { rotX, rotY, rotZ }
+      handles: { rotX, rotZ }
     };
   }
 
@@ -6538,7 +6528,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       return null;
     }
 
-    for (const mode of ["rotX","rotY","rotZ"]){
+    for (const mode of ["rotX","rotZ"]){
       const hh = h[mode];
       if (!hh || !Array.isArray(hh.points) || hh.points.length < 2) continue;
       let best = Infinity;
@@ -6603,7 +6593,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       const maxStep = Math.max(0.5, Math.min(unitsPerPixel * 12, 16));
       const dz = Math.max(-maxStep, Math.min(maxStep, -safeDy * unitsPerPixel * zSensitivity));
       it.z = worldToRaw(currentW.z + dz, 'z');
-    } else if (mode === "rotX" || mode === "rotY" || mode === "rotZ"){
+    } else if (mode === "rotX" || mode === "rotZ"){
       const handle = state.gizmoVisual?.handles?.[mode];
       const rect = cv.getBoundingClientRect();
       const prevSx = e.clientX - rect.left - dx;
@@ -6627,7 +6617,6 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       if (da < -Math.PI) da += Math.PI * 2;
       const deltaDeg = da * (180 / Math.PI);
       if (mode === "rotX") it.pitch = (Number(it.pitch) || 0) + deltaDeg;
-      if (mode === "rotY") it.roll = (Number(it.roll) || 0) + deltaDeg;
       if (mode === "rotZ") it.heading = (Number(it.heading) || 0) - deltaDeg;
     }
 
