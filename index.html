@@ -2403,10 +2403,12 @@
     const itemName = String(def?.name || item?.kv?.name || item?.kv?.iai_name || item?.kv?.model || "");
     const headingValue = item?.heading ?? "";
     const pitchValue = item?.pitch ?? "";
-    const groupValue = readKvValue(item, "group_id", "group");
+    const groupValue = readKvValue(item, "group_id");
+    const typeLabel = String(def?.type || "").trim() || readKvValue(item, "type");
+    const typeIdValue = readKvValue(item, "type_id");
     const lines = [
       `Item #${state.selectedInfoIndex + 1}: ${itemName}`,
-      `SSN: ${readKvValue(item, "ssn", "social_security_number")} | Type: ${readKvValue(item, "type_id")}`,
+      `SSN: ${readKvValue(item, "ssn", "social_security_number")} | Type: ${typeLabel} | Type ID: ${typeIdValue}`,
       `Heading: ${headingValue} | Pitch: ${pitchValue}`,
       `X: ${formatCoord(item?.x)} | Y: ${formatCoord(item?.y)} | Z: ${formatCoord(item?.z)}`,
       "",
