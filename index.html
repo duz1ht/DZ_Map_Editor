@@ -6014,8 +6014,9 @@
     const viewForward = { x: Math.sin(snappedYaw), y: Math.cos(snappedYaw), z: 0 };
     const viewRight = { x: Math.cos(snappedYaw), y: -Math.sin(snappedYaw), z: 0 };
     const viewUp = { x: 0, y: 0, z: 1 };
+    const camToItem = vec3Norm(vec3Sub(center, cam.pos));
 
-    function drawRotationArc3D(axisA, axisB, radiusPx, color, startDeg, endDeg){
+    function drawRotationArc3D(axisA, axisB, radiusPx, color, startDeg, endDeg, dragSign = 1){
       const radiusW = radiusPx * unitsPerPixel;
       const points = [];
       const steps = 72;
@@ -6055,11 +6056,15 @@
       if (open) gizmoCtx.stroke();
       gizmoCtx.globalAlpha = 1;
 
-      return { sx: c.sx, sy: c.sy, t: 10, points, r: radiusPx };
+      return { sx: c.sx, sy: c.sy, t: 10, points, r: radiusPx, dragSign };
     }
 
-    const rotX = drawRotationArc3D(viewRight, viewUp, pitchRadius * 0.92, '#ff6b6b', 30, 210);
-    const rotZ = drawRotationArc3D(viewRight, viewForward, yawRadius * 1.24, '#77a8ff', 210, 390);
+    const rotXNormal = vec3Norm(vec3Cross(viewRight, viewUp));
+    const rotZNormal = vec3Norm(vec3Cross(viewRight, viewForward));
+    const rotXSign = vec3Dot(rotXNormal, camToItem) >= 0 ? 1 : -1;
+    const rotZSign = vec3Dot(rotZNormal, camToItem) >= 0 ? 1 : -1;
+    const rotX = drawRotationArc3D(viewRight, viewUp, pitchRadius * 0.92, '#ff6b6b', 30, 210, rotXSign);
+    const rotZ = drawRotationArc3D(viewRight, viewForward, yawRadius * 1.24, '#77a8ff', 210, 390, rotZSign);
 
     gizmoCtx.fillStyle = '#ffffff';
     gizmoCtx.beginPath();
@@ -6615,7 +6620,8 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       let da = ringAngle(nowSx, nowSy) - ringAngle(prevSx, prevSy);
       if (da > Math.PI) da -= Math.PI * 2;
       if (da < -Math.PI) da += Math.PI * 2;
-      const deltaDeg = da * (180 / Math.PI);
+      const dragSign = Number(handle?.dragSign) || 1;
+      const deltaDeg = da * (180 / Math.PI) * dragSign;
       if (mode === "rotX") it.pitch = (Number(it.pitch) || 0) + deltaDeg;
       if (mode === "rotZ") it.heading = (Number(it.heading) || 0) - deltaDeg;
     }
