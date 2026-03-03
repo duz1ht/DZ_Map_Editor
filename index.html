@@ -4498,6 +4498,8 @@
 
   searchEl?.addEventListener("input", () => { invalidateFilteredItemsCache(); renderList(); requestRender(); });
   searchEl?.addEventListener("keydown", (event) => {
+    // While typing in the search box, do not bubble keys to global canvas shortcuts.
+    event.stopPropagation();
     if (event.key !== "Enter") return;
     event.preventDefault();
     invalidateFilteredItemsCache();
