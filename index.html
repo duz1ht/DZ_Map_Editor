@@ -2377,7 +2377,8 @@
 
   function formatCoord(v){
     if (v === undefined || v === null || v === "") return "";
-    return String(v);
+    const parts = splitFixedPositionRaw(v);
+    return `${parts.whole} ${parts.fraction}`;
   }
 
   function renderSelectedInfoPanel(){
