@@ -5922,8 +5922,8 @@
     const t = Math.max(0, Math.min(1, (camDist - gizmoNearDist) / Math.max(1, gizmoFarDist - gizmoNearDist)));
 
     const axisLenPx = 75.6 + (91.6 - 75.6) * t;
-    const yawRadius = 40.32 + (47.6 - 40.32) * t;
-    const pitchRadius = 30.24 + (39.2 - 30.24) * t;
+    const yawRadius = 48.384 + (57.12 - 48.384) * t;
+    const pitchRadius = 36.288 + (47.04 - 36.288) * t;
 
     const c = worldToScreen(center.x, center.y, center.z);
     if (!c.visible){ state.gizmoVisual = null; return; }
@@ -6018,12 +6018,14 @@
     const w1 = screenToWorld(c.sx + 1, c.sy, center.z);
     const unitsPerPixel = Math.max(0.01, Math.hypot(w1.x - w0.x, w1.y - w0.y));
 
-    function drawRotationRing3D(axisA, axisB, radiusPx, color){
+    function drawRotationArc3D(axisA, axisB, radiusPx, color, startDeg, endDeg){
       const radiusW = radiusPx * unitsPerPixel;
       const points = [];
-      const steps = 96;
+      const steps = 72;
+      const a0 = startDeg * Math.PI / 180;
+      const a1 = endDeg * Math.PI / 180;
       for (let i=0;i<=steps;i++){
-        const a = (i / steps) * Math.PI * 2;
+        const a = a0 + (a1 - a0) * (i / steps);
         const wx = center.x + (axisA.x * Math.cos(a) + axisB.x * Math.sin(a)) * radiusW;
         const wy = center.y + (axisA.y * Math.cos(a) + axisB.y * Math.sin(a)) * radiusW;
         const wz = center.z + (axisA.z * Math.cos(a) + axisB.z * Math.sin(a)) * radiusW;
@@ -6031,16 +6033,25 @@
         points.push({ sx: p.sx, sy: p.sy, visible: !!p.visible });
       }
 
-      gizmoCtx.lineWidth = 4.5;
-      gizmoCtx.strokeStyle = color;
-      gizmoCtx.globalAlpha = 0.95;
+      gizmoCtx.lineWidth = 5;
+      gizmoCtx.strokeStyle = '#000000';
+      gizmoCtx.globalAlpha = 0.28;
       let open = false;
       for (let i=1;i<points.length;i++){
         const p0 = points[i-1], p1 = points[i];
-        if (!p0.visible || !p1.visible){
-          if (open){ gizmoCtx.stroke(); open = false; }
-          continue;
-        }
+        if (!p0.visible || !p1.visible){ if (open){ gizmoCtx.stroke(); open = false; } continue; }
+        if (!open){ gizmoCtx.beginPath(); gizmoCtx.moveTo(p0.sx, p0.sy); open = true; }
+        gizmoCtx.lineTo(p1.sx, p1.sy);
+      }
+      if (open) gizmoCtx.stroke();
+
+      gizmoCtx.lineWidth = 3.4;
+      gizmoCtx.strokeStyle = color;
+      gizmoCtx.globalAlpha = 0.98;
+      open = false;
+      for (let i=1;i<points.length;i++){
+        const p0 = points[i-1], p1 = points[i];
+        if (!p0.visible || !p1.visible){ if (open){ gizmoCtx.stroke(); open = false; } continue; }
         if (!open){ gizmoCtx.beginPath(); gizmoCtx.moveTo(p0.sx, p0.sy); open = true; }
         gizmoCtx.lineTo(p1.sx, p1.sy);
       }
@@ -6050,9 +6061,9 @@
       return { sx: c.sx, sy: c.sy, t: 10, points, r: radiusPx };
     }
 
-    const rotX = drawRotationRing3D({x:0,y:1,z:0}, {x:0,y:0,z:1}, pitchRadius, '#ff6b6b');
-    const rotY = drawRotationRing3D({x:1,y:0,z:0}, {x:0,y:0,z:1}, pitchRadius, '#6bff8f');
-    const rotZ = drawRotationRing3D({x:1,y:0,z:0}, {x:0,y:1,z:0}, yawRadius, '#77a8ff');
+    const rotX = drawRotationArc3D({x:0,y:1,z:0}, {x:0,y:0,z:1}, pitchRadius * 0.92, '#ff6b6b', -150, 30);
+    const rotY = drawRotationArc3D({x:1,y:0,z:0}, {x:0,y:0,z:1}, pitchRadius * 1.08, '#6bff8f', 30, 210);
+    const rotZ = drawRotationArc3D({x:1,y:0,z:0}, {x:0,y:1,z:0}, yawRadius * 1.24, '#77a8ff', 210, 390);
 
     gizmoCtx.fillStyle = '#ffffff';
     gizmoCtx.beginPath();
