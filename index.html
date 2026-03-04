@@ -440,7 +440,9 @@
       background:var(--surface-subtle);
       padding:8px;
       min-height:180px;
+      cursor:pointer;
     }
+    #selectedInfoBody:hover{ background:var(--surface); }
     .itemCard{
       padding:8px;
       border:1px solid var(--line);
@@ -1504,6 +1506,7 @@
   const listEl = document.getElementById("list");
   const selectedInfoTitleEl = document.getElementById("selectedInfoTitle");
   const selectedInfoBodyEl = document.getElementById("selectedInfoBody");
+  const selectedInfoPanelEl = document.getElementById("selectedInfoPanel");
   const selectedInfoPrevBtn = document.getElementById("selectedInfoPrevBtn");
   const selectedInfoNextBtn = document.getElementById("selectedInfoNextBtn");
   const selectedInfoIndexEl = document.getElementById("selectedInfoIndex");
@@ -2448,7 +2451,7 @@
     const glbDimensions = getGlbDimensionsForItem(item);
     const lines = [
       `Item #${state.selectedInfoIndex + 1}: ${itemName}`,
-      `SSN: ${readKvValue(item, "ssn", "social_security_number")} | Type: ${typeLabel} | Type ID: ${typeIdValue}`,
+      `SSN: ${readKvValue(item, "id", "ssn", "social_security_number")} | Type: ${typeLabel} | Type ID: ${typeIdValue}`,
       `Heading: ${headingValue} | Pitch: ${pitchValue}`,
       `X: ${formatCoord(item?.x)} | Y: ${formatCoord(item?.y)} | Z: ${formatCoord(item?.z)}`,
       "",
@@ -2511,6 +2514,24 @@
       return mappedDef;
     }
     return otherItemsDef;
+  }
+
+  function isWaypointItem(it){
+    if (!it) return false;
+    return kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "ttoolindex");
+  }
+
+  function isSoundItem(it){
+    if (!it) return false;
+    const itemName = String(it?.kv?.name || it?.kv?.iai_name || "").trim().toLowerCase();
+    return kvHas(it, "soundloop") || itemName.includes("snd:");
+  }
+
+  function getItemGraphicScale(it){
+    const rawGraphicScale = Number(readKvValue(it, "graphic_scale"));
+    const baseScale = Number.isFinite(rawGraphicScale) && rawGraphicScale > 0 ? rawGraphicScale : 1;
+    if (isWaypointItem(it) || isSoundItem(it)) return Math.max(baseScale, 1.8);
+    return baseScale;
   }
 
   // DEF parser (ITEMS.DEF)
@@ -4731,6 +4752,17 @@
     renderSelectedInfoPanel();
   });
 
+  selectedInfoPanelEl?.addEventListener("click", (e) => {
+    if (e.target?.closest("button")) return;
+    const selectedItems = getSelectedItems();
+    if (!selectedItems.length) return;
+    state.selectedInfoIndex = Math.max(0, Math.min(state.selectedInfoIndex, selectedItems.length - 1));
+    const item = selectedItems[state.selectedInfoIndex];
+    if (!item) return;
+    selectById(item.id);
+    openModal();
+  });
+
   sectionCloseBtn.addEventListener("click", closeSectionEditor);
   sectionOverlay.addEventListener("mousedown", (e) => { if (e.target === sectionOverlay) closeSectionEditor(); });
   liveMisCloseBtn.addEventListener("click", closeLiveMisWindow);
@@ -5681,6 +5713,8 @@
     obj.rotation.order = "ZXY";
     obj.rotation.z = yawRad;
     obj.rotation.x = pitchRad;
+    const scale = getItemGraphicScale(it);
+    obj.scale.set(scale, scale, scale);
   }
 
   function lodDistanceForLevel(level){
