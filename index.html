@@ -1472,6 +1472,7 @@
       camera: null,
       loader: null,
       templateByGraphic: new Map(),
+      dimensionsByGraphic: new Map(),
       missingGraphics: new Set(),
       itemInstances: new Map(),
       syncPromise: null,
@@ -2383,6 +2384,43 @@
     return `${parts.whole} ${parts.fraction}`;
   }
 
+  function formatDimensionValue(v){
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "";
+    const rounded = Math.round(n * 1000) / 1000;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  }
+
+  function getGlbDimensionsForItem(item){
+    if (!item || !state.glb.ready || !state.glb.THREE) return null;
+
+    const instance = state.glb.itemInstances.get(item.id) || null;
+    const graphicKey = String(instance?.userData?.graphic || "").trim().toLowerCase();
+    if (!graphicKey) return null;
+
+    const cached = state.glb.dimensionsByGraphic.get(graphicKey);
+    if (cached) return cached;
+
+    const source = state.glb.templateByGraphic.get(graphicKey) || instance;
+    if (!source) return null;
+
+    const { THREE } = state.glb;
+    const box = new THREE.Box3();
+    const size = new THREE.Vector3();
+    source.updateMatrixWorld?.(true);
+    box.setFromObject(source);
+    if (!Number.isFinite(box.min.x) || box.isEmpty()) return null;
+    box.getSize(size);
+
+    const dims = {
+      length: formatDimensionValue(size.x),
+      width: formatDimensionValue(size.y),
+      height: formatDimensionValue(size.z),
+    };
+    state.glb.dimensionsByGraphic.set(graphicKey, dims);
+    return dims;
+  }
+
   function renderSelectedInfoPanel(){
     const selectedItems = getSelectedItems();
     const count = selectedItems.length;
@@ -2406,6 +2444,7 @@
     const groupValue = readKvValue(item, "group_id");
     const typeLabel = String(def?.type || "").trim() || readKvValue(item, "type");
     const typeIdValue = readKvValue(item, "type_id");
+    const glbDimensions = getGlbDimensionsForItem(item);
     const lines = [
       `Item #${state.selectedInfoIndex + 1}: ${itemName}`,
       `SSN: ${readKvValue(item, "ssn", "social_security_number")} | Type: ${typeLabel} | Type ID: ${typeIdValue}`,
@@ -2417,7 +2456,7 @@
       `Layer: ${readKvValue(item, "layer")}`,
       "",
       "3D model dimensions:",
-      `Length: ${readKvValue(item, "length")} | Width: ${readKvValue(item, "width")} | Height: ${readKvValue(item, "height")}`,
+      `Length: ${glbDimensions?.length || readKvValue(item, "length")} | Width: ${glbDimensions?.width || readKvValue(item, "width")} | Height: ${glbDimensions?.height || readKvValue(item, "height")}`,
       "",
       `Terrain Elev: ${readKvValue(item, "terrain_elev", "terrain_elevation")}`,
     ];
