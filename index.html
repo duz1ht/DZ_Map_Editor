@@ -1447,6 +1447,7 @@
     editorFolderHandle: null,
     currentMisFileHandle: null,
     generalTerrainNames: [],
+    soundGraphicFromOtherItems: "",
 
     itemsVersion: 0,
     filteredItemsCache: null,
@@ -2483,6 +2484,20 @@
 
   function getDefForItem(it){
     if (!it) return null;
+
+    if (kvHas(it, "soundloop")){
+      const soundGraphic = String(state.soundGraphicFromOtherItems || "").trim() || "speaker";
+      return {
+        name: "Sound",
+        id: "",
+        typeId: "",
+        type: "Sound",
+        graphic: soundGraphic,
+        attrib: [],
+        kv: { graphic: soundGraphic },
+      };
+    }
+
     const tid = kvHas(it, "type_id") ? String(it.kv.type_id) : "";
     if (!tid) return null;
     const mappedDefId = toDefIdFromMisTypeId(tid);
@@ -2497,6 +2512,15 @@
   }
 
   // DEF parser (ITEMS.DEF)
+  function extractSoundGraphicFromOtherItems(rawText){
+    const text = String(rawText || "");
+    const block = text.match(/begin\s+"Sound"([\s\S]*?)end/mi);
+    if (!block) return "";
+    const graphicMatch = block[1].match(/^\s*graphic\s+(.+)$/mi);
+    if (!graphicMatch) return "";
+    return String(graphicMatch[1] || "").trim().replace(/^"|"$/g, "");
+  }
+
   function parseItemsDef(defText){
     const text = defText.replace(/\r\n/g, "\n");
     const lines = text.split("\n");
@@ -2584,6 +2608,7 @@
     const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
     const defs = parseItemsDef(defText);
     const otherItemsText = await loadTextResource("resources/otheritems.js");
+    state.soundGraphicFromOtherItems = extractSoundGraphicFromOtherItems(otherItemsText);
     const otherItemDefs = otherItemsText ? parseItemsDef(otherItemsText) : [];
     const mergedDefs = defs.concat(otherItemDefs);
     if (!mergedDefs.length){
