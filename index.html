@@ -2968,7 +2968,7 @@
     let loadedCount = 0;
     let failedCount = 0;
     const pending = GENERAL_ENV_FILE_PATHS.map(async fileName => {
-      const path = `resources/enviroments/${fileName}`;
+      const path = `resources/environments/${fileName}`;
       const text = await loadTextResource(path);
       if (text === null){
         failedCount += 1;
