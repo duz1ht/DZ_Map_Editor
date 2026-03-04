@@ -1282,11 +1282,11 @@
 
                   <div class="stackRows">
                     <div class="kvRow">
-                      <div class="inlineLabel" style="margin:0;">Weapon Accuracy 1</div>
+                      <div class="inlineLabel" style="margin:0;">Primary Weapon Accuracy</div>
                       <input id="ui_wacc1" class="compactInput" />
                     </div>
                     <div class="kvRow">
-                      <div class="inlineLabel" style="margin:0;">Weapon Accuracy 2</div>
+                      <div class="inlineLabel" style="margin:0;">Secondary Weapon Accuracy</div>
                       <input id="ui_wacc2" class="compactInput" />
                     </div>
                     <div class="kvRow">
@@ -4284,10 +4284,18 @@
     setValueIf(ui.maxAttack, kvHas(it, "max_attack_distance") ? it.kv.max_attack_distance : "");
 
     setEnabled(ui.maxEngage, kvHas(it, "edistances"));
-    setValueIf(ui.maxEngage, kvHas(it, "edistances") ? it.kv.edistances : "");
-
-    setEnabled(ui.minEngage, kvHas(it, "perception2"));
-    setValueIf(ui.minEngage, kvHas(it, "perception2") ? it.kv.perception2 : "");
+    setEnabled(ui.minEngage, kvHas(it, "edistances"));
+    if (kvHas(it, "edistances")){
+      const [minDist = "", maxDist = ""] = String(it.kv.edistances)
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      setValueIf(ui.minEngage, minDist);
+      setValueIf(ui.maxEngage, maxDist);
+    } else {
+      setValueIf(ui.minEngage, "");
+      setValueIf(ui.maxEngage, "");
+    }
 
     setEnabled(ui.missionCritical, kvHas(it, "mission_critical"));
     setValueIf(ui.missionCritical, kvHas(it, "mission_critical") ? String(it.kv.mission_critical) === "1" : false);
@@ -4380,8 +4388,13 @@
     const wpPauseKey = kvFindKey(it, ["wp_pause", "wppause"]);
     if (wpPauseKey) it.kv[wpPauseKey] = String(parseFloatSafe(ui.wpPause.value));
     if (kvHas(it, "max_attack_distance")) it.kv.max_attack_distance = String(parseFloatSafe(ui.maxAttack.value));
-    if (kvHas(it, "edistances")) it.kv.edistances = ui.maxEngage.value;
-    if (kvHas(it, "perception2")) it.kv.perception2 = String(parseFloatSafe(ui.minEngage.value));
+    if (kvHas(it, "edistances")){
+      const minEngage = Math.trunc(Number(ui.minEngage.value));
+      const maxEngage = Math.trunc(Number(ui.maxEngage.value));
+      const minText = Number.isFinite(minEngage) ? String(minEngage) : "";
+      const maxText = Number.isFinite(maxEngage) ? String(maxEngage) : "";
+      it.kv.edistances = `${minText} ${maxText}`.trim();
+    }
 
     if (kvHas(it, "mission_critical")) it.kv.mission_critical = ui.missionCritical.checked ? "1" : "0";
 
