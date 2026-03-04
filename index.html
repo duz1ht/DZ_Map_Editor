@@ -925,7 +925,7 @@
         <div id="selectedInfoNav">
           <button id="selectedInfoPrevBtn" type="button" class="modeBtn" title="Item anterior">◀</button>
           <span id="selectedInfoIndex">0/0</span>
-          <button id="selectedInfoNextBtn" type="button" class="modeBtn" title="Próximo item">▶</button>
+          <button id="selectedInfoNextBtn" type="button" class="modeBtn" title="Next item">▶</button>
         </div>
       </div>
       <pre id="selectedInfoBody">Nenhum item selecionado.</pre>
@@ -1100,7 +1100,7 @@
 
       <div id="liveMisOverlay" aria-hidden="true">
         <div id="liveMisWindow" role="dialog" aria-modal="true" aria-label="MIS Code">
-          <div class="windowTitle">MIS Code <span class="spacer"></span><input id="liveMisSearch" placeholder="Pesquisar texto" /><button class="xbtn" id="liveMisCloseBtn">X</button></div>
+          <div class="windowTitle">MIS Code <span class="spacer"></span><input id="liveMisSearch" placeholder="Search text" /><button class="xbtn" id="liveMisCloseBtn">X</button></div>
           <pre id="liveMisText"></pre>
         </div>
       </div>
@@ -3914,7 +3914,7 @@
           await loadTerrainFromMis(sec.kv.terrain);
         } catch (err){
           addLog(`[terrain] load error after General Information OK: ${err?.message || err}`);
-          camDebugEl.textContent = `Falha ao carregar terreno: ${err.message||err}`;
+          camDebugEl.textContent = `Failed to load terrain: ${err.message||err}`;
         }
       }
       closeSectionEditor();
@@ -4014,7 +4014,7 @@
   }
 
   function runGlobalReplace(){
-    const target = prompt('Global Replace: chave (vazio = qualquer chave):', 'name');
+    const target = prompt('Global Replace: key (empty = any key):', 'name');
     if (target === null) return;
     const from = prompt('Procurar por:', '');
     if (from === null || from === '') return;
@@ -4205,7 +4205,7 @@
       const mappedDefId = toDefIdFromMisTypeId(String(it.kv.type_id || ""));
       ui.subtype.value = mappedDefId || String(it.kv.type_id || "");
     } else {
-      // fallback: mostra vazio
+      // fallback: show empty
       if (!state.defLoaded) ui.subtype.innerHTML = `<option value="">(carregue o DEF)</option>`;
       else ui.subtype.innerHTML = `<option value="">(sem type_id)</option>`;
     }
@@ -4234,7 +4234,7 @@
     setEnabled(ui.absHeight, kvHas(it, "absolute_height"));
     setValueIf(ui.absHeight, kvHas(it, "absolute_height") ? String(it.kv.absolute_height) === "1" : false);
 
-    // Facing (sempre editável na janela)
+    // Facing (always editable in the window)
     setEnabled(ui.heading, true);
     setEnabled(ui.pitch, true);
     setValueIf(ui.heading, it.heading);
@@ -4334,7 +4334,7 @@
       if (selectedDefId){
         const misTypeId = toMisTypeIdFromDefId(selectedDefId);
         it.kv.type_id = String(misTypeId || selectedDefId);
-        // Atualiza name para o nome do DEF (o editor oficial mostra isso)
+        // Update name to the DEF name (the official editor shows this)
         const def = state.defsById.get(String(selectedDefId));
         if (def && kvHas(it, "name")) it.kv.name = `"${def.name}"`.replace(/^"|"$/g,"");
         if (def && kvHas(it, "iai_name")) it.kv.iai_name = `"${def.name}"`.replace(/^"|"$/g,"");
@@ -4424,7 +4424,7 @@
     if (state.modalOpen) renderItemWindow(); // atualiza Type/Graphic/Title se DEF mudou
   }
 
-  // Edição fica pendente na janela e só é aplicada em OK.
+  // Edits remain pending in the window and are only applied on OK.
 
   function openModal(){
     const it = getSelected();
@@ -4492,7 +4492,7 @@
       renderList();
       requestRender();
       scheduleLiveMisRefresh();
-      statusEl.textContent = "Seleção limpa.";
+      statusEl.textContent = "Selection cleared.";
     }
   });
 
@@ -4567,7 +4567,7 @@
     state.pastePlacementActive = true;
     state.pastePreviewWorld = screenToWorld(sx, sy);
     requestRender();
-    statusEl.textContent = "Paste ativo: clique no canvas para aplicar na posição do ponteiro.";
+    statusEl.textContent = "Paste active: click the canvas to apply at the pointer position.";
   }
 
   function applyPasteAtWorld(world){
@@ -5243,7 +5243,7 @@
   const gizmoCanvasEl = document.getElementById("gizmoCanvas");
   const gizmoCtx = gizmoCanvasEl?.getContext("2d");
   const gl = cv.getContext('webgl',{antialias:true, alpha:false});
-  if(!gl){ statusEl.textContent = "WebGL indisponível."; throw new Error('WebGL not available'); }
+  if(!gl){ statusEl.textContent = "WebGL unavailable."; throw new Error('WebGL not available'); }
   const extUInt=gl.getExtension('OES_element_index_uint');
 
   function compile(type,src){
@@ -5809,12 +5809,12 @@
           const activeLevels = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
             ? state.glb.activeLodLevels
             : [0, 1];
-          addLog(`[3d_items] LOD por distancia ativo (unidades do mundo): ${activeLevels.map((level) => `LOD${level}>=${lodDistanceForLevel(level)}`).join(' | ')}`);
+          addLog(`[3d_items] Distance-based LOD active (world units): ${activeLevels.map((level) => `LOD${level}>=${lodDistanceForLevel(level)}`).join(' | ')}`);
           state.glb.lodConfigLogged = true;
         }
         state.glb.ready = true;
       } catch (err) {
-        addLog(`[3d_items] erro ao iniciar renderer GLB: ${err?.message || err}`);
+        addLog(`[3d_items] error starting GLB renderer: ${err?.message || err}`);
         state.glb.ready = false;
       }
       return state.glb.ready;
@@ -5882,7 +5882,7 @@
     const path = `resources/3d_items/${key}.glb`;
     try {
       const glbData = await loadBinaryResource(path);
-      if (!glbData) throw new Error(`Falha ao ler GLB: ${path}`);
+      if (!glbData) throw new Error(`Failed to read GLB: ${path}`);
 
       const basePath = path.slice(0, path.lastIndexOf("/") + 1);
       const gltf = state.glb.loader.parseAsync
@@ -5943,7 +5943,7 @@
       state.glb.templateByGraphic.set(key, placeholder);
       if (!state.glb.missingGraphics.has(key)){
         state.glb.missingGraphics.add(key);
-        addLog(`[3d_items] GLB ausente ou inválido: ${path}`);
+        addLog(`[3d_items] GLB missing or invalid: ${path}`);
       }
       return placeholder;
     }
@@ -6650,7 +6650,7 @@
       if(!folder){
         loadedTrnName=null;
         addLog(`[terrain] folder not found for '${terrain}'. First folders: ${folders.slice(0,20).join(', ')}`);
-        throw new Error(`Pasta de terreno não encontrada para terrain ${terrain}`);
+        throw new Error(`Terrain folder not found for terrain ${terrain}`);
       }
       files = TERRAIN_FILE_INDEX[folder] || [];
       addLog(`[terrain] folder matched via static index: ${folder} (indexed files: ${files.length})`);
@@ -6659,7 +6659,7 @@
     const trnFile=(files||[]).find(f=>/\.trn$/i.test(f));
     if(!trnFile){
       addLog(`[terrain] TRN not found in folder ${folder}. Files: ${files.join(', ') || '<none>'}`);
-      throw new Error(`Arquivo .trn ausente em ${folder}`);
+      throw new Error(`Missing .trn file in ${folder}`);
     }
 
     loadedTrnName=trnFile;
@@ -6669,7 +6669,7 @@
     const trnTxt = await loadTextResource(`${base}/${trnFile}`);
     if(!trnTxt){
       addLog(`[terrain] failed to read TRN file: ${base}/${trnFile}`);
-      throw new Error(`Falha ao ler TRN: ${base}/${trnFile}`);
+      throw new Error(`Failed to read TRN: ${base}/${trnFile}`);
     }
 
     function trnGetValue(re){ const mm=trnTxt.match(re); return mm?mm[1]:null; }
@@ -6715,13 +6715,13 @@
     const cptFile=findFileCaseInsensitive(files, cptRef) || (files||[]).find(f=>/\.cpt$/i.test(f)) || null;
     const resolvedColFile=findFileCaseInsensitive(files, tgaRef) || (files||[]).find(f=>/_c\.tga$/i.test(f)) || (files||[]).find(f=>/\.tga$/i.test(f)) || null;
     addLog(`[terrain] CPT reference from TRN: ${cptRef || '<none>'}; resolved CPT: ${cptFile || '<none>'}; colormap ref: ${tgaRef || '<none>'}; resolved TGA: ${resolvedColFile || '<none>'}`);
-    if(!cptFile) throw new Error(`CPT ausente em ${folder}`);
-    if(!resolvedColFile) throw new Error(`TGA ausente em ${folder}`);
+    if(!cptFile) throw new Error(`Missing CPT in ${folder}`);
+    if(!resolvedColFile) throw new Error(`Missing TGA in ${folder}`);
 
     const cptPath=`${base}/${cptFile}`;
     addLog(`[terrain] loading CPT: ${cptPath}`);
     const cptBuf=await loadBinaryResource(cptPath);
-    if(!cptBuf) throw new Error(`Falha ao ler CPT: ${cptPath}`);
+    if(!cptBuf) throw new Error(`Failed to read CPT: ${cptPath}`);
 
     const dv=new DataView(cptBuf,0xA4);
     const depth=new Uint16Array(DEPTH_W*DEPTH_H);
@@ -6731,7 +6731,7 @@
     const tgaPath=`${base}/${resolvedColFile}`;
     addLog(`[terrain] loading TGA: ${tgaPath}`);
     const tgaBuf=await loadBinaryResource(tgaPath);
-    if(!tgaBuf) throw new Error(`Falha ao ler TGA: ${tgaPath}`);
+    if(!tgaBuf) throw new Error(`Failed to read TGA: ${tgaPath}`);
     lastImg=decodeTGA(tgaBuf);
     addLog(`[terrain] TGA decoded: ${lastImg.w}x${lastImg.h}`);
 
@@ -7112,7 +7112,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   const _origLoadMisFile = loadMisFile;
   loadMisFile = async function(file, fileHandle = null){
     await _origLoadMisFile(file, fileHandle);
-    try{ await loadTerrainFromMis(); }catch(err){ addLog(`[terrain] load error: ${err?.message || err}`); camDebugEl.textContent = `Falha ao carregar terreno: ${err.message||err}`; }
+    try{ await loadTerrainFromMis(); }catch(err){ addLog(`[terrain] load error: ${err?.message || err}`); camDebugEl.textContent = `Failed to load terrain: ${err.message||err}`; }
   };
 
   function applyTheme(theme){
