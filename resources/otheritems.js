@@ -1,6 +1,13 @@
+begin "Sound"
+	graphic speaker
+	graphic_scale 10
+end
+
+
 begin "Waypoint"
 	type_id 106005
 	graphic waypoint
+	graphic_scale 10
 end
 
 
@@ -121,7 +128,5 @@ begin "Map Centerpoint, helps align commander map grid"
 	graphic
 end 
 
-begin "Sound"
-	graphic speaker
-end
+
 
