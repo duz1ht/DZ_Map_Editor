@@ -1,13 +1,13 @@
 begin "Sound"
 	graphic speaker
-	graphic_scale 10
+	graphic_scale 2
 end
 
 
 begin "Waypoint"
 	type_id 106005
 	graphic waypoint
-	graphic_scale 10
+	graphic_scale 2
 end
 
 
