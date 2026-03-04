@@ -409,6 +409,38 @@
     #misRealtimeConsole .diffAdded{ color:var(--console-added); }
     #misRealtimeConsole .diffRemoved{ color:var(--console-removed); }
     #misRealtimeConsole .diffStamp{ color:var(--console-stamp); }
+    #selectedInfoPanel{
+      margin-top:12px;
+      border:1px solid var(--line);
+      background:var(--panel);
+      border-radius:var(--radius-md);
+      padding:8px;
+      display:grid;
+      gap:8px;
+    }
+    #selectedInfoHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      font-size:12px;
+      font-weight:600;
+      color:var(--text-strong);
+    }
+    #selectedInfoNav{ display:flex; align-items:center; gap:4px; }
+    #selectedInfoNav button{ min-width:24px; height:24px; padding:0; }
+    #selectedInfoBody{
+      margin:0;
+      white-space:pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:11px;
+      line-height:1.35;
+      border:1px solid var(--line-soft);
+      border-radius:var(--radius-sm);
+      background:var(--surface-subtle);
+      padding:8px;
+      min-height:180px;
+    }
     .itemCard{
       padding:8px;
       border:1px solid var(--line);
@@ -601,6 +633,7 @@
       color:var(--text-muted);
       margin-bottom:8px;
     }
+    #ui_itemTitle{ display:none; }
     .grid2{
       display:grid;
       grid-template-columns: 1fr 1.2fr 1.45fr;
@@ -881,7 +914,19 @@
 <div class="hint" id="defStatus" style="margin-top:6px;">Item catalog loaded (embedded ITEMS.DEF).</div>
 
     <div class="row" style="margin-top:10px;">
-      <input id="search" placeholder="Search by type_id, type, name" />
+      <input id="search" placeholder="Search by type_id, id, name" />
+    </div>
+
+    <div id="selectedInfoPanel">
+      <div id="selectedInfoHeader">
+        <span id="selectedInfoTitle">Selected: 0</span>
+        <div id="selectedInfoNav">
+          <button id="selectedInfoPrevBtn" type="button" class="modeBtn" title="Item anterior">◀</button>
+          <span id="selectedInfoIndex">0/0</span>
+          <button id="selectedInfoNextBtn" type="button" class="modeBtn" title="Próximo item">▶</button>
+        </div>
+      </div>
+      <pre id="selectedInfoBody">Nenhum item selecionado.</pre>
     </div>
 
     <div id="misRealtimePanel">
@@ -1086,10 +1131,13 @@
               </div>
             </div>
 
-            <div>Type: <span id="ui_type" class="metaValue">-</span></div>
+            <div class="metaBlock">
+              <div>Type: <span id="ui_type" class="metaValue">-</span></div>
+              <div>Type ID: <span id="ui_typeId" class="metaValue">-</span></div>
+            </div>
 
             <div class="subTypeWrap">
-              <label class="inlineLabel" for="ui_subtype">Sub-Type:</label>
+              <label class="inlineLabel" for="ui_subtype">Item 3D Object:</label>
               <select id="ui_subtype"></select>
             </div>
 
@@ -1105,7 +1153,7 @@
           <div class="grid2">
             <div style="display:grid; gap:10px; align-content:start;">
               <fieldset>
-                <legend>Position (game units)</legend>
+                <legend>Position (units)</legend>
                 <div class="section">
                   <div class="stackRows">
                     <div class="kvRow">
@@ -1320,9 +1368,6 @@
             </div>
           </div>
 
-          <div class="small" style="margin-top:8px;">
-            Gray fields: the key does not exist in this .mis item (same behavior as the official editor). When DEF is loaded, Type and Graphic come from the catalog via type_id.
-          </div>
         </div>
       </div>
 
@@ -1338,6 +1383,7 @@
     items: [],
     selectedId: null,
     multiSelectedIds: new Set(),
+    selectedInfoIndex: 0,
     camera: { x: 0, y: 0, z: 800000, yaw: 0, pitch: -0.35, speed: 3000000 },
     keysDown: new Set(),
     pointerLocked: false,
@@ -1401,6 +1447,7 @@
     editorFolderHandle: null,
     currentMisFileHandle: null,
     generalTerrainNames: [],
+    soundGraphicFromOtherItems: "",
 
     itemsVersion: 0,
     filteredItemsCache: null,
@@ -1426,6 +1473,7 @@
       camera: null,
       loader: null,
       templateByGraphic: new Map(),
+      dimensionsByGraphic: new Map(),
       missingGraphics: new Set(),
       itemInstances: new Map(),
       syncPromise: null,
@@ -1434,7 +1482,7 @@
       transformDirtyIds: new Set(),
       syncCount: 0,
       lastSyncMs: 0,
-      lastSelectedVisualId: null,
+      lastSelectedVisualIds: new Set(),
       lastStats: null,
       lastSyncReport: null,
       lodDistances: [0, 280, 500],
@@ -1454,6 +1502,11 @@
   const defStatusEl = document.getElementById("defStatus");
   const searchEl = document.getElementById("search");
   const listEl = document.getElementById("list");
+  const selectedInfoTitleEl = document.getElementById("selectedInfoTitle");
+  const selectedInfoBodyEl = document.getElementById("selectedInfoBody");
+  const selectedInfoPrevBtn = document.getElementById("selectedInfoPrevBtn");
+  const selectedInfoNextBtn = document.getElementById("selectedInfoNextBtn");
+  const selectedInfoIndexEl = document.getElementById("selectedInfoIndex");
   const misRealtimeConsoleEl = document.getElementById("misRealtimeConsole");
   const misRealtimeClearBtn = document.getElementById("misRealtimeClearBtn");
   const exportBtn = document.getElementById("exportBtn");
@@ -1569,6 +1622,7 @@
     graphic: document.getElementById("ui_graphic"),
     layer: document.getElementById("ui_layer"),
     type: document.getElementById("ui_type"),
+    typeId: document.getElementById("ui_typeId"),
     subtype: document.getElementById("ui_subtype"),
     nextssn: document.getElementById("ui_nextssn"),
     itemTitle: document.getElementById("ui_itemTitle"),
@@ -2302,6 +2356,120 @@
     return state.items.find(x => x.id === state.selectedId) || null;
   }
 
+  function getSelectedItems(){
+    const ids = state.multiSelectedIds.size
+      ? Array.from(state.multiSelectedIds)
+      : (state.selectedId != null ? [state.selectedId] : []);
+    const selectedSet = new Set(ids);
+    const ordered = state.items.filter((it) => selectedSet.has(it.id));
+    if (state.selectedId != null){
+      const idx = ordered.findIndex((it) => it.id === state.selectedId);
+      if (idx > 0){
+        const [current] = ordered.splice(idx, 1);
+        ordered.unshift(current);
+      }
+    }
+    return ordered;
+  }
+
+  function readKvValue(it, ...keys){
+    for (const key of keys){
+      if (kvHas(it, key)) return String(it.kv[key] ?? "");
+    }
+    return "";
+  }
+
+  function formatCoord(v){
+    if (v === undefined || v === null || v === "") return "";
+    const parts = splitFixedPositionRaw(v);
+    return `${parts.whole} ${parts.fraction}`;
+  }
+
+  function formatDimensionValue(v){
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "";
+    const rounded = Math.round(n * 1000) / 1000;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  }
+
+  function getGlbDimensionsForItem(item){
+    if (!item || !state.glb.ready || !state.glb.THREE) return null;
+
+    const instance = state.glb.itemInstances.get(item.id) || null;
+    const graphicKey = String(instance?.userData?.graphic || "").trim().toLowerCase();
+    if (!graphicKey) return null;
+
+    const cached = state.glb.dimensionsByGraphic.get(graphicKey);
+    if (cached) return cached;
+
+    const source = state.glb.templateByGraphic.get(graphicKey) || instance;
+    if (!source) return null;
+
+    const { THREE } = state.glb;
+    const box = new THREE.Box3();
+    const size = new THREE.Vector3();
+    source.updateMatrixWorld?.(true);
+    box.setFromObject(source);
+    if (!Number.isFinite(box.min.x) || box.isEmpty()) return null;
+    box.getSize(size);
+
+    const dims = {
+      length: formatDimensionValue(size.x),
+      width: formatDimensionValue(size.y),
+      height: formatDimensionValue(size.z),
+    };
+    state.glb.dimensionsByGraphic.set(graphicKey, dims);
+    return dims;
+  }
+
+  function renderSelectedInfoPanel(){
+    const selectedItems = getSelectedItems();
+    const count = selectedItems.length;
+    if (selectedInfoTitleEl) selectedInfoTitleEl.textContent = `Selected: ${count}`;
+
+    if (!count){
+      state.selectedInfoIndex = 0;
+      if (selectedInfoIndexEl) selectedInfoIndexEl.textContent = "0/0";
+      if (selectedInfoBodyEl) selectedInfoBodyEl.textContent = "Nenhum item selecionado.";
+      if (selectedInfoPrevBtn) selectedInfoPrevBtn.disabled = true;
+      if (selectedInfoNextBtn) selectedInfoNextBtn.disabled = true;
+      return;
+    }
+
+    state.selectedInfoIndex = Math.max(0, Math.min(state.selectedInfoIndex, count - 1));
+    const item = selectedItems[state.selectedInfoIndex];
+    const def = getDefForItem(item);
+    const itemName = String(def?.name || item?.kv?.name || item?.kv?.iai_name || item?.kv?.model || "");
+    const headingValue = item?.heading ?? "";
+    const pitchValue = item?.pitch ?? "";
+    const groupValue = readKvValue(item, "group_id");
+    const typeLabel = String(def?.type || "").trim() || readKvValue(item, "type");
+    const typeIdValue = readKvValue(item, "type_id");
+    const glbDimensions = getGlbDimensionsForItem(item);
+    const lines = [
+      `Item #${state.selectedInfoIndex + 1}: ${itemName}`,
+      `SSN: ${readKvValue(item, "ssn", "social_security_number")} | Type: ${typeLabel} | Type ID: ${typeIdValue}`,
+      `Heading: ${headingValue} | Pitch: ${pitchValue}`,
+      `X: ${formatCoord(item?.x)} | Y: ${formatCoord(item?.y)} | Z: ${formatCoord(item?.z)}`,
+      "",
+      `Group: ${groupValue}`,
+      `Blink Groups: ${readKvValue(item, "blink_groups", "blink_group")}`,
+      `Layer: ${readKvValue(item, "layer")}`,
+      "",
+      "3D model dimensions:",
+      `Length: ${glbDimensions?.length || readKvValue(item, "length")} | Width: ${glbDimensions?.width || readKvValue(item, "width")} | Height: ${glbDimensions?.height || readKvValue(item, "height")}`,
+      "",
+      `Terrain Elev: ${readKvValue(item, "terrain_elev", "terrain_elevation")}`,
+    ];
+
+    if (selectedInfoIndexEl) selectedInfoIndexEl.textContent = `${state.selectedInfoIndex + 1}/${count}`;
+    if (selectedInfoBodyEl) selectedInfoBodyEl.textContent = lines.join("\n");
+
+    const canNav = count > 1;
+    if (selectedInfoPrevBtn) selectedInfoPrevBtn.disabled = !canNav;
+    if (selectedInfoNextBtn) selectedInfoNextBtn.disabled = !canNav;
+  }
+
   function toDefIdFromMisTypeId(typeId){
     const n = Number(typeId);
     if (!Number.isFinite(n)) return "";
@@ -2316,6 +2484,20 @@
 
   function getDefForItem(it){
     if (!it) return null;
+
+    if (kvHas(it, "soundloop")){
+      const soundGraphic = String(state.soundGraphicFromOtherItems || "").trim() || "speaker";
+      return {
+        name: "Sound",
+        id: "",
+        typeId: "",
+        type: "Sound",
+        graphic: soundGraphic,
+        attrib: [],
+        kv: { graphic: soundGraphic },
+      };
+    }
+
     const tid = kvHas(it, "type_id") ? String(it.kv.type_id) : "";
     if (!tid) return null;
     const mappedDefId = toDefIdFromMisTypeId(tid);
@@ -2330,6 +2512,15 @@
   }
 
   // DEF parser (ITEMS.DEF)
+  function extractSoundGraphicFromOtherItems(rawText){
+    const text = String(rawText || "");
+    const block = text.match(/begin\s+"Sound"([\s\S]*?)end/mi);
+    if (!block) return "";
+    const graphicMatch = block[1].match(/^\s*graphic\s+(.+)$/mi);
+    if (!graphicMatch) return "";
+    return String(graphicMatch[1] || "").trim().replace(/^"|"$/g, "");
+  }
+
   function parseItemsDef(defText){
     const text = defText.replace(/\r\n/g, "\n");
     const lines = text.split("\n");
@@ -2417,6 +2608,7 @@
     const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
     const defs = parseItemsDef(defText);
     const otherItemsText = await loadTextResource("resources/otheritems.js");
+    state.soundGraphicFromOtherItems = extractSoundGraphicFromOtherItems(otherItemsText);
     const otherItemDefs = otherItemsText ? parseItemsDef(otherItemsText) : [];
     const mergedDefs = defs.concat(otherItemDefs);
     if (!mergedDefs.length){
@@ -3827,9 +4019,17 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  function selectById(id){
-    state.selectedId = id;
-    state.multiSelectedIds = new Set(id != null ? [id] : []);
+  function selectById(id, options = {}){
+    const additive = !!options.additive;
+    if (!additive){
+      state.selectedId = id;
+      state.multiSelectedIds = new Set(id != null ? [id] : []);
+      state.selectedInfoIndex = 0;
+    } else if (id != null){
+      if (!state.multiSelectedIds.has(id)) state.multiSelectedIds.add(id);
+      state.selectedId = id;
+      state.selectedInfoIndex = 0;
+    }
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
     renderList();
@@ -3871,6 +4071,7 @@
   }
 
   function renderList(){
+    renderSelectedInfoPanel();
     if (!listEl) return;
     const items = getFilteredItems();
     listEl.innerHTML = items.slice(0, 1200).map(it => {
@@ -3892,7 +4093,11 @@
     }).join("");
 
     listEl.querySelectorAll(".itemCard").forEach(el => {
-      el.addEventListener("click", () => selectById(Number(el.dataset.id)));
+      el.addEventListener("click", (evt) => {
+        const id = Number(el.dataset.id);
+        const canAdd = evt.shiftKey && state.selectedId != null && id !== state.selectedId;
+        selectById(id, { additive: canAdd });
+      });
       el.addEventListener("dblclick", () => {
         selectById(Number(el.dataset.id));
         openModal();
@@ -3939,6 +4144,7 @@
     if (!it){
       ui.itemTitle.textContent = "No item selected.";
       ui.presenceHint.textContent = "";
+      setValueIf(ui.typeId, "-");
       return;
     }
 
@@ -3953,12 +4159,11 @@
 
     const typeText = def?.type ? def.type : (kvHas(it, "type_id") ? `type_id ${it.kv.type_id}` : "");
     setValueIf(ui.type, typeText);
+    setValueIf(ui.typeId, kvHas(it, "type_id") ? String(it.kv.type_id) : "-");
 
     const title = def?.name ? def.name : (kvHas(it, "name") ? it.kv.name : (kvHas(it, "iai_name") ? it.kv.iai_name : "(sem name)"));
     ui.itemTitle.textContent = title;
-    ui.presenceHint.textContent = state.defLoaded
-      ? "Gray fields: the key does not exist in this .mis item. Type/Graphic/Sub-Type come from DEF via type_id."
-      : "Gray fields: the key does not exist in this .mis item. Load ITEMS.DEF to populate Type/Graphic/Sub-Type.";
+    ui.presenceHint.textContent = "";
 
     setEnabled(ui.layer, kvHas(it, "layer"));
     if (kvHas(it, "layer")) ui.layer.value = String(it.kv.layer);
@@ -4508,6 +4713,20 @@
     selectById(best.id);
     focusCameraNearItem(best);
     statusEl.textContent = `Selecionado #${best.id} via busca.`;
+  });
+
+  selectedInfoPrevBtn?.addEventListener("click", () => {
+    const total = getSelectedItems().length;
+    if (total <= 1) return;
+    state.selectedInfoIndex = (state.selectedInfoIndex - 1 + total) % total;
+    renderSelectedInfoPanel();
+  });
+
+  selectedInfoNextBtn?.addEventListener("click", () => {
+    const total = getSelectedItems().length;
+    if (total <= 1) return;
+    state.selectedInfoIndex = (state.selectedInfoIndex + 1) % total;
+    renderSelectedInfoPanel();
   });
 
   sectionCloseBtn.addEventListener("click", closeSectionEditor);
@@ -5787,7 +6006,7 @@
       applyWireframeToGlbObject(instance);
     }
     if (state.glb.ready){
-      state.glb.lastSelectedVisualId = null;
+      state.glb.lastSelectedVisualIds.clear();
       updateSelectedGlbVisual();
     }
     if (showGlbWireframeEl) showGlbWireframeEl.checked = next;
@@ -6004,13 +6223,45 @@
 
   function updateSelectedGlbVisual(){
     if (!state.glb.ready) return;
-    const current = state.selectedId;
-    if (state.glb.lastSelectedVisualId === current) return;
-    const prevInstance = state.glb.itemInstances.get(state.glb.lastSelectedVisualId);
-    setGlbInstanceSelected(prevInstance, false);
-    const curInstance = state.glb.itemInstances.get(current);
-    setGlbInstanceSelected(curInstance, true);
-    state.glb.lastSelectedVisualId = current ?? null;
+    const nextIds = new Set(
+      state.multiSelectedIds.size
+        ? Array.from(state.multiSelectedIds)
+        : (state.selectedId != null ? [state.selectedId] : [])
+    );
+    const prevIds = state.glb.lastSelectedVisualIds || new Set();
+
+    let changed = nextIds.size !== prevIds.size;
+    if (!changed){
+      for (const id of nextIds){
+        if (!prevIds.has(id)){
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed){
+      for (const nextId of nextIds){
+        const instance = state.glb.itemInstances.get(nextId);
+        if (!instance || !instance.userData || instance.userData._selectedGlbVisual !== true){
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed) return;
+
+    for (const prevId of prevIds){
+      if (nextIds.has(prevId)) continue;
+      const prevInstance = state.glb.itemInstances.get(prevId);
+      setGlbInstanceSelected(prevInstance, false);
+    }
+    for (const nextId of nextIds){
+      if (prevIds.has(nextId)) continue;
+      const nextInstance = state.glb.itemInstances.get(nextId);
+      setGlbInstanceSelected(nextInstance, true);
+    }
+
+    state.glb.lastSelectedVisualIds = nextIds;
   }
 
   function getItemIdFromObject3D(obj){
@@ -6256,6 +6507,21 @@
     if (sec) sec.kv = { ...it.kv };
     markItemsChanged({ structure: false });
     markItemTransformDirty(it.id);
+    scheduleLiveMisRefresh();
+    scheduleRenderList();
+  }
+
+  function commitGizmoUpdates(items){
+    const valid = (items || []).filter(Boolean);
+    if (!valid.length) return;
+    for (const it of valid){
+      if (kvHas(it, "position")) it.kv.position = `${it.x} ${it.y} ${it.z}`;
+      applyItemOrientationToKv(it);
+      const sec = getItemSectionByStartFast(it.start);
+      if (sec) sec.kv = { ...it.kv };
+      markItemTransformDirty(it.id);
+    }
+    markItemsChanged({ structure: false });
     scheduleLiveMisRefresh();
     scheduleRenderList();
   }
@@ -6604,7 +6870,10 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     if (!state.pastePlacementActive){
       const gizmoMode = pickGizmoModeAt(e.clientX, e.clientY);
       if (gizmoMode && state.selectedId != null){
-        state.gizmoDrag = { mode: gizmoMode, lastX: e.clientX, lastY: e.clientY, itemId: state.selectedId };
+        const dragItemIds = state.multiSelectedIds.size
+          ? Array.from(state.multiSelectedIds)
+          : [state.selectedId];
+        state.gizmoDrag = { mode: gizmoMode, lastX: e.clientX, lastY: e.clientY, itemId: state.selectedId, itemIds: dragItemIds };
         state.lastMouse = { sx, sy };
         return;
       }
@@ -6621,7 +6890,8 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     state.draggingItem = false;
     state.boxSelecting = false;
     state.boxSelectAdditive = false;
-    selectById(picked ? picked.id : null);
+    const additiveSelection = !!(e.shiftKey && picked && state.selectedId != null && picked.id !== state.selectedId && state.multiSelectedIds.has(state.selectedId));
+    selectById(picked ? picked.id : null, { additive: additiveSelection });
     state.lastMouse = { sx, sy };
   });
   cv.addEventListener("contextmenu", (e) => { e.preventDefault(); if(state.cameraLookActive || (state.cameraLookPending&&state.cameraLookButton===2)) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAtCanvas(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
@@ -6692,64 +6962,76 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
 
   window.addEventListener("mousemove", (e) => {
     if (!state.gizmoDrag) return;
-    const it = getItemByIdFast(state.gizmoDrag.itemId);
-    if (!it || state.selectedId !== state.gizmoDrag.itemId){ state.gizmoDrag = null; return; }
+    const dragIds = Array.isArray(state.gizmoDrag.itemIds) && state.gizmoDrag.itemIds.length
+      ? state.gizmoDrag.itemIds
+      : (state.gizmoDrag.itemId != null ? [state.gizmoDrag.itemId] : []);
+    const activeItems = dragIds
+      .map((id) => getItemByIdFast(id))
+      .filter(Boolean);
+    if (!activeItems.length || !activeItems.some((it) => it.id === state.selectedId)){
+      state.gizmoDrag = null;
+      return;
+    }
 
     const dx = e.clientX - state.gizmoDrag.lastX;
     const dy = e.clientY - state.gizmoDrag.lastY;
     state.gizmoDrag.lastX = e.clientX;
     state.gizmoDrag.lastY = e.clientY;
 
-    const currentW = { x: rawToWorld(it.x,'x'), y: rawToWorld(it.y,'y'), z: rawToWorld(it.z||0,'z') };
     const mode = state.gizmoDrag.mode;
-    if (mode === "moveX" || mode === "moveY"){
-      const rect = cv.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      const prev = screenToWorld(sx - dx, sy - dy, currentW.z);
-      const now = screenToWorld(sx, sy, currentW.z);
-      const wx = now.x - prev.x;
-      const wy = now.y - prev.y;
-      if (mode === "moveX") it.x = worldToRaw(currentW.x + wx, 'x');
-      if (mode === "moveY") it.y = worldToRaw(currentW.y + wy, 'y');
-    } else if (mode === "moveXY"){
-      const rect = cv.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      const prev = screenToWorld(sx - dx, sy - dy, currentW.z);
-      const now = screenToWorld(sx, sy, currentW.z);
-      it.x = worldToRaw(currentW.x + (now.x - prev.x), 'x');
-      it.y = worldToRaw(currentW.y + (now.y - prev.y), 'y');
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    if (mode === "moveX" || mode === "moveY" || mode === "moveXY"){
+      const anchor = activeItems[0];
+      const anchorW = { x: rawToWorld(anchor.x,'x'), y: rawToWorld(anchor.y,'y'), z: rawToWorld(anchor.z||0,'z') };
+      const prev = screenToWorld(sx - dx, sy - dy, anchorW.z);
+      const now = screenToWorld(sx, sy, anchorW.z);
+      const moveDx = now.x - prev.x;
+      const moveDy = now.y - prev.y;
+      for (const it of activeItems){
+        const currentW = { x: rawToWorld(it.x,'x'), y: rawToWorld(it.y,'y') };
+        if (mode === "moveX" || mode === "moveXY") it.x = worldToRaw(currentW.x + moveDx, 'x');
+        if (mode === "moveY" || mode === "moveXY") it.y = worldToRaw(currentW.y + moveDy, 'y');
+      }
     } else if (mode === "moveXZ"){
       const scale = 1.1;
-      it.x = worldToRaw(currentW.x + (dx * scale), 'x');
-      it.z = worldToRaw(currentW.z - (dy * scale), 'z');
+      for (const it of activeItems){
+        const currentW = { x: rawToWorld(it.x,'x'), z: rawToWorld(it.z||0,'z') };
+        it.x = worldToRaw(currentW.x + (dx * scale), 'x');
+        it.z = worldToRaw(currentW.z - (dy * scale), 'z');
+      }
     } else if (mode === "moveYZ"){
       const scale = 1.1;
-      it.y = worldToRaw(currentW.y + (dx * scale), 'y');
-      it.z = worldToRaw(currentW.z - (dy * scale), 'z');
+      for (const it of activeItems){
+        const currentW = { y: rawToWorld(it.y,'y'), z: rawToWorld(it.z||0,'z') };
+        it.y = worldToRaw(currentW.y + (dx * scale), 'y');
+        it.z = worldToRaw(currentW.z - (dy * scale), 'z');
+      }
     } else if (mode === "moveZ"){
-      const rect = cv.getBoundingClientRect();
-      const sampleSx = Math.max(1, Math.min(rect.width - 2, state.gizmoVisual?.center?.sx ?? (e.clientX - rect.left)));
-      const sampleSy = Math.max(1, Math.min(rect.height - 2, state.gizmoVisual?.center?.sy ?? (e.clientY - rect.top)));
-      const p0 = screenToWorld(sampleSx, sampleSy, currentW.z);
-      const p1 = screenToWorld(sampleSx, sampleSy + 1, currentW.z);
+      const anchor = activeItems[0];
+      const anchorZ = rawToWorld(anchor.z||0,'z');
+      const sampleSx = Math.max(1, Math.min(rect.width - 2, state.gizmoVisual?.center?.sx ?? sx));
+      const sampleSy = Math.max(1, Math.min(rect.height - 2, state.gizmoVisual?.center?.sy ?? sy));
+      const p0 = screenToWorld(sampleSx, sampleSy, anchorZ);
+      const p1 = screenToWorld(sampleSx, sampleSy + 1, anchorZ);
       const rawUnitsPerPixel = Math.hypot(p1.x - p0.x, p1.y - p0.y);
       const unitsPerPixel = Math.min(3.0, Math.max(0.03, Number.isFinite(rawUnitsPerPixel) ? rawUnitsPerPixel : 0.03));
       const zSensitivity = 0.25;
       const safeDy = Math.max(-36, Math.min(36, dy));
       const maxStep = Math.max(0.5, Math.min(unitsPerPixel * 12, 16));
       const dz = Math.max(-maxStep, Math.min(maxStep, -safeDy * unitsPerPixel * zSensitivity));
-      it.z = worldToRaw(currentW.z + dz, 'z');
+      for (const it of activeItems){
+        const currentZ = rawToWorld(it.z||0,'z');
+        it.z = worldToRaw(currentZ + dz, 'z');
+      }
     } else if (mode === "rotX" || mode === "rotZ"){
       const handle = state.gizmoVisual?.handles?.[mode];
-      const rect = cv.getBoundingClientRect();
-      const prevSx = e.clientX - rect.left - dx;
-      const prevSy = e.clientY - rect.top - dy;
-      const nowSx = e.clientX - rect.left;
-      const nowSy = e.clientY - rect.top;
-      const cx = handle?.sx ?? (state.gizmoVisual?.center?.sx || nowSx);
-      const cy = handle?.sy ?? (state.gizmoVisual?.center?.sy || nowSy);
+      const prevSx = sx - dx;
+      const prevSy = sy - dy;
+      const cx = handle?.sx ?? (state.gizmoVisual?.center?.sx || sx);
+      const cy = handle?.sy ?? (state.gizmoVisual?.center?.sy || sy);
       function ringAngle(px, py){
         if (handle && Number.isFinite(handle.ux) && Number.isFinite(handle.uy) && Number.isFinite(handle.vx) && Number.isFinite(handle.vy)){
           const rx = px - cx;
@@ -6760,16 +7042,18 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
         }
         return Math.atan2(py - cy, px - cx);
       }
-      let da = ringAngle(nowSx, nowSy) - ringAngle(prevSx, prevSy);
+      let da = ringAngle(sx, sy) - ringAngle(prevSx, prevSy);
       if (da > Math.PI) da -= Math.PI * 2;
       if (da < -Math.PI) da += Math.PI * 2;
       const dragSign = Number(handle?.dragSign) || 1;
       const deltaDeg = da * (180 / Math.PI) * dragSign;
-      if (mode === "rotX") it.pitch = (Number(it.pitch) || 0) + deltaDeg;
-      if (mode === "rotZ") it.heading = (Number(it.heading) || 0) - deltaDeg;
+      for (const it of activeItems){
+        if (mode === "rotX") it.pitch = (Number(it.pitch) || 0) + deltaDeg;
+        if (mode === "rotZ") it.heading = (Number(it.heading) || 0) - deltaDeg;
+      }
     }
 
-    commitGizmoUpdate(it);
+    commitGizmoUpdates(activeItems);
     updateItemGizmo();
   });
 

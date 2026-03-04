@@ -121,4 +121,7 @@ begin "Map Centerpoint, helps align commander map grid"
 	graphic
 end 
 
+begin "Sound"
+	graphic speaker
+end
 
