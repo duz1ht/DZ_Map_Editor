@@ -2516,22 +2516,11 @@
     return otherItemsDef;
   }
 
-  function isWaypointItem(it){
-    if (!it) return false;
-    return kvHas(it, "waypoint_id") || kvHas(it, "wpnumber") || kvHas(it, "ttoolindex");
-  }
-
-  function isSoundItem(it){
-    if (!it) return false;
-    const itemName = String(it?.kv?.name || it?.kv?.iai_name || "").trim().toLowerCase();
-    return kvHas(it, "soundloop") || itemName.includes("snd:");
-  }
-
   function getItemGraphicScale(it){
-    const rawGraphicScale = Number(readKvValue(it, "graphic_scale"));
-    const baseScale = Number.isFinite(rawGraphicScale) && rawGraphicScale > 0 ? rawGraphicScale : 1;
-    if (isWaypointItem(it) || isSoundItem(it)) return Math.max(baseScale, 1.8);
-    return baseScale;
+    const def = getDefForItem(it);
+    const rawGraphicScale = Number(def?.graphicScale);
+    if (Number.isFinite(rawGraphicScale) && rawGraphicScale > 0) return rawGraphicScale;
+    return 1;
   }
 
   // DEF parser (ITEMS.DEF)
@@ -2564,6 +2553,7 @@
           typeId: "",
           type: "",
           graphic: "",
+          graphicScale: 1,
           attrib: [],
           kv: {},
         };
@@ -2601,6 +2591,10 @@
         if (k === "type_id") cur.typeId = v;
         if (k === "type") cur.type = v;
         if (k === "graphic") cur.graphic = v;
+        if (k === "graphic_scale"){
+          const numericScale = Number(v);
+          if (Number.isFinite(numericScale) && numericScale > 0) cur.graphicScale = numericScale;
+        }
 
         continue;
       }
