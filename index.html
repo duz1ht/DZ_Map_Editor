@@ -1450,6 +1450,7 @@
     currentMisFileHandle: null,
     generalTerrainNames: [],
     soundGraphicFromOtherItems: "",
+    soundGraphicScaleFromOtherItems: 1,
 
     itemsVersion: 0,
     filteredItemsCache: null,
@@ -2492,12 +2493,15 @@
     const isNamedSound = itemName.toLowerCase().includes("snd:");
     if (kvHas(it, "soundloop") || isNamedSound){
       const soundGraphic = String(state.soundGraphicFromOtherItems || "").trim() || "speaker";
+      const rawSoundScale = Number(state.soundGraphicScaleFromOtherItems);
+      const soundGraphicScale = Number.isFinite(rawSoundScale) && rawSoundScale > 0 ? rawSoundScale : 1;
       return {
         name: "Sound",
         id: "",
         typeId: "",
         type: "Sound",
         graphic: soundGraphic,
+        graphicScale: soundGraphicScale,
         attrib: [],
         kv: { graphic: soundGraphic },
       };
@@ -2524,13 +2528,18 @@
   }
 
   // DEF parser (ITEMS.DEF)
-  function extractSoundGraphicFromOtherItems(rawText){
+  function extractSoundDefinitionFromOtherItems(rawText){
     const text = String(rawText || "");
     const block = text.match(/begin\s+"Sound"([\s\S]*?)end/mi);
-    if (!block) return "";
+    if (!block) return { graphic: "", graphicScale: 1 };
     const graphicMatch = block[1].match(/^\s*graphic\s+(.+)$/mi);
-    if (!graphicMatch) return "";
-    return String(graphicMatch[1] || "").trim().replace(/^"|"$/g, "");
+    const graphic = graphicMatch
+      ? String(graphicMatch[1] || "").trim().replace(/^"|"$/g, "")
+      : "";
+    const graphicScaleMatch = block[1].match(/^\s*graphic_scale\s+(.+)$/mi);
+    const parsedGraphicScale = graphicScaleMatch ? Number(String(graphicScaleMatch[1] || "").trim()) : NaN;
+    const graphicScale = Number.isFinite(parsedGraphicScale) && parsedGraphicScale > 0 ? parsedGraphicScale : 1;
+    return { graphic, graphicScale };
   }
 
   function parseItemsDef(defText){
@@ -2625,7 +2634,9 @@
     const defText = (window.BHD_ITEMS_DEF_TEXT || "").toString();
     const defs = parseItemsDef(defText);
     const otherItemsText = await loadTextResource("resources/otheritems.js");
-    state.soundGraphicFromOtherItems = extractSoundGraphicFromOtherItems(otherItemsText);
+    const soundDef = extractSoundDefinitionFromOtherItems(otherItemsText);
+    state.soundGraphicFromOtherItems = soundDef.graphic;
+    state.soundGraphicScaleFromOtherItems = soundDef.graphicScale;
     const otherItemDefs = otherItemsText ? parseItemsDef(otherItemsText) : [];
     const mergedDefs = defs.concat(otherItemDefs);
     if (!mergedDefs.length){
