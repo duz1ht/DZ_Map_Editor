@@ -2485,7 +2485,9 @@
   function getDefForItem(it){
     if (!it) return null;
 
-    if (kvHas(it, "soundloop")){
+    const itemName = String(it?.kv?.name || it?.kv?.iai_name || "").trim().replace(/^"|"$/g, "");
+    const isNamedSound = itemName.toLowerCase().includes("snd:");
+    if (kvHas(it, "soundloop") || isNamedSound){
       const soundGraphic = String(state.soundGraphicFromOtherItems || "").trim() || "speaker";
       return {
         name: "Sound",
