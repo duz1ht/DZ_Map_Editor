@@ -885,6 +885,8 @@
     #sectionWindow.generalInfoMode #sectionEditor{ grid-template-rows:1fr auto; }
     #sectionWindow.generalInfoMode #sectionActions{ display:none; }
     #sectionWindow.narrowEditMode{ width:min(760px,100%); }
+    #sectionWindow.uniformSectionsMode{ width:min(760px,100%); max-height:min(760px,100%); }
+    #sectionWindow.uniformSectionsMode #sectionBody{ height:520px; }
     #sectionWindow.layerMode{ width:min(760px,100%); max-height:min(760px,100%); }
     #sectionWindow.layerMode #sectionKindSelect,
     #sectionWindow.layerMode #sectionSearch,
@@ -3645,8 +3647,10 @@
     const isNarrowEdit = state.sectionKind === "briefing"
       || state.sectionKind === "event"
       || state.sectionKind === "weapon_availability";
+    const isUniformSectionsMode = isGroup || isWaypoint || isAreaTrig || isLayer || isNarrowEdit;
     sectionWindow.classList.toggle("compactMode", isGroup || isWaypoint || isAreaTrig);
     sectionWindow.classList.toggle("narrowEditMode", isNarrowEdit);
+    sectionWindow.classList.toggle("uniformSectionsMode", isUniformSectionsMode);
     sectionWindow.classList.toggle("groupMode", isGroup);
     sectionWindow.classList.toggle("waypointMode", isWaypoint);
     sectionWindow.classList.toggle("generalInfoMode", isGeneralInfo);
