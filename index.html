@@ -884,6 +884,21 @@
     #sectionWindow.generalInfoMode #sectionBody{ grid-template-columns:1fr; height:auto; }
     #sectionWindow.generalInfoMode #sectionEditor{ grid-template-rows:1fr auto; }
     #sectionWindow.generalInfoMode #sectionActions{ display:none; }
+    #sectionWindow.layerMode{ width:min(760px,100%); max-height:min(520px,100%); }
+    #sectionWindow.layerMode #sectionKindSelect,
+    #sectionWindow.layerMode #sectionSearch,
+    #sectionWindow.layerMode #sectionAddBtn,
+    #sectionWindow.layerMode #sectionMeta,
+    #sectionWindow.layerMode #sectionHint,
+    #sectionWindow.layerMode #sectionText,
+    #sectionWindow.layerMode #sectionActions{ display:none; }
+    #sectionWindow.layerMode #sectionBody{ grid-template-columns:260px 1fr; height:340px; }
+    #sectionWindow.layerMode #sectionEditor{ grid-template-rows:1fr; }
+    #layerEditor{ display:none; gap:8px; align-content:start; }
+    #sectionWindow.layerMode #layerEditor{ display:grid; }
+    .layerField{ display:grid; grid-template-columns:72px 1fr; gap:8px; align-items:center; }
+    .layerField input{ width:100%; }
+    #layerActions{ display:flex; justify-content:flex-end; }
     #generalInfoEditor{ display:none; font-size:12px; }
     #sectionWindow.generalInfoMode #generalInfoEditor{ display:block; }
     .giLayout{ display:grid; grid-template-columns: 1fr 1.55fr 1fr; gap:10px; }
@@ -1091,6 +1106,11 @@
                 <label class="checkRow"><input type="checkbox" id="wpBlueTeam" /><span>Blue Team Waypoint</span></label>
                 <label class="checkRow"><input type="checkbox" id="wpRedTeam" /><span>Red Team Waypoint</span></label>
                 <div id="wpMarkerCount">Markers selected: 0</div>
+              </div>
+              <div id="layerEditor">
+                <div class="layerField"><label for="layerNameInput">Name:</label><input id="layerNameInput" /></div>
+                <div class="layerField"><label for="layerColorInput">Color:</label><input id="layerColorInput" /></div>
+                <div id="layerActions"><button id="layerOkBtn" type="button">Ok</button></div>
               </div>
               <div class="btnRow" id="sectionActions"><button id="sectionDeleteBtn">Delete block</button><button id="sectionApplyBtn">Apply block</button></div>
             </div>
@@ -1548,6 +1568,9 @@
   const wpBlueTeam = document.getElementById("wpBlueTeam");
   const wpRedTeam = document.getElementById("wpRedTeam");
   const wpMarkerCount = document.getElementById("wpMarkerCount");
+  const layerNameInput = document.getElementById("layerNameInput");
+  const layerColorInput = document.getElementById("layerColorInput");
+  const layerOkBtn = document.getElementById("layerOkBtn");
 
   const giMissionName = document.getElementById("giMissionName");
   const giDesigner = document.getElementById("giDesigner");
@@ -3263,6 +3286,63 @@
     return state.sectionBlocks.find(s => s.kind === "waypoint" && parseWaypointNumber(s) === n) || null;
   }
 
+  function parseLayerNumber(sec){
+    if (!sec || sec.kind !== "layer") return null;
+    const fromLabel = Number((sec.label || "").trim());
+    if (Number.isInteger(fromLabel) && fromLabel >= 1 && fromLabel <= 32) return fromLabel;
+    const m = String(sec.beginLine || "").trim().match(/^begin\s+layer\s+(\d+)$/i);
+    if (m) return Number(m[1]);
+    return null;
+  }
+
+  function getLayerSectionByNumber(n){
+    return state.sectionBlocks.find(s => s.kind === "layer" && parseLayerNumber(s) === n) || null;
+  }
+
+  function fillLayerEditor(sec){
+    const name = sec?.kv?.description || "";
+    const color = sec?.kv?.color || "";
+    layerNameInput.value = String(name);
+    layerColorInput.value = String(color);
+  }
+
+  function saveCurrentLayer(){
+    const n = Math.max(1, Math.min(32, Number(state.sectionSelectedId) || 1));
+    let sec = getLayerSectionByNumber(n);
+    const name = String(layerNameInput.value || "").trim();
+    const color = String(layerColorInput.value || "").trim();
+
+    if (!sec){
+      const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
+      sec = {
+        id: nextId,
+        kind: 'layer',
+        label: String(n),
+        start: Number.MAX_SAFE_INTEGER - nextId,
+        end: Number.MAX_SAFE_INTEGER - nextId,
+        beginLine: `begin layer ${n}`,
+        lines: [],
+        kv: {},
+      };
+      state.sectionBlocks.push(sec);
+    }
+
+    sec.beginLine = `begin layer ${n}`;
+    sec.label = String(n);
+    sec.kv = {};
+    sec.lines = [];
+    if (name){
+      sec.kv.description = name;
+      sec.lines.push(`  description "${name.replace(/"/g, "")}"`);
+    }
+    if (color){
+      sec.kv.color = color;
+      sec.lines.push(`  color "${color.replace(/"/g, "")}"`);
+    }
+    markItemsChanged({ structure: false, invalidateFilter: false });
+    scheduleLiveMisRefresh();
+  }
+
   function getWaypointDescription(sec){
     return sec?.kv?.description ? String(sec.kv.description) : "";
   }
@@ -3534,10 +3614,12 @@
     const isGroup = state.sectionKind === "group";
     const isWaypoint = state.sectionKind === "waypoint";
     const isAreaTrig = state.sectionKind === "areatrig";
+    const isLayer = state.sectionKind === "layer";
     sectionWindow.classList.toggle("compactMode", isGroup || isWaypoint || isAreaTrig);
     sectionWindow.classList.toggle("groupMode", isGroup);
     sectionWindow.classList.toggle("waypointMode", isWaypoint);
     sectionWindow.classList.toggle("generalInfoMode", isGeneralInfo);
+    sectionWindow.classList.toggle("layerMode", isLayer);
     if (isGeneralInfo){
       sectionApplyBtn.textContent = "OK";
       sectionDeleteBtn.textContent = "Cancel";
@@ -3804,6 +3886,22 @@
       return;
     }
 
+    if (kind === "layer"){
+      sectionDeleteBtn.disabled = true;
+      const cards = [];
+      for (let n=1; n<=32; n++){
+        const sec = getLayerSectionByNumber(n);
+        const desc = String(sec?.kv?.description || "");
+        const label = desc ? `${n} - ${desc}` : `${n}`;
+        cards.push({ n, label });
+      }
+      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.sectionSelectedId===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("");
+      sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
+      if (!state.sectionSelectedId || state.sectionSelectedId < 1 || state.sectionSelectedId > 32) state.sectionSelectedId = 1;
+      selectSectionBlock(state.sectionSelectedId);
+      return;
+    }
+
     sectionDeleteBtn.disabled = false;
     const secs = getSectionsByKind(kind).filter(s => kind === "general_information" || !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
     sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
@@ -3829,6 +3927,15 @@
       state.selectedWaypointMarkerIds.clear();
       updateWaypointMarkerCount(0);
       fillWaypointEditor(sec);
+      return;
+    }
+
+    if (state.sectionKind === "layer"){
+      const layerNumber = Math.max(1, Math.min(32, Number(id) || 1));
+      state.sectionSelectedId = layerNumber;
+      sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===layerNumber));
+      const sec = getLayerSectionByNumber(layerNumber);
+      fillLayerEditor(sec);
       return;
     }
 
@@ -4786,6 +4893,11 @@
   sectionSearch.addEventListener("input", renderSectionList);
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
+  layerOkBtn.addEventListener("click", () => {
+    if (state.sectionKind !== "layer") return;
+    saveCurrentLayer();
+    closeSectionEditor();
+  });
   giOkBtn.addEventListener("click", applySectionBlock);
   giCancelBtn.addEventListener("click", deleteSectionBlock);
   sectionAddBtn.addEventListener("click", addSectionBlock);
