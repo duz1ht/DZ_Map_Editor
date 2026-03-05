@@ -877,6 +877,8 @@
       margin-bottom:6px;
       flex-wrap:nowrap;
       align-items:center;
+      justify-content:flex-start;
+      white-space:nowrap;
     }
     #sectionWindow #sectionQuickNav{ max-width:190px; }
     #sectionTopControls{ display:flex; gap:8px; flex-wrap:wrap; }
@@ -886,12 +888,18 @@
     #sectionTopControls button,
     #sectionBody input:not([type="checkbox"]):not([type="radio"]),
     #sectionBody select,
-    #sectionBody button,
+    #sectionBody button{
+      height:22px !important;
+      min-height:22px !important;
+      padding-top:1px;
+      padding-bottom:1px;
+      line-height:1.1;
+    }
     #sectionBody textarea{
       min-height:22px;
-      padding-top:2px;
-      padding-bottom:2px;
-      line-height:1.15;
+      padding-top:1px;
+      padding-bottom:1px;
+      line-height:1.1;
     }
     #sectionWindow.generalInfoMode{ width:min(1240px,100%); max-height:min(760px,100%); }
     #sectionWindow.generalInfoMode #sectionTopControls,
@@ -903,8 +911,8 @@
     #sectionWindow.generalInfoMode #sectionEditor{ grid-template-rows:1fr auto; }
     #sectionWindow.generalInfoMode #sectionActions{ display:none; }
     #sectionWindow.narrowEditMode{ width:min(760px,100%); }
-    #sectionWindow.uniformSectionsMode{ width:min(760px,100%); height:min(684px,100%); max-height:min(684px,100%); }
-    #sectionWindow.uniformSectionsMode #sectionBody{ height:468px; }
+    #sectionWindow.uniformSectionsMode{ width:min(760px,100%) !important; height:min(684px,100%) !important; max-height:min(684px,100%) !important; }
+    #sectionWindow.uniformSectionsMode #sectionBody{ height:468px !important; }
     #sectionWindow.layerMode{ }
     #sectionWindow.layerMode #sectionKindSelect,
     #sectionWindow.layerMode #sectionSearch,
@@ -913,7 +921,7 @@
     #sectionWindow.layerMode #sectionHint,
     #sectionWindow.layerMode #sectionText,
     #sectionWindow.layerMode #sectionActions{ display:none; }
-    #sectionWindow.layerMode #sectionBody{ grid-template-columns:260px 1fr; height:468px; }
+    #sectionWindow.layerMode #sectionBody{ grid-template-columns:260px 1fr; height:468px !important; }
     #sectionWindow.layerMode #sectionEditor{ grid-template-rows:1fr; }
     #layerEditor{ display:none; gap:8px; align-content:start; }
     #sectionWindow.layerMode #layerEditor{ display:grid; }
