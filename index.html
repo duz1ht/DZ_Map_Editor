@@ -873,16 +873,25 @@
     #waypointTopActions{ display:none; gap:8px; }
     #sectionWindow.waypointMode #waypointTopActions{ display:flex; }
     #sectionWindow.waypointMode #sectionAddBtn{ display:none; }
+    #sectionWindow .windowTitle{
+      margin-bottom:6px;
+      flex-wrap:nowrap;
+      align-items:center;
+    }
+    #sectionWindow #sectionQuickNav{ max-width:190px; }
     #sectionTopControls{ display:flex; gap:8px; flex-wrap:wrap; }
     #sectionTopControls select, #sectionTopControls input{ max-width:220px; }
-    #sectionWindow input:not([type="checkbox"]):not([type="radio"]),
-    #sectionWindow select,
-    #sectionWindow button,
-    #sectionWindow textarea{
-      min-height:26px;
-      padding-top:3px;
-      padding-bottom:3px;
-      line-height:1.2;
+    #sectionTopControls input:not([type="checkbox"]):not([type="radio"]),
+    #sectionTopControls select,
+    #sectionTopControls button,
+    #sectionBody input:not([type="checkbox"]):not([type="radio"]),
+    #sectionBody select,
+    #sectionBody button,
+    #sectionBody textarea{
+      min-height:22px;
+      padding-top:2px;
+      padding-bottom:2px;
+      line-height:1.15;
     }
     #sectionWindow.generalInfoMode{ width:min(1240px,100%); max-height:min(760px,100%); }
     #sectionWindow.generalInfoMode #sectionTopControls,
@@ -1023,7 +1032,7 @@
 
       <div id="sectionOverlay" aria-hidden="true">
         <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
-          <div class="windowTitle"><span id="sectionWindowTitleText">General Information</span><span class="spacer"></span><label class="inlineLabel" for="sectionQuickNav" style="margin:0;">Go to:</label><select id="sectionQuickNav" class="midInput" style="max-width:220px;">
+          <div class="windowTitle"><span id="sectionWindowTitleText">General Information</span><span class="spacer"></span><label class="inlineLabel" for="sectionQuickNav" style="margin:0;">Go to:</label><select id="sectionQuickNav" class="midInput" style="max-width:190px;">
               <option value="briefing">Briefing</option>
               <option value="group">Groups</option>
               <option value="waypoint">Waypoints</option>
