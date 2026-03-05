@@ -852,7 +852,7 @@
     #sectionEditor{ display:grid; grid-template-rows:auto auto 1fr auto; gap:6px; }
     #sectionMeta{ font-size:12px; color:var(--text-secondary); }
     #sectionText{ width:100%; height:100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; border:1px solid var(--line); background:var(--surface); color:var(--text); }
-    #sectionWindow.compactMode{ width:min(640px,100%); max-height:min(760px,100%); }
+    #sectionWindow.compactMode{ width:min(760px,100%); max-height:min(760px,100%); }
     #sectionWindow.compactMode #sectionBody{ grid-template-columns:1fr 240px; height:520px; }
     #sectionWindow.groupMode #sectionEditor{ grid-template-rows:auto auto auto; }
     #sectionWindow.groupMode #sectionHint{ display:none; }
@@ -884,6 +884,7 @@
     #sectionWindow.generalInfoMode #sectionBody{ grid-template-columns:1fr; height:auto; }
     #sectionWindow.generalInfoMode #sectionEditor{ grid-template-rows:1fr auto; }
     #sectionWindow.generalInfoMode #sectionActions{ display:none; }
+    #sectionWindow.narrowEditMode{ width:min(760px,100%); }
     #sectionWindow.layerMode{ width:min(760px,100%); max-height:min(760px,100%); }
     #sectionWindow.layerMode #sectionKindSelect,
     #sectionWindow.layerMode #sectionSearch,
@@ -3641,7 +3642,11 @@
     const isWaypoint = state.sectionKind === "waypoint";
     const isAreaTrig = state.sectionKind === "areatrig";
     const isLayer = state.sectionKind === "layer";
+    const isNarrowEdit = state.sectionKind === "briefing"
+      || state.sectionKind === "event"
+      || state.sectionKind === "weapon_availability";
     sectionWindow.classList.toggle("compactMode", isGroup || isWaypoint || isAreaTrig);
+    sectionWindow.classList.toggle("narrowEditMode", isNarrowEdit);
     sectionWindow.classList.toggle("groupMode", isGroup);
     sectionWindow.classList.toggle("waypointMode", isWaypoint);
     sectionWindow.classList.toggle("generalInfoMode", isGeneralInfo);
