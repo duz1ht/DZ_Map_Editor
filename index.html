@@ -1011,7 +1011,16 @@
 
       <div id="sectionOverlay" aria-hidden="true">
         <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
-          <div class="windowTitle">General Information <span class="spacer"></span><button class="xbtn" id="sectionCloseBtn">X</button></div>
+          <div class="windowTitle"><span id="sectionWindowTitleText">General Information</span><span class="spacer"></span><label class="inlineLabel" for="sectionQuickNav" style="margin:0;">Go to:</label><select id="sectionQuickNav" class="midInput" style="max-width:220px;">
+              <option value="briefing">Briefing</option>
+              <option value="group">Groups</option>
+              <option value="waypoint">Waypoints</option>
+              <option value="areatrig">Area Triggers</option>
+              <option value="event">Events</option>
+              <option value="layer">Layer Names</option>
+              <option value="weapon_availability">Weapon Loadouts</option>
+              <option value="general_information">General Information</option>
+            </select><button class="xbtn" id="sectionCloseBtn">X</button></div>
           <div id="sectionTopControls">
             <select id="sectionKindSelect">
               <option value="general_information">General Information</option>
@@ -1540,6 +1549,8 @@
   const statusEl = document.getElementById("status");
   const sectionOverlay = document.getElementById("sectionOverlay");
   const sectionWindow = document.getElementById("sectionWindow");
+  const sectionWindowTitleText = document.getElementById("sectionWindowTitleText");
+  const sectionQuickNav = document.getElementById("sectionQuickNav");
   const sectionCloseBtn = document.getElementById("sectionCloseBtn");
   const sectionKindSelect = document.getElementById("sectionKindSelect");
   const sectionSearch = document.getElementById("sectionSearch");
@@ -3609,6 +3620,21 @@
   }
 
 
+  function getSectionWindowTitle(kind){
+    switch (kind){
+      case "layer": return "Layer Names";
+      case "group": return "Groups";
+      case "waypoint": return "Waypoints";
+      case "areatrig": return "Area Triggers";
+      case "event": return "Events";
+      case "briefing": return "Briefing";
+      case "weapon_availability": return "Weapon Loadouts";
+      case "general_information":
+      default:
+        return "General Information";
+    }
+  }
+
   function updateSectionEditorMode(){
     const isGeneralInfo = state.sectionKind === "general_information";
     const isGroup = state.sectionKind === "group";
@@ -3620,6 +3646,8 @@
     sectionWindow.classList.toggle("waypointMode", isWaypoint);
     sectionWindow.classList.toggle("generalInfoMode", isGeneralInfo);
     sectionWindow.classList.toggle("layerMode", isLayer);
+    if (sectionWindowTitleText) sectionWindowTitleText.textContent = getSectionWindowTitle(state.sectionKind);
+    if (sectionQuickNav) sectionQuickNav.value = state.sectionKind;
     if (isGeneralInfo){
       sectionApplyBtn.textContent = "OK";
       sectionDeleteBtn.textContent = "Cancel";
@@ -4890,6 +4918,14 @@
   liveMisSearch.addEventListener("input", () => findInLiveMis(false, false));
   liveMisSearch.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); findInLiveMis(true, true); } });
   sectionKindSelect.addEventListener("change", () => { state.sectionKind = sectionKindSelect.value; state.sectionSelectedId = null; sectionAddBtn.textContent = state.sectionKind === "group" ? "Edit" : "Add block"; updateSectionEditorMode(); renderSectionList(); });
+  sectionQuickNav?.addEventListener("change", () => {
+    state.sectionKind = sectionQuickNav.value;
+    state.sectionSelectedId = null;
+    sectionKindSelect.value = state.sectionKind;
+    sectionAddBtn.textContent = state.sectionKind === "group" ? "Edit" : "Add block";
+    updateSectionEditorMode();
+    renderSectionList();
+  });
   sectionSearch.addEventListener("input", renderSectionList);
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
