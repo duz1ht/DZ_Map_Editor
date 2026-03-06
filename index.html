@@ -7167,7 +7167,8 @@
 
   function fitView(){
     const items = state.items || [];
-    if (!items.length){
+    const positionedItems = items.filter(it => kvHas(it, 'position'));
+    if (!positionedItems.length){
       resetCamera();
       state.camera.x = cam.pos.x;
       state.camera.y = cam.pos.y;
@@ -7177,10 +7178,23 @@
       return;
     }
     let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,maxZ=0;
-    for (const it of items){
-      minX=Math.min(minX,rawToWorld(it.x||0,'x')); maxX=Math.max(maxX,rawToWorld(it.x||0,'x'));
-      minY=Math.min(minY,rawToWorld(it.y||0,'y')); maxY=Math.max(maxY,rawToWorld(it.y||0,'y'));
-      maxZ=Math.max(maxZ,rawToWorld(it.z||0,'z'));
+    for (const it of positionedItems){
+      const x = rawToWorld(it.x||0,'x');
+      const y = rawToWorld(it.y||0,'y');
+      const z = rawToWorld(it.z||0,'z');
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      minX=Math.min(minX,x); maxX=Math.max(maxX,x);
+      minY=Math.min(minY,y); maxY=Math.max(maxY,y);
+      maxZ=Math.max(maxZ,z);
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)){
+      resetCamera();
+      state.camera.x = cam.pos.x;
+      state.camera.y = cam.pos.y;
+      state.camera.z = cam.pos.z;
+      state.camera.yaw = cam.yaw;
+      state.camera.pitch = cam.pitch;
+      return;
     }
     const cx=(minX+maxX)*0.5;
     const cy=(minY+maxY)*0.5;
