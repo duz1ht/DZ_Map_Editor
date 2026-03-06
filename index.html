@@ -4638,7 +4638,10 @@
     const graphic = def?.graphic ? def.graphic : (kvHas(it, "graphic") ? it.kv.graphic : (kvHas(it, "gen_string") ? "TEXT" : "TEXT"));
     setValueIf(ui.graphic, graphic);
 
-    const typeText = def?.type ? def.type : "Not found";
+    const itemName = kvHas(it, "name") ? String(it.kv.name || "") : "";
+    const typeText = def?.type
+      ? def.type
+      : (/MapTile/i.test(itemName) ? "MapTile" : "Not found");
     setValueIf(ui.type, typeText);
     setValueIf(ui.typeId, kvHas(it, "type_id") ? String(it.kv.type_id) : "-");
 
