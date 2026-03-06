@@ -4750,7 +4750,7 @@
       if (ui.group.value) it.kv.group_id = ui.group.value;
       else delete it.kv.group_id;
     }
-    if (kvHas(it, "team")) it.kv.team = ui.team.value;
+    it.kv.team = ui.team.value;
 
     if (kvHas(it, "waccuracy1")) it.kv.waccuracy1 = String(parseFloatSafe(ui.wacc1.value));
     if (kvHas(it, "waccuracy2")) it.kv.waccuracy2 = String(parseFloatSafe(ui.wacc2.value));
