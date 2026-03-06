@@ -2001,6 +2001,11 @@
     return toInt32((it?.z || 0) - terrainHeightRawAtItemXY(it));
   }
 
+  function getItemWindowDisplayZRaw(it){
+    if (isTerrainLockEffective(it)) return getExtraBHeightRawOrFromPosition(it);
+    return toInt32(it?.z || 0);
+  }
+
   function recomputeExtraBHeightFromPosition(it){
     if (!it || !it.kv) return;
     const terrainRaw = terrainHeightRawAtItemXY(it);
@@ -4676,7 +4681,7 @@
     setEnabled(ui.poszFrac, kvHas(it, "position"));
     const posXSplit = splitFixedPositionRaw(it.x);
     const posYSplit = splitFixedPositionRaw(it.y);
-    const posZSplit = splitFixedPositionRaw(it.z);
+    const posZSplit = splitFixedPositionRaw(getItemWindowDisplayZRaw(it));
     setValueIf(ui.posx, posXSplit.whole);
     setValueIf(ui.posxFrac, posXSplit.fraction);
     setValueIf(ui.posy, posYSplit.whole);
@@ -4809,23 +4814,28 @@
 
     if (kvHas(it, "layer")) it.kv.layer = ui.layer.value;
 
+    const wasAbsHeight = isAbsoluteHeightEnabled(it);
+    const wasHeightLock = isHeightLockFlagEnabled(it);
+    const wasTerrainLock = isTerrainLockEffective(it);
+    const nextAbsHeight = ui.absHeight.checked;
+    const nextHeightLock = ui.lock.checked;
+    const nextTerrainLock = nextHeightLock && !nextAbsHeight;
+
     if (kvHas(it, "position")){
-      const prevPos = { x: it.x || 0, y: it.y || 0, z: it.z || 0 };
       it.x = joinFixedPositionRaw(ui.posx.value, ui.posxFrac.value);
       it.y = joinFixedPositionRaw(ui.posy.value, ui.posyFrac.value);
-      it.z = joinFixedPositionRaw(ui.posz.value, ui.poszFrac.value);
+      const inputZRaw = joinFixedPositionRaw(ui.posz.value, ui.poszFrac.value);
 
-      const movedXY = it.x !== prevPos.x || it.y !== prevPos.y;
-      const movedZ = it.z !== prevPos.z;
-      applyTerrainLockAfterItemMove(it, { movedXY, movedZ });
+      if (nextTerrainLock && wasTerrainLock){
+        it.kv.extra_bheight = String(toInt32(inputZRaw));
+        const terrainRaw = terrainHeightRawAtItemXY(it);
+        it.z = toInt32(terrainRaw + inputZRaw);
+      } else {
+        it.z = inputZRaw;
+      }
 
       it.kv.position = `${it.x} ${it.y} ${it.z}`;
     }
-
-    const wasAbsHeight = isAbsoluteHeightEnabled(it);
-    const wasHeightLock = isHeightLockFlagEnabled(it);
-    const nextAbsHeight = ui.absHeight.checked;
-    const nextHeightLock = ui.lock.checked;
 
     it.kv.height_lock = nextHeightLock ? "1" : "0";
     it.kv.absolute_height = nextAbsHeight ? "1" : "0";
