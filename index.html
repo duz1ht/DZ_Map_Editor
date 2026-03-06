@@ -830,6 +830,29 @@
       padding:18px;
     }
     #sectionOverlay.open{ display:flex; }
+    #globalReplaceOverlay{
+      position:absolute;
+      inset:0;
+      background:var(--overlay);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:65;
+      padding:18px;
+    }
+    #globalReplaceOverlay.open{ display:flex; }
+    #globalReplaceWindow{
+      width:min(520px,100%);
+      background:var(--panel-muted);
+      border:1px solid var(--line-heavy);
+      padding:10px;
+      display:grid;
+      gap:8px;
+    }
+    #globalReplaceForm{ display:grid; gap:8px; }
+    #globalReplaceForm .row{ margin:0; }
+    #globalReplaceForm .row label{ flex:0 0 120px; }
+    #globalReplaceForm .row input{ flex:1; }
     #sectionWindow{
       width:min(1000px, 100%);
       max-height:min(760px, 100%);
@@ -892,34 +915,9 @@
     #waypointTopActions{ display:none; gap:8px; }
     #sectionWindow[data-section-mode="waypoint"] #waypointTopActions{ display:flex; }
     #sectionWindow[data-section-mode="waypoint"] #sectionAddBtn{ display:none; }
-    #sectionWindow .windowTitle{
-      margin-bottom:6px;
-      flex-wrap:nowrap;
-      align-items:center;
-      justify-content:flex-start;
-      white-space:nowrap;
-    }
-    #sectionWindow #sectionQuickNav{ max-width:190px; }
+    #sectionWindow #sectionQuickNav{ max-width:220px; }
     #sectionTopControls{ display:flex; gap:8px; flex-wrap:wrap; }
     #sectionTopControls select, #sectionTopControls input{ max-width:220px; }
-    #sectionTopControls input:not([type="checkbox"]):not([type="radio"]),
-    #sectionTopControls select,
-    #sectionTopControls button,
-    #sectionBody input:not([type="checkbox"]):not([type="radio"]),
-    #sectionBody select,
-    #sectionBody button{
-      height:22px;
-      min-height:22px;
-      padding-top:1px;
-      padding-bottom:1px;
-      line-height:1.1;
-    }
-    #sectionBody textarea{
-      min-height:22px;
-      padding-top:1px;
-      padding-bottom:1px;
-      line-height:1.1;
-    }
     #sectionWindow[data-section-mode="general_information"]{ width:min(1240px,100%); max-height:min(760px,100%); }
     #sectionWindow[data-section-mode="general_information"] #sectionTopControls,
     #sectionWindow[data-section-mode="general_information"] #sectionList,
@@ -1055,7 +1053,7 @@
 
       <div id="sectionOverlay" aria-hidden="true">
         <div id="sectionWindow" role="dialog" aria-modal="true" aria-label="General Information">
-          <div class="windowTitle"><span id="sectionWindowTitleText">General Information</span><span class="spacer"></span><label class="inlineLabel" for="sectionQuickNav" style="margin:0;">Go to:</label><select id="sectionQuickNav" class="midInput" style="max-width:190px;">
+          <div class="windowTitle"><span id="sectionWindowTitleText">General Information</span><span class="spacer"></span><label class="inlineLabel" for="sectionQuickNav" style="margin:0;">Go to:</label><select id="sectionQuickNav" class="midInput" style="max-width:220px;">
               <option value="briefing">Briefing</option>
               <option value="group">Groups</option>
               <option value="waypoint">Waypoints</option>
@@ -1183,6 +1181,19 @@
           <div class="windowTitle">Logs <span class="spacer"></span><span id="logsFilterBar" class="logsFilterBar" aria-label="Log filters"></span><button class="xbtn" id="logsCloseBtn">X</button></div>
           <pre id="logsText"></pre>
           <div class="btnRow" style="justify-content:flex-end;"><button id="logsClearBtn">Clear Logs</button></div>
+        </div>
+      </div>
+
+
+      <div id="globalReplaceOverlay" aria-hidden="true">
+        <div id="globalReplaceWindow" role="dialog" aria-modal="true" aria-label="Global Replace">
+          <div class="windowTitle">Global Replace <span class="spacer"></span><button class="xbtn" id="globalReplaceCloseBtn">X</button></div>
+          <div id="globalReplaceForm">
+            <div class="row"><label for="grKey">Key (empty = any)</label><input id="grKey" value="name" /></div>
+            <div class="row"><label for="grFind">Find</label><input id="grFind" /></div>
+            <div class="row"><label for="grReplace">Replace</label><input id="grReplace" /></div>
+          </div>
+          <div class="btnRow" style="justify-content:flex-end;"><button id="grCancelBtn" type="button">Cancel</button><button id="grApplyBtn" type="button">Apply</button></div>
         </div>
       </div>
 
@@ -1614,6 +1625,13 @@
   const logsText = document.getElementById("logsText");
   const logsClearBtn = document.getElementById("logsClearBtn");
   const logsFilterBar = document.getElementById("logsFilterBar");
+  const globalReplaceOverlay = document.getElementById("globalReplaceOverlay");
+  const globalReplaceCloseBtn = document.getElementById("globalReplaceCloseBtn");
+  const grCancelBtn = document.getElementById("grCancelBtn");
+  const grApplyBtn = document.getElementById("grApplyBtn");
+  const grKey = document.getElementById("grKey");
+  const grFind = document.getElementById("grFind");
+  const grReplace = document.getElementById("grReplace");
   const wpSelectMarkersBtn = document.getElementById("wpSelectMarkersBtn");
   const wpSaveAsBtn = document.getElementById("wpSaveAsBtn");
   const wpOkBtn = document.getElementById("wpOkBtn");
@@ -3874,6 +3892,11 @@
   logsCloseBtn.addEventListener("click", closeLogsWindow);
   logsOverlay.addEventListener("mousedown", (e) => { if (e.target === logsOverlay) closeLogsWindow(); });
   logsClearBtn.addEventListener("click", () => { state.logs = []; renderLogsFilterBar(); renderLogsWindow(); addLog("Logs cleared by user.", { category: "general" }); });
+  globalReplaceCloseBtn?.addEventListener("click", closeGlobalReplace);
+  grCancelBtn?.addEventListener("click", closeGlobalReplace);
+  grApplyBtn?.addEventListener("click", applyGlobalReplace);
+  globalReplaceOverlay?.addEventListener("mousedown", (e) => { if (e.target === globalReplaceOverlay) closeGlobalReplace(); });
+  grReplace?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyGlobalReplace(); } });
   misRealtimeClearBtn.addEventListener("click", () => {
     state.realtimeLog = [];
     state.realtimePrevMisText = state.liveMisRawText || state.realtimePrevMisText;
@@ -4179,13 +4202,14 @@
     downloadText('waypoints_export.txt', text);
   }
 
-  function runGlobalReplace(){
-    const target = prompt('Global Replace: key (empty = any key):', 'name');
-    if (target === null) return;
-    const from = prompt('Procurar por:', '');
-    if (from === null || from === '') return;
-    const to = prompt('Substituir por:', '');
-    if (to === null) return;
+  function applyGlobalReplace(){
+    const target = String(grKey?.value || "").trim();
+    const from = String(grFind?.value || "");
+    const to = String(grReplace?.value || "");
+    if (!from){
+      statusEl.textContent = "Global Replace: 'Find' cannot be empty.";
+      return;
+    }
 
     let changed = 0;
     for (const it of state.items){
@@ -4203,6 +4227,22 @@
     statusEl.textContent = `Global Replace changed ${changed} fields.`;
     renderItemWindow();
     renderList();
+    closeGlobalReplace();
+  }
+
+  function openGlobalReplace(){
+    globalReplaceOverlay?.classList.add("open");
+    globalReplaceOverlay?.setAttribute("aria-hidden", "false");
+    if (grFind) grFind.focus();
+  }
+
+  function closeGlobalReplace(){
+    globalReplaceOverlay?.classList.remove("open");
+    globalReplaceOverlay?.setAttribute("aria-hidden", "true");
+  }
+
+  function runGlobalReplace(){
+    openGlobalReplace();
   }
   function downloadText(name, text){
     const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
