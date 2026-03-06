@@ -842,25 +842,33 @@
     }
     #globalReplaceOverlay.open{ display:flex; }
     #globalReplaceWindow{
-      width:min(520px,100%);
+      width:min(720px,100%);
+      max-height:min(520px,100%);
       background:var(--panel-muted);
       border:1px solid var(--line-heavy);
       padding:10px;
       display:grid;
+      grid-template-rows:auto 1fr auto;
       gap:8px;
+      overflow:hidden;
+      box-sizing:border-box;
     }
     #globalReplaceForm{ display:grid; gap:8px; }
     #globalReplaceForm .row{ margin:0; }
     #globalReplaceForm .row label{ flex:0 0 120px; }
     #globalReplaceForm .row input{ flex:1; }
     #sectionWindow{
-      width:min(1000px, 100%);
-      max-height:min(760px, 100%);
+      width:min(1120px, 100%);
+      height:min(820px, 100%);
+      max-height:min(820px, 100%);
       background:var(--panel-muted);
       border:1px solid var(--line-heavy);
       padding:10px;
       display:grid;
+      grid-template-rows:auto 1fr;
       gap:8px;
+      overflow:hidden;
+      box-sizing:border-box;
     }
     #sectionBody{
       display:grid;
@@ -872,9 +880,9 @@
     #sectionList{ overflow:auto; border:1px solid var(--line-muted); background:var(--surface); padding:6px; min-height:0; max-height:100%; }
     .secCard{ border:1px solid var(--line-card); padding:6px; margin-bottom:5px; cursor:pointer; font-size:12px; background:var(--surface); }
     .secCard.active{ border-color:#5865f2; box-shadow:0 0 0 1px var(--accent-glow-strong); }
-    #sectionEditor{ display:grid; grid-template-rows:auto auto 1fr auto; gap:6px; }
+    #sectionEditor{ display:grid; grid-template-rows:auto auto 1fr auto; gap:6px; min-height:0; }
     #sectionMeta{ font-size:12px; color:var(--text-secondary); }
-    #sectionText{ width:100%; height:100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; border:1px solid var(--line); background:var(--surface); color:var(--text); }
+    #sectionText{ width:100%; height:100%; min-height:0; overflow:auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; border:1px solid var(--line); background:var(--surface); color:var(--text); }
     #sectionWindow[data-section-mode="group"],
     #sectionWindow[data-section-mode="waypoint"],
     #sectionWindow[data-section-mode="areatrig"],
@@ -885,6 +893,7 @@
       width:min(760px,100%);
       height:min(684px,100%);
       max-height:min(684px,100%);
+      grid-template-rows:auto 1fr;
     }
     #sectionWindow[data-section-mode="group"] #sectionBody,
     #sectionWindow[data-section-mode="waypoint"] #sectionBody,
