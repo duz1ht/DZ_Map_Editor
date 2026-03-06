@@ -938,11 +938,16 @@
     #sectionWindow[data-section-mode="waypoint"] #sectionBody,
     #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:1fr 240px; }
     #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto auto auto; }
+    #sectionWindow[data-section-mode="group"] #sectionMeta,
     #sectionWindow[data-section-mode="group"] #sectionHint{ display:none; }
     #sectionWindow[data-section-mode="group"] #sectionAddBtn{ display:none; }
     #sectionWindow[data-section-mode="group"] #sectionActions{ display:flex; justify-content:flex-end; }
     #sectionWindow[data-section-mode="group"] #sectionDeleteBtn{ display:none; }
+    #sectionWindow[data-section-mode="group"] #groupSelectMembersBtn,
+    #sectionWindow[data-section-mode="group"] #groupSaveAsTextBtn{ display:inline-flex; }
     #sectionWindow[data-section-mode="group"] #sectionText{ height:34px; min-height:34px; max-height:34px; resize:none; font-family:Tahoma, Arial, sans-serif; }
+    #groupSelectMembersBtn,
+    #groupSaveAsTextBtn{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #sectionHint{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #sectionActions{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #sectionText{ display:none; }
@@ -1215,7 +1220,7 @@
                 <div class="layerField"><label for="layerColorInput">Color:</label><input id="layerColorInput" /></div>
                 <div id="layerActions"><button id="layerOkBtn" type="button">Ok</button></div>
               </div>
-              <div class="btnRow" id="sectionActions"><button id="sectionDeleteBtn">Delete block</button><button id="sectionApplyBtn">Apply block</button></div>
+              <div class="btnRow" id="sectionActions"><button id="groupSelectMembersBtn">Select Members</button><button id="groupSaveAsTextBtn">Save As Text File</button><button id="sectionDeleteBtn">Delete block</button><button id="sectionApplyBtn">Apply block</button></div>
             </div>
           </div>
         </div>
@@ -1672,6 +1677,8 @@
   const sectionText = document.getElementById("sectionText");
   const sectionApplyBtn = document.getElementById("sectionApplyBtn");
   const sectionDeleteBtn = document.getElementById("sectionDeleteBtn");
+  const groupSelectMembersBtn = document.getElementById("groupSelectMembersBtn");
+  const groupSaveAsTextBtn = document.getElementById("groupSaveAsTextBtn");
   const showGlbWireframeEl = document.getElementById("showGlbWireframe");
   const sectionAddBtn = document.getElementById("sectionAddBtn");
   const liveMisOverlay = document.getElementById("liveMisOverlay");
@@ -4296,6 +4303,34 @@
   }
 
 
+  function selectAllGroupMembers(){
+    if (!state.items.length){
+      state.selectedId = null;
+      state.multiSelectedIds.clear();
+      renderList();
+      requestRender();
+      statusEl.textContent = "No items available to select.";
+      return;
+    }
+    const allIds = state.items.map(it => it.id);
+    state.multiSelectedIds = new Set(allIds);
+    state.selectedId = allIds[allIds.length - 1] ?? null;
+    renderList();
+    requestRender();
+    statusEl.textContent = `${allIds.length} item(s) selected.`;
+  }
+
+  function saveGroupsAsTextFile(){
+    const lines = [];
+    for (let n = 1; n <= 63; n++){
+      const sec = getGroupSectionByNumber(n);
+      const desc = getGroupDescription(sec);
+      lines.push(desc ? `Group ${n}: ${desc}` : `Group ${n}`);
+    }
+    downloadText('groups_export.txt', lines.join('\n'));
+  }
+
+
   function saveWaypointsAs(){
     const secs = [];
     for (let n=1; n<=127; n++){
@@ -5149,6 +5184,8 @@
   giFogColorEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   giTerrain.addEventListener("change", applyTerrainWaterToInput);
   giWaterEnabled.addEventListener("change", applyTerrainWaterToInput);
+  groupSelectMembersBtn?.addEventListener("click", selectAllGroupMembers);
+  groupSaveAsTextBtn?.addEventListener("click", saveGroupsAsTextFile);
   wpSelectMarkersBtn.addEventListener("click", selectWaypointMarkers);
   wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
   wpOkBtn.addEventListener("click", () => { saveCurrentWaypoint(); closeSectionEditor(); });
