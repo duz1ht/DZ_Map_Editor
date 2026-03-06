@@ -2570,8 +2570,7 @@
   }
 
   function formatAbsoluteHeightFromRaw(v){
-    const worldZ = rawToWorld(v || 0, "z");
-    return formatDimensionValue(worldZ);
+    return formatCoord(v);
   }
 
   function getGlbDimensionsForItem(item){
