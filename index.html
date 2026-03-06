@@ -1043,7 +1043,7 @@
           <button id="selectedInfoNextBtn" type="button" class="modeBtn" title="Next item">▶</button>
         </div>
       </div>
-      <pre id="selectedInfoBody">Nenhum item selecionado.</pre>
+      <pre id="selectedInfoBody">No item selected.</pre>
     </div>
 
     <div id="misRealtimePanel">
@@ -2607,7 +2607,7 @@
     if (!count){
       state.selectedInfoIndex = 0;
       if (selectedInfoIndexEl) selectedInfoIndexEl.textContent = "0/0";
-      if (selectedInfoBodyEl) selectedInfoBodyEl.textContent = "Nenhum item selecionado.";
+      if (selectedInfoBodyEl) selectedInfoBodyEl.textContent = "No item selected.";
       if (selectedInfoPrevBtn) selectedInfoPrevBtn.disabled = true;
       if (selectedInfoNextBtn) selectedInfoNextBtn.disabled = true;
       return;
