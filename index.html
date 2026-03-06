@@ -2833,7 +2833,7 @@
 
   function buildLayerOptions(){
     const options = [];
-    for (let n = 1; n <= 32; n++){
+    for (let n = 0; n <= 31; n++){
       const sec = getLayerSectionByNumber(n);
       const desc = String(sec?.kv?.description || "").trim();
       const label = desc ? `${n} - ${desc}` : String(n);
@@ -3416,7 +3416,7 @@
   function parseLayerNumber(sec){
     if (!sec || sec.kind !== "layer") return null;
     const fromLabel = Number((sec.label || "").trim());
-    if (Number.isInteger(fromLabel) && fromLabel >= 1 && fromLabel <= 32) return fromLabel;
+    if (Number.isInteger(fromLabel) && fromLabel >= 0 && fromLabel <= 31) return fromLabel;
     const m = String(sec.beginLine || "").trim().match(/^begin\s+layer\s+(\d+)$/i);
     if (m) return Number(m[1]);
     return null;
@@ -3437,14 +3437,14 @@
     const rawLayer = String(it?.kv?.layer ?? "").trim();
     if (!rawLayer) return true;
     const num = Number(rawLayer);
-    if (!Number.isFinite(num) || num < 1 || num > 32) return true;
+    if (!Number.isFinite(num) || num < 0 || num > 31) return true;
     return getLayerVisibility(String(Math.trunc(num)));
   }
 
   function renderLayerVisibilityPanel(){
     if (!layerVisibilityListEl) return;
     const rows = [];
-    for (let n = 1; n <= 32; n++){
+    for (let n = 0; n <= 31; n++){
       const sec = getLayerSectionByNumber(n);
       const desc = String(sec?.kv?.description || "").trim();
       const label = desc ? `${n} - ${desc}` : String(n);
@@ -3472,7 +3472,7 @@
   }
 
   function setAllLayerVisibility(visible){
-    for (let n = 1; n <= 32; n++){
+    for (let n = 0; n <= 31; n++){
       state.layerVisibility.set(String(n), !!visible);
     }
     renderLayerVisibilityPanel();
@@ -3489,7 +3489,7 @@
   }
 
   function saveCurrentLayer(){
-    const n = Math.max(1, Math.min(32, Number(state.sectionSelectedId) || 1));
+    const n = Math.max(0, Math.min(31, Number(state.sectionSelectedId) || 0));
     let sec = getLayerSectionByNumber(n);
     const name = String(layerNameInput.value || "").trim();
     const color = String(layerColorInput.value || "").trim();
@@ -4088,7 +4088,7 @@
     if (kind === "layer"){
       sectionDeleteBtn.disabled = true;
       const cards = [];
-      for (let n=1; n<=32; n++){
+      for (let n=0; n<=31; n++){
         const sec = getLayerSectionByNumber(n);
         const desc = String(sec?.kv?.description || "");
         const label = desc ? `${n} - ${desc}` : `${n}`;
@@ -4096,7 +4096,7 @@
       }
       sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.sectionSelectedId===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("");
       sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
-      if (!state.sectionSelectedId || state.sectionSelectedId < 1 || state.sectionSelectedId > 32) state.sectionSelectedId = 1;
+      if (!Number.isInteger(state.sectionSelectedId) || state.sectionSelectedId < 0 || state.sectionSelectedId > 31) state.sectionSelectedId = 0;
       selectSectionBlock(state.sectionSelectedId);
       return;
     }
@@ -4130,7 +4130,7 @@
     }
 
     if (state.sectionKind === "layer"){
-      const layerNumber = Math.max(1, Math.min(32, Number(id) || 1));
+      const layerNumber = Math.max(0, Math.min(31, Number(id) || 0));
       state.sectionSelectedId = layerNumber;
       sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===layerNumber));
       const sec = getLayerSectionByNumber(layerNumber);
