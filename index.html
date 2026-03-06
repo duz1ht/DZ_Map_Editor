@@ -5818,7 +5818,6 @@
     texColor=createTextureFromPixels(lastImg.w,lastImg.h,lastImg.pixels);
     texHeight=createHeightmapTextureFromSectors();
     texDelta=createDeltaTextureFromSectors();
-    resetCamera();
   }
 
   function mapSrcIdx(g,wrap){ if(wrap===1) return posMod(g,sectorCount); if(g<0) return 0; if(g>=sectorCount) return sectorCount-1; return g; }
@@ -7167,7 +7166,8 @@
 
   function fitView(){
     const items = state.items || [];
-    if (!items.length){
+    const positionedItems = items.filter(it => kvHas(it, 'position'));
+    if (!positionedItems.length){
       resetCamera();
       state.camera.x = cam.pos.x;
       state.camera.y = cam.pos.y;
@@ -7177,10 +7177,23 @@
       return;
     }
     let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,maxZ=0;
-    for (const it of items){
-      minX=Math.min(minX,rawToWorld(it.x||0,'x')); maxX=Math.max(maxX,rawToWorld(it.x||0,'x'));
-      minY=Math.min(minY,rawToWorld(it.y||0,'y')); maxY=Math.max(maxY,rawToWorld(it.y||0,'y'));
-      maxZ=Math.max(maxZ,rawToWorld(it.z||0,'z'));
+    for (const it of positionedItems){
+      const x = rawToWorld(it.x||0,'x');
+      const y = rawToWorld(it.y||0,'y');
+      const z = rawToWorld(it.z||0,'z');
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      minX=Math.min(minX,x); maxX=Math.max(maxX,x);
+      minY=Math.min(minY,y); maxY=Math.max(maxY,y);
+      maxZ=Math.max(maxZ,z);
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)){
+      resetCamera();
+      state.camera.x = cam.pos.x;
+      state.camera.y = cam.pos.y;
+      state.camera.z = cam.pos.z;
+      state.camera.yaw = cam.yaw;
+      state.camera.pitch = cam.pitch;
+      return;
     }
     const cx=(minX+maxX)*0.5;
     const cy=(minY+maxY)*0.5;
@@ -7290,9 +7303,22 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   }
   startRenderLoop();
 
-  cv.addEventListener('click',()=>{ cv.focus(); });
-  addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); const lookActive=(document.pointerLockElement===cv&&state.cameraLookActive); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='g'){ gridVisible=!gridVisible; } if(k==='i'&&showStatsEl){ showStatsEl.checked=!showStatsEl.checked; syncRenderUiState(); } if(k==='h'&&showAnchorPointsEl){ showAnchorPointsEl.checked=!showAnchorPointsEl.checked; syncRenderUiState(); } if(k==='f'){ setGlbWireframeEnabled(!state.glb.wireframeEnabled); } if(k==='w'&&!lookActive){ state.transformMode='translate'; updateItemGizmo(); } if(k==='e'&&!lookActive){ state.transformMode='rotate'; updateItemGizmo(); } if(k==='w'&&lookActive) move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e'&&lookActive) move.e=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
-  addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); if(k==='w') move.w=0; if(k==='a') move.a=0; if(k==='s') move.s=0; if(k==='d') move.d=0; if(k==='q') move.q=0; if(k==='e') move.e=0; state.keysDown.delete(e.code); });
+  function hasTypingFocus(){
+    const el = document.activeElement;
+    if (!el || el === cv || el === document.body) return false;
+    if (el.isContentEditable) return true;
+    const tag = el.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (tag === 'INPUT'){
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      return type !== 'checkbox' && type !== 'radio' && type !== 'button' && type !== 'submit' && type !== 'reset' && type !== 'range' && type !== 'color' && type !== 'file';
+    }
+    return false;
+  }
+
+  cv.addEventListener('click',()=>{ if (!hasTypingFocus()) cv.focus(); });
+  addEventListener('keydown',e=>{ if(hasTypingFocus()) return; const k=e.key.toLowerCase(); const lookActive=(document.pointerLockElement===cv&&state.cameraLookActive); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='g'){ gridVisible=!gridVisible; } if(k==='i'&&showStatsEl){ showStatsEl.checked=!showStatsEl.checked; syncRenderUiState(); } if(k==='h'&&showAnchorPointsEl){ showAnchorPointsEl.checked=!showAnchorPointsEl.checked; syncRenderUiState(); } if(k==='f'){ setGlbWireframeEnabled(!state.glb.wireframeEnabled); } if(k==='w'&&!lookActive){ state.transformMode='translate'; updateItemGizmo(); } if(k==='e'&&!lookActive){ state.transformMode='rotate'; updateItemGizmo(); } if(k==='w'&&lookActive) move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e'&&lookActive) move.e=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
+  addEventListener('keyup',e=>{ if(hasTypingFocus()) return; const k=e.key.toLowerCase(); if(k==='w') move.w=0; if(k==='a') move.a=0; if(k==='s') move.s=0; if(k==='d') move.d=0; if(k==='q') move.q=0; if(k==='e') move.e=0; state.keysDown.delete(e.code); });
   addEventListener('mousemove',e=>{ if(document.pointerLockElement!==cv) return; if(topViewLocked) return; if(!state.cameraLookActive) return; if(state.modalOpen||state.draggingItem||state.boxSelecting||state.gizmoDrag||state.pastePlacementActive) return; cam.yaw += e.movementX*0.002; cam.pitch -= e.movementY*0.002; cam.pitch=Math.max(-1.55,Math.min(1.55,cam.pitch)); });
 
   document.getElementById('modeC')?.addEventListener('click',()=>setRenderMode('C'));
@@ -7535,6 +7561,8 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   loadMisFile = async function(file, fileHandle = null){
     await _origLoadMisFile(file, fileHandle);
     try{ await loadTerrainFromMis(); }catch(err){ addLog(`[terrain] load error: ${err?.message || err}`); camDebugEl.textContent = `Failed to load terrain: ${err.message||err}`; }
+    fitView();
+    requestRender();
   };
 
   function applyTheme(theme){
