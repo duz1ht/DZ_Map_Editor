@@ -1,34 +1,33 @@
 begin "Sound"
-	graphic speaker
+	graphic 1_speaker
 	graphic_scale 2
 end
 
 
 begin "Waypoint"
 	type_id 106005
-	graphic waypoint
+	graphic 1_waypoint
 	graphic_scale 2
 end
 
 
 begin "Area Trigger"
 	type_id 106013
-	graphic waypoint
+	graphic 1_areatrigger
 end
-
 
 
 
 begin "start, Blue Team"
 	type_id 106003
-	graphic Person
+	graphic 1_person
 end
 
 
 
 begin "start, Red Team"
 	type_id 106004
-	graphic Person
+	graphic 1_person
 end
 
 
@@ -41,42 +40,42 @@ end
 
 begin "start, player"
 	type_id 106001
-	graphic Person
+	graphic 1_person
 end  
 
 
 
 begin "start, dmatch"
 	type_id 106002
-	graphic Person
+	graphic 1_person
 end  
 
 
 
 begin "start, primary, player"
 	type_id 106094
-	graphic Person
+	graphic 1_person
 end  
 
 
 
 begin "start, primary, dmatch"
 	type_id 106095
-	graphic Person
+	graphic 1_person
 end  
 
 
 
 begin "start, primary, Blue Team"
 	type_id 106096
-	graphic Person
+	graphic 1_person
 end  
 
 
 
 begin "start, primary, Red Team"
 	type_id 106097
-	graphic Person
+	graphic 1_person
 end  
 
 
@@ -90,28 +89,28 @@ end
 
 begin "user waypoint"
 	type_id 106089
-	graphic waypoint
+	graphic 1_waypoint
 end  
 
 
 
 begin "waypoint, mp, alpha"
 	type_id 106026
-	graphic waypoint
+	graphic 1_waypoint
 end  
 
 
 
 begin "waypoint, mp, red base"
 	type_id 106027
-	graphic waypoint
+	graphic 1_waypoint
 end  
 
 
 
 begin "waypoint, mp, blue base"
 	type_id 106028
-	graphic waypoint
+	graphic 1_waypoint
 end  
 
 
