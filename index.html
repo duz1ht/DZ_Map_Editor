@@ -1386,10 +1386,17 @@
                 <div class="inlineLabel">Spinmap Color Override</div>
                 <select id="ui_spinmapColor" class="midInput">
                   <option value="">Default Color</option>
-                  <option value="red">Red</option>
-                  <option value="blue">Blue</option>
-                  <option value="green">Green</option>
-                  <option value="yellow">Yellow</option>
+                  <option value="11">Invisible</option>
+                  <option value="2">Black</option>
+                  <option value="4">Blue</option>
+                  <option value="10">Dark Blue</option>
+                  <option value="9">Gray</option>
+                  <option value="3">Green</option>
+                  <option value="8">Orange</option>
+                  <option value="6">Red</option>
+                  <option value="7">Violet</option>
+                  <option value="1">White</option>
+                  <option value="5">Yellow</option>
                 </select>
               </div>
             </div>
@@ -4615,9 +4622,9 @@
     const multiplayerFromAttrib = (attribValue & 64) !== 0;
     setValueIf(ui.multiplayerOnly, kvHas(it, "remove_if_multiplayer") ? String(it.kv.remove_if_multiplayer) === "1" : multiplayerFromAttrib);
 
-    // Spinmap
-    setEnabled(ui.spinmapColor, kvHas(it, "map_symbol"));
-    setValueIf(ui.spinmapColor, kvHas(it, "map_symbol") ? it.kv.map_symbol : "");
+    // Spinmap Color Override
+    setEnabled(ui.spinmapColor, true);
+    setValueIf(ui.spinmapColor, kvHas(it, "color_override") ? it.kv.color_override : "");
 
     // AI Variables
     const activeAreaKey = kvFindKey(it, ["active_area", "attention"]);
@@ -4741,7 +4748,8 @@
     if (kvHas(it, "remove_if_more_than")) it.kv.remove_if_more_than = ui.moreThan.value;
     if (kvHas(it, "remove_if_multiplayer")) it.kv.remove_if_multiplayer = ui.multiplayerOnly.checked ? "1" : "0";
 
-    if (kvHas(it, "map_symbol")) it.kv.map_symbol = ui.spinmapColor.value;
+    if (ui.spinmapColor.value) it.kv.color_override = ui.spinmapColor.value;
+    else delete it.kv.color_override;
 
     const activeAreaKey = kvFindKey(it, ["active_area", "attention"]);
     if (activeAreaKey) it.kv[activeAreaKey] = String(parseFloatSafe(ui.activeArea.value));
