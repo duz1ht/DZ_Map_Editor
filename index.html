@@ -258,6 +258,15 @@
       height:24px;
       padding:0 10px;
     }
+    #showLayersBtn{
+      position:absolute;
+      top:10px;
+      left:72px;
+      z-index:10;
+      min-width:66px;
+      height:24px;
+      padding:0 10px;
+    }
     #fpsCounter{
       position:absolute;
       top:10px;
@@ -362,6 +371,25 @@
     #canvasShowPanel.open{ display:block; }
     #canvasShowPanelList{ display:grid; grid-template-columns:1fr; gap:4px; font-size:12px; }
     #canvasShowPanelList label{ display:flex; align-items:center; gap:6px; }
+    #layerVisibilityPanel{
+      position:absolute;
+      top:42px;
+      left:72px;
+      z-index:11;
+      min-width:280px;
+      max-width:min(48vw, 440px);
+      max-height:340px;
+      overflow:auto;
+      display:none;
+      background:var(--panel);
+      border:1px solid var(--line-strong);
+      border-radius:var(--radius-md);
+      box-shadow:var(--shadow-md);
+      padding:10px;
+    }
+    #layerVisibilityPanel.open{ display:block; }
+    #layerVisibilityList{ display:grid; grid-template-columns:1fr; gap:4px; font-size:12px; }
+    #layerVisibilityList label{ display:flex; align-items:center; gap:6px; }
     #misRealtimePanel{
       margin-top:12px;
       border:1px solid var(--line);
@@ -1033,6 +1061,7 @@
 
     <div id="canvasWrap">
       <button id="showPanelBtn" type="button" class="modeBtn">Show</button>
+      <button id="showLayersBtn" type="button" class="modeBtn">Layers</button>
       <canvas id="cv"></canvas>
       <div id="camDebug"></div>
       <div id="fpsCounter">0 FPS</div>
@@ -1058,6 +1087,10 @@
           <label><input type="checkbox" id="showCollisionModels"> Colision Models</label>
           <label><input type="checkbox" id="showAbsoluteMode"> Absolute Mode</label>
         </div>
+      </div>
+
+      <div id="layerVisibilityPanel" aria-hidden="true">
+        <div id="layerVisibilityList"></div>
       </div>
 
       <div id="sectionOverlay" aria-hidden="true">
@@ -1560,6 +1593,7 @@
     terrainPerf: { draws: 0, culledFrustum: 0, culledBackface: 0 },
     itemsById: new Map(),
     itemSectionByStart: new Map(),
+    layerVisibility: new Map(),
 
     glb: {
       THREE: null,
@@ -1608,7 +1642,10 @@
   const misRealtimeClearBtn = document.getElementById("misRealtimeClearBtn");
   const exportBtn = document.getElementById("exportBtn");
   const showPanelBtn = document.getElementById("showPanelBtn");
+  const showLayersBtn = document.getElementById("showLayersBtn");
   const canvasShowPanelEl = document.getElementById("canvasShowPanel");
+  const layerVisibilityPanelEl = document.getElementById("layerVisibilityPanel");
+  const layerVisibilityListEl = document.getElementById("layerVisibilityList");
   const canvasWrapEl = document.getElementById("canvasWrap");
   const statusEl = document.getElementById("status");
   const sectionOverlay = document.getElementById("sectionOverlay");
@@ -3379,6 +3416,52 @@
     return state.sectionBlocks.find(s => s.kind === "layer" && parseLayerNumber(s) === n) || null;
   }
 
+  function getLayerVisibility(layerNumber){
+    const key = String(layerNumber || "").trim();
+    if (!key) return true;
+    if (!state.layerVisibility.has(key)) state.layerVisibility.set(key, true);
+    return state.layerVisibility.get(key) !== false;
+  }
+
+  function isItemLayerVisible(it){
+    const rawLayer = String(it?.kv?.layer ?? "").trim();
+    if (!rawLayer) return true;
+    const num = Number(rawLayer);
+    if (!Number.isFinite(num) || num < 1 || num > 32) return true;
+    return getLayerVisibility(String(Math.trunc(num)));
+  }
+
+  function renderLayerVisibilityPanel(){
+    if (!layerVisibilityListEl) return;
+    const rows = [];
+    for (let n = 1; n <= 32; n++){
+      const sec = getLayerSectionByNumber(n);
+      const desc = String(sec?.kv?.description || "").trim();
+      const label = desc ? `${n} - ${desc}` : String(n);
+      const checked = getLayerVisibility(String(n)) ? "checked" : "";
+      rows.push(`<label><input type="checkbox" data-layer-vis="${n}" ${checked}/> ${escapeHtml(label)}</label>`);
+    }
+    layerVisibilityListEl.innerHTML = rows.join("");
+    layerVisibilityListEl.querySelectorAll('input[data-layer-vis]').forEach((el) => {
+      el.addEventListener('change', (ev) => {
+        const key = String(ev.target.dataset.layerVis || "");
+        if (!key) return;
+        state.layerVisibility.set(key, !!ev.target.checked);
+        requestRender();
+        syncGlbItems();
+      });
+    });
+  }
+
+  function setLayerVisibilityPanelOpen(open){
+    const visible = !!open;
+    if (visible) renderLayerVisibilityPanel();
+    layerVisibilityPanelEl?.classList.toggle('open', visible);
+    layerVisibilityPanelEl?.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    showLayersBtn?.classList.toggle('active', visible);
+  }
+
+
   function fillLayerEditor(sec){
     const name = sec?.kv?.description || "";
     const color = sec?.kv?.color || "";
@@ -3421,6 +3504,7 @@
     }
     markItemsChanged({ structure: false, invalidateFilter: false });
     buildLayerOptions();
+    renderLayerVisibilityPanel();
     if (state.modalOpen) renderItemWindow();
     scheduleLiveMisRefresh();
   }
@@ -4708,6 +4792,7 @@
     if (e.key === "Escape" && state.modalOpen) closeModalCancel();
     if (e.key === "Escape" && state.sectionEditorOpen) closeSectionEditor();
     if (e.key === "Escape" && state.liveMisOpen) closeLiveMisWindow();
+    if (e.key === "Escape") { setCanvasShowPanelOpen(false); setLayerVisibilityPanelOpen(false); }
     if (e.key === "Escape" && state.pastePlacementActive){
       state.pastePlacementActive = false;
       state.pastePreviewWorld = null;
@@ -4913,7 +4998,15 @@
   showPanelBtn?.addEventListener("click", (event) => {
     event.stopPropagation();
     const next = !canvasShowPanelEl?.classList.contains("open");
+    if (next) setLayerVisibilityPanelOpen(false);
     setCanvasShowPanelOpen(next);
+  });
+
+  showLayersBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const next = !layerVisibilityPanelEl?.classList.contains("open");
+    if (next) setCanvasShowPanelOpen(false);
+    setLayerVisibilityPanelOpen(next);
   });
 
   canvasShowPanelEl?.addEventListener("click", (event) => {
@@ -5889,7 +5982,7 @@
 
   function drawItems(PV){
     if (!renderUiState.showAnchorPoints) return;
-    const items = getFilteredItems();
+    const items = getFilteredItems().filter((it) => isItemLayerVisible(it));
     if (!items.length && !(state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length)) return;
 
     const normalCount = 3 * items.length;
@@ -6080,6 +6173,7 @@
     };
 
     for (const it of state.items || []){
+      if (!isItemLayerVisible(it)) continue;
       const typeId = String(it?.kv?.type_id || "").trim();
       const def = getDefForItem(it);
       const defGraphic = String(def?.graphic || "").trim();
@@ -6809,7 +6903,7 @@
     scheduleRenderList();
   }
 
-  function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
+  function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; if(!isItemLayerVisible(it)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
   function getRenderWaterHeightRaw(){
