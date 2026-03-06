@@ -2785,16 +2785,14 @@
   }
 
   function buildLayerOptions(){
-    const layers = new Map();
-    for (const it of state.items){
-      if (kvHas(it, "layer")){
-        const v = String(it.kv.layer);
-        layers.set(v, v);
-      }
+    const options = [];
+    for (let n = 1; n <= 32; n++){
+      const sec = getLayerSectionByNumber(n);
+      const desc = String(sec?.kv?.description || "").trim();
+      const label = desc ? `${n} - ${desc}` : String(n);
+      options.push({ value: String(n), label });
     }
-    const vals = Array.from(layers.keys()).sort((a,b)=>Number(a)-Number(b));
-    ui.layer.innerHTML = vals.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
-    if (!vals.length) ui.layer.innerHTML = `<option value="">(none)</option>`;
+    ui.layer.innerHTML = options.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
   }
 
   function buildWaypointList(){
@@ -3422,6 +3420,8 @@
       sec.lines.push(`  color "${color.replace(/"/g, "")}"`);
     }
     markItemsChanged({ structure: false, invalidateFilter: false });
+    buildLayerOptions();
+    if (state.modalOpen) renderItemWindow();
     scheduleLiveMisRefresh();
   }
 
@@ -4408,6 +4408,7 @@
     ui.itemTitle.textContent = title;
     ui.presenceHint.textContent = "";
 
+    buildLayerOptions();
     setEnabled(ui.layer, kvHas(it, "layer"));
     if (kvHas(it, "layer")) ui.layer.value = String(it.kv.layer);
 
