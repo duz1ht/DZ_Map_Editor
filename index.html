@@ -4314,20 +4314,25 @@
 
 
   function selectAllGroupMembers(){
-    if (!state.items.length){
+    const selectedGroup = Math.max(1, Math.min(63, Number(state.groupSelectedNumber) || 1));
+    const matchedIds = state.items
+      .filter((it) => Number(it?.kv?.group_id) === selectedGroup)
+      .map((it) => it.id);
+
+    if (!matchedIds.length){
       state.selectedId = null;
       state.multiSelectedIds.clear();
       renderList();
       requestRender();
-      statusEl.textContent = "No items available to select.";
+      statusEl.textContent = `No items found in Group ${selectedGroup}.`;
       return;
     }
-    const allIds = state.items.map(it => it.id);
-    state.multiSelectedIds = new Set(allIds);
-    state.selectedId = allIds[allIds.length - 1] ?? null;
+
+    state.multiSelectedIds = new Set(matchedIds);
+    state.selectedId = matchedIds[matchedIds.length - 1] ?? null;
     renderList();
     requestRender();
-    statusEl.textContent = `${allIds.length} item(s) selected.`;
+    statusEl.textContent = `${matchedIds.length} item(s) selected from Group ${selectedGroup}.`;
   }
 
   function saveGroupsAsTextFile(){
