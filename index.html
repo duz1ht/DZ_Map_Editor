@@ -4674,7 +4674,7 @@
       setValueIf(ui.maxEngage, "");
     }
 
-    setEnabled(ui.missionCritical, kvHas(it, "mission_critical"));
+    setEnabled(ui.missionCritical, true);
     setValueIf(ui.missionCritical, kvHas(it, "mission_critical") ? String(it.kv.mission_critical) === "1" : false);
 
     // Waypoints
@@ -4774,7 +4774,8 @@
       it.kv.edistances = `${minText} ${maxText}`.trim();
     }
 
-    if (kvHas(it, "mission_critical")) it.kv.mission_critical = ui.missionCritical.checked ? "1" : "0";
+    if (ui.missionCritical.checked) it.kv.mission_critical = "1";
+    else delete it.kv.mission_critical;
 
     const hasWaypointRef = !!ui.wpList.value;
     if (kvHas(it, "waypoint_id")){
