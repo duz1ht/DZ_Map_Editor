@@ -2002,7 +2002,10 @@
   }
 
   function getItemWindowDisplayZRaw(it){
-    if (isTerrainLockEffective(it)) return getExtraBHeightRawOrFromPosition(it);
+    if (isTerrainLockEffective(it)){
+      const terrainRaw = terrainHeightRawAtItemXY(it);
+      return toInt32((it?.z || 0) - terrainRaw);
+    }
     return toInt32(it?.z || 0);
   }
 
