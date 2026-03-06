@@ -1964,6 +1964,67 @@
     return ((parseIntSafe(whole) << 16) | parseUInt16Safe(fraction)) | 0;
   }
 
+  function parseRawIntSafe(v){
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    return toInt32(Math.trunc(n));
+  }
+
+  function isAbsoluteHeightEnabled(it){
+    return String(it?.kv?.absolute_height || "0") === "1";
+  }
+
+  function isHeightLockFlagEnabled(it){
+    return String(it?.kv?.height_lock || "0") === "1";
+  }
+
+  function isTerrainLockEffective(it){
+    return isHeightLockFlagEnabled(it) && !isAbsoluteHeightEnabled(it);
+  }
+
+  function terrainHeightRawAtItemXY(it){
+    if (!it) return 0;
+    const xWorld = rawToWorld(it.x || 0, 'x');
+    const yWorld = rawToWorld(it.y || 0, 'y');
+    const terrainWorld = heightAtWorld(xWorld, yWorld, 1.0);
+    if (!Number.isFinite(terrainWorld) || terrainWorld < -1e8) return 0;
+    return worldToRaw(terrainWorld, 'z');
+  }
+
+  function getStoredExtraBHeightRaw(it){
+    return parseRawIntSafe(it?.kv?.extra_bheight);
+  }
+
+  function getExtraBHeightRawOrFromPosition(it){
+    const stored = getStoredExtraBHeightRaw(it);
+    if (stored != null) return stored;
+    return toInt32((it?.z || 0) - terrainHeightRawAtItemXY(it));
+  }
+
+  function recomputeExtraBHeightFromPosition(it){
+    if (!it || !it.kv) return;
+    const terrainRaw = terrainHeightRawAtItemXY(it);
+    it.kv.extra_bheight = String(toInt32((it.z || 0) - terrainRaw));
+  }
+
+  function applyTerrainLockAfterItemMove(it, moveState = {}){
+    if (!it || !it.kv || !isTerrainLockEffective(it)) return;
+    const movedXY = !!moveState.movedXY;
+    const movedZ = !!moveState.movedZ;
+
+    if (movedZ){
+      recomputeExtraBHeightFromPosition(it);
+      return;
+    }
+    if (!movedXY) return;
+
+    const lockedExtraRaw = Number.isFinite(moveState.lockedExtraRaw)
+      ? toInt32(moveState.lockedExtraRaw)
+      : getExtraBHeightRawOrFromPosition(it);
+    const terrainRaw = terrainHeightRawAtItemXY(it);
+    it.z = toInt32(terrainRaw + lockedExtraRaw);
+  }
+
 
   function invalidateFilteredItemsCache(){
     state.filteredItemsCache = null;
@@ -3713,6 +3774,14 @@
     return { lines, items, sectionBlocks };
   }
 
+  function prepareItemHeightsForSave(items){
+    for (const it of (items || [])){
+      if (!it || !it.kv) continue;
+      if (isTerrainLockEffective(it)) recomputeExtraBHeightFromPosition(it);
+      if (kvHas(it, "position")) it.kv.position = `${it.x} ${it.y} ${it.z}`;
+    }
+  }
+
   function rebuildMIS(originalText, items, sectionBlocks){
     const out = originalText.replace(/\r\n/g, "\n").split("\n");
     const originalParsed = parseMIS(originalText);
@@ -3914,6 +3983,7 @@
   }
 
   function refreshLiveMisWindow(resetBaseline=false, options = {}){
+    prepareItemHeightsForSave(state.items);
     state.liveMisRawText = rebuildMIS(state.rawText || "", state.items, state.sectionBlocks);
     state.liveMisDirty = false;
     if (misRealtimeConsoleEl){
@@ -4612,11 +4682,11 @@
     setValueIf(ui.poszFrac, posZSplit.fraction);
 
     // Locks
-    setEnabled(ui.lock, kvHas(it, "height_lock"));
-    setValueIf(ui.lock, kvHas(it, "height_lock") ? String(it.kv.height_lock) === "1" : false);
+    setEnabled(ui.lock, true);
+    setValueIf(ui.lock, String(it.kv.height_lock || "0") === "1");
 
-    setEnabled(ui.absHeight, kvHas(it, "absolute_height"));
-    setValueIf(ui.absHeight, kvHas(it, "absolute_height") ? String(it.kv.absolute_height) === "1" : false);
+    setEnabled(ui.absHeight, true);
+    setValueIf(ui.absHeight, String(it.kv.absolute_height || "0") === "1");
 
     // Facing (always editable in the window)
     setEnabled(ui.heading, true);
@@ -4737,14 +4807,30 @@
     if (kvHas(it, "layer")) it.kv.layer = ui.layer.value;
 
     if (kvHas(it, "position")){
+      const prevPos = { x: it.x || 0, y: it.y || 0, z: it.z || 0 };
       it.x = joinFixedPositionRaw(ui.posx.value, ui.posxFrac.value);
       it.y = joinFixedPositionRaw(ui.posy.value, ui.posyFrac.value);
       it.z = joinFixedPositionRaw(ui.posz.value, ui.poszFrac.value);
+
+      const movedXY = it.x !== prevPos.x || it.y !== prevPos.y;
+      const movedZ = it.z !== prevPos.z;
+      applyTerrainLockAfterItemMove(it, { movedXY, movedZ });
+
       it.kv.position = `${it.x} ${it.y} ${it.z}`;
     }
 
-    if (kvHas(it, "height_lock")) it.kv.height_lock = ui.lock.checked ? "1" : "0";
-    if (kvHas(it, "absolute_height")) it.kv.absolute_height = ui.absHeight.checked ? "1" : "0";
+    const wasAbsHeight = isAbsoluteHeightEnabled(it);
+    const wasHeightLock = isHeightLockFlagEnabled(it);
+    const nextAbsHeight = ui.absHeight.checked;
+    const nextHeightLock = ui.lock.checked;
+
+    it.kv.height_lock = nextHeightLock ? "1" : "0";
+    it.kv.absolute_height = nextAbsHeight ? "1" : "0";
+
+    const lockTurnedOn = !wasHeightLock && nextHeightLock;
+    const absTurnedOff = wasAbsHeight && !nextAbsHeight;
+    const shouldCaptureTerrainOffset = nextHeightLock && !nextAbsHeight && (lockTurnedOn || absTurnedOff);
+    if (shouldCaptureTerrainOffset) recomputeExtraBHeightFromPosition(it);
 
     if (applyOrientation){
       it.heading = parseFloatSafe(ui.heading.value);
@@ -5333,6 +5419,7 @@
   async function saveCurrentMap(options = {}){
     const forcePicker = Boolean(options?.forcePicker);
     if (!state.rawText) return false;
+    prepareItemHeightsForSave(state.items);
     const out = rebuildMIS(state.rawText, state.items, state.sectionBlocks);
     if (window.showSaveFilePicker){
       try{
@@ -7397,7 +7484,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   });
   cv.addEventListener("contextmenu", (e) => { e.preventDefault(); if(state.cameraLookActive || (state.cameraLookPending&&state.cameraLookButton===2)) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAtCanvas(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
   cv.addEventListener("dblclick", (e) => { const rect=cv.getBoundingClientRect(); const picked=pickItemAtCanvas(e.clientX-rect.left,e.clientY-rect.top); if(picked){ selectById(picked.id); openModal(); } });
-  cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.cameraLookPending){ const mask=state.cameraLookButton===2?2:1; if(e.buttons & mask){ const start=state.cameraLookStart||{sx,sy}; const moved=Math.hypot(sx-start.sx, sy-start.sy); if(moved>3){ state.cameraLookPending=false; if(state.cameraLookButton===1) state.pendingLeftClick=null; state.cameraLookActive=true; if(document.pointerLockElement!==cv && cv.requestPointerLock) cv.requestPointerLock(); } } else if(!state.cameraLookActive){ state.cameraLookPending=false; state.cameraLookButton=0; } } if(state.pastePlacementActive){ const z=state.selectedId?rawToWorld(getSelected()?.z||0,'z'):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=rawToWorld((active[0]?.z)||0,'z'); const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; it.x=worldToRaw(rawToWorld(it.x,'x')+dx,'x'); it.y=worldToRaw(rawToWorld(it.y,'y')+dy,'y'); it.kv.position=`${it.x} ${it.y} ${it.z}`; markItemTransformDirty(it.id);} markItemsChanged({ structure: false }); state.dragAnchor=nowW; scheduleRenderList(); scheduleLiveMisRefresh(); } state.lastMouse={sx,sy}; });
+  cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.cameraLookPending){ const mask=state.cameraLookButton===2?2:1; if(e.buttons & mask){ const start=state.cameraLookStart||{sx,sy}; const moved=Math.hypot(sx-start.sx, sy-start.sy); if(moved>3){ state.cameraLookPending=false; if(state.cameraLookButton===1) state.pendingLeftClick=null; state.cameraLookActive=true; if(document.pointerLockElement!==cv && cv.requestPointerLock) cv.requestPointerLock(); } } else if(!state.cameraLookActive){ state.cameraLookPending=false; state.cameraLookButton=0; } } if(state.pastePlacementActive){ const z=state.selectedId?rawToWorld(getSelected()?.z||0,'z'):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=rawToWorld((active[0]?.z)||0,'z'); const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; const lockedExtraRaw=isTerrainLockEffective(it)?getExtraBHeightRawOrFromPosition(it):null; it.x=worldToRaw(rawToWorld(it.x,'x')+dx,'x'); it.y=worldToRaw(rawToWorld(it.y,'y')+dy,'y'); applyTerrainLockAfterItemMove(it,{ movedXY:true, lockedExtraRaw }); it.kv.position=`${it.x} ${it.y} ${it.z}`; markItemTransformDirty(it.id);} markItemsChanged({ structure: false }); state.dragAnchor=nowW; scheduleRenderList(); scheduleLiveMisRefresh(); } state.lastMouse={sx,sy}; });
   function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const shouldFinalizeClick=!!state.pendingLeftClick && !state.cameraLookActive && !state.gizmoDrag && !state.draggingItem && !had; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; state.cameraLookActive=false; state.cameraLookPending=false; state.cameraLookStart=null; state.cameraLookButton=0; if(document.pointerLockElement===cv && document.exitPointerLock) document.exitPointerLock(); if(shouldFinalizeClick){ const pickedId=state.pendingLeftClick.pickedId; selectById(pickedId != null ? pickedId : null); } state.pendingLeftClick=null; if(had){ const worldA=screenToWorld(x0,y0,0); const worldB=screenToWorld(x1,y1,0); const minX=Math.min(worldA.x,worldB.x), maxX=Math.max(worldA.x,worldB.x), minY=Math.min(worldA.y,worldB.y), maxY=Math.max(worldA.y,worldB.y); const candidates=getSpatialCandidatesByWorldRect(minX,minY,maxX,maxY); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); const ids=[]; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); refreshLiveMisWindow(false, { force: true }); } }
   cv.addEventListener('mouseup',stopDrag); cv.addEventListener('mouseleave',()=>{ state.cameraLookActive=false; stopDrag(); });
   cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const lvl=speedLevelEl; if(!lvl) return; const cur=Math.round(parseFloat(lvl.value||'4')||4); const min=Math.round(parseFloat(lvl.min||'1')||1); const max=Math.round(parseFloat(lvl.max||'8')||8); const step=Math.round(parseFloat(lvl.step||'1')||1); const dir=e.deltaY<0?1:-1; const next=Math.max(min,Math.min(max,cur+dir*step)); lvl.value=String(next); syncRenderUiState(); },{passive:false});
@@ -7472,6 +7559,11 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     if (!activeItems.length || !activeItems.some((it) => it.id === state.selectedId)){
       state.gizmoDrag = null;
       return;
+    }
+
+    const lockExtraById = new Map();
+    for (const it of activeItems){
+      lockExtraById.set(it.id, isTerrainLockEffective(it) ? getExtraBHeightRawOrFromPosition(it) : null);
     }
 
     const dx = e.clientX - state.gizmoDrag.lastX;
@@ -7551,6 +7643,19 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
       for (const it of activeItems){
         if (mode === "rotX") it.pitch = (Number(it.pitch) || 0) + deltaDeg;
         if (mode === "rotZ") it.heading = (Number(it.heading) || 0) - deltaDeg;
+      }
+    }
+
+    for (const it of activeItems){
+      const lockedExtraRaw = lockExtraById.get(it.id);
+      if (mode === "moveX" || mode === "moveY" || mode === "moveXY"){
+        applyTerrainLockAfterItemMove(it, { movedXY: true, lockedExtraRaw });
+      } else if (mode === "moveXZ"){
+        applyTerrainLockAfterItemMove(it, { movedXY: true, movedZ: true, lockedExtraRaw });
+      } else if (mode === "moveYZ"){
+        applyTerrainLockAfterItemMove(it, { movedXY: true, movedZ: true, lockedExtraRaw });
+      } else if (mode === "moveZ"){
+        applyTerrainLockAfterItemMove(it, { movedZ: true, lockedExtraRaw });
       }
     }
 
