@@ -379,16 +379,20 @@
       min-width:280px;
       max-width:min(48vw, 440px);
       max-height:340px;
-      overflow:auto;
       display:none;
       background:var(--panel);
       border:1px solid var(--line-strong);
       border-radius:var(--radius-md);
       box-shadow:var(--shadow-md);
       padding:10px;
+      overflow:hidden;
+      grid-template-rows:auto 1fr;
+      gap:8px;
     }
-    #layerVisibilityPanel.open{ display:block; }
-    #layerVisibilityList{ display:grid; grid-template-columns:1fr; gap:4px; font-size:12px; }
+    #layerVisibilityPanel.open{ display:grid; }
+    #layerVisibilityControls{ display:flex; align-items:center; gap:6px; }
+    #layerVisibilityControls button{ min-height:22px; padding:2px 8px; font-size:11px; }
+    #layerVisibilityList{ display:grid; grid-template-columns:1fr; gap:4px; font-size:12px; overflow:auto; min-height:0; }
     #layerVisibilityList label{ display:flex; align-items:center; gap:6px; }
     #misRealtimePanel{
       margin-top:12px;
@@ -1090,6 +1094,10 @@
       </div>
 
       <div id="layerVisibilityPanel" aria-hidden="true">
+        <div id="layerVisibilityControls">
+          <button id="hideAllLayersBtn" type="button">Hide All</button>
+          <button id="showAllLayersBtn" type="button">Show All</button>
+        </div>
         <div id="layerVisibilityList"></div>
       </div>
 
@@ -1643,6 +1651,8 @@
   const exportBtn = document.getElementById("exportBtn");
   const showPanelBtn = document.getElementById("showPanelBtn");
   const showLayersBtn = document.getElementById("showLayersBtn");
+  const hideAllLayersBtn = document.getElementById("hideAllLayersBtn");
+  const showAllLayersBtn = document.getElementById("showAllLayersBtn");
   const canvasShowPanelEl = document.getElementById("canvasShowPanel");
   const layerVisibilityPanelEl = document.getElementById("layerVisibilityPanel");
   const layerVisibilityListEl = document.getElementById("layerVisibilityList");
@@ -3461,6 +3471,15 @@
     showLayersBtn?.classList.toggle('active', visible);
   }
 
+  function setAllLayerVisibility(visible){
+    for (let n = 1; n <= 32; n++){
+      state.layerVisibility.set(String(n), !!visible);
+    }
+    renderLayerVisibilityPanel();
+    requestRender();
+    syncGlbItems();
+  }
+
 
   function fillLayerEditor(sec){
     const name = sec?.kv?.description || "";
@@ -5007,6 +5026,16 @@
     const next = !layerVisibilityPanelEl?.classList.contains("open");
     if (next) setCanvasShowPanelOpen(false);
     setLayerVisibilityPanelOpen(next);
+  });
+
+  hideAllLayersBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setAllLayerVisibility(false);
+  });
+
+  showAllLayersBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setAllLayerVisibility(true);
   });
 
   canvasShowPanelEl?.addEventListener("click", (event) => {
