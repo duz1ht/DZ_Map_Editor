@@ -7562,6 +7562,8 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   loadMisFile = async function(file, fileHandle = null){
     await _origLoadMisFile(file, fileHandle);
     try{ await loadTerrainFromMis(); }catch(err){ addLog(`[terrain] load error: ${err?.message || err}`); camDebugEl.textContent = `Failed to load terrain: ${err.message||err}`; }
+    fitView();
+    requestRender();
   };
 
   function applyTheme(theme){
