@@ -3376,23 +3376,14 @@
   }
 
   function buildGroupOptions(){
-    const existing = new Set();
-    for (const sec of state.sectionBlocks){
-      const n = parseGroupNumber(sec);
-      if (n) existing.add(n);
-    }
-    for (const it of state.items){
-      const gid = Number(it.kv?.group_id || "");
-      if (Number.isInteger(gid) && gid >= 1 && gid <= 63) existing.add(gid);
-    }
-    const vals = Array.from(existing).sort((a,b)=>a-b);
+    const vals = [];
+    for (let n = 1; n <= 63; n++) vals.push(n);
     ui.group.innerHTML = `<option value="">None</option>` + vals.map(n => {
       const sec = getGroupSectionByNumber(n);
       const desc = getGroupDescription(sec);
       const label = `${n} - ${desc || ""}`;
       return `<option value="${escapeHtml(String(n))}">${escapeHtml(label)}</option>`;
     }).join("");
-    if (!vals.length) ui.group.innerHTML = `<option value="">None</option>`;
   }
 
 
@@ -4582,7 +4573,7 @@
     setValueIf(ui.aiTextfile, kvHas(it, "ai_textfile") ? it.kv.ai_textfile : "");
 
     buildGroupOptions();
-    setEnabled(ui.group, ui.group.options.length > 1);
+    setEnabled(ui.group, true);
     setValueIf(ui.group, kvHas(it, "group_id") ? it.kv.group_id : "");
 
     setEnabled(ui.team, true);
@@ -4702,7 +4693,7 @@
     if (kvHas(it, "ai_textfile")) it.kv.ai_textfile = ui.aiTextfile.value;
     if (!ui.group.disabled){
       if (ui.group.value) it.kv.group_id = ui.group.value;
-      else if (kvHas(it, "group_id")) it.kv.group_id = "";
+      else delete it.kv.group_id;
     }
     if (kvHas(it, "team")) it.kv.team = ui.team.value;
 
