@@ -2630,7 +2630,7 @@
     const isHeightLockEnabled = readKvValue(item, "height_lock") === "1";
     const extraBHeightValue = readKvValue(item, "extra_bheight");
     const zDetails = [
-      `Absolute Height (Z): ${formatAbsoluteHeightFromRaw(item?.z)}`,
+      `Absolute Z: ${formatAbsoluteHeightFromRaw(item?.z)}`,
       `Lock: ${isHeightLockEnabled ? "Enabled" : "Disabled"}`,
     ];
     if (extraBHeightValue !== "") zDetails.push(`extra_bheight: ${extraBHeightValue}`);
