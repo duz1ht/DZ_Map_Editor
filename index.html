@@ -940,18 +940,20 @@
     }
     #sectionWindow[data-section-mode="waypoint"] #sectionBody,
     #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:1fr 240px; }
-    #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto auto auto; }
+    #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto 1fr auto; }
     #sectionWindow[data-section-mode="group"] #sectionMeta,
     #sectionWindow[data-section-mode="group"] #sectionHint{ display:none; }
     #sectionWindow[data-section-mode="group"] #sectionAddBtn{ display:none; }
-    #sectionWindow[data-section-mode="group"] #sectionActions{ display:flex; justify-content:flex-end; }
+    #sectionWindow[data-section-mode="group"] #sectionActions{ display:flex; justify-content:flex-end; align-items:center; }
     #sectionWindow[data-section-mode="group"] #sectionDeleteBtn{ display:none; }
     #sectionWindow[data-section-mode="group"] #groupSelectMembersBtn,
     #sectionWindow[data-section-mode="group"] #groupSaveAsTextBtn{ display:inline-flex; }
     #sectionWindow[data-section-mode="group"] #sectionActions button{
       min-height:24px;
-      padding:2px 8px;
-      line-height:1.15;
+      height:24px;
+      padding:1px 8px;
+      line-height:1.1;
+      align-self:center;
     }
     #sectionWindow[data-section-mode="group"] #sectionText{ height:34px; min-height:34px; max-height:34px; resize:none; font-family:Tahoma, Arial, sans-serif; }
     #groupSelectMembersBtn,
