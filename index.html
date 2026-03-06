@@ -5818,7 +5818,6 @@
     texColor=createTextureFromPixels(lastImg.w,lastImg.h,lastImg.pixels);
     texHeight=createHeightmapTextureFromSectors();
     texDelta=createDeltaTextureFromSectors();
-    resetCamera();
   }
 
   function mapSrcIdx(g,wrap){ if(wrap===1) return posMod(g,sectorCount); if(g<0) return 0; if(g>=sectorCount) return sectorCount-1; return g; }
