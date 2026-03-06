@@ -934,7 +934,10 @@
     #sectionWindow[data-section-mode="event"] #sectionBody,
     #sectionWindow[data-section-mode="weapon_availability"] #sectionBody,
     #sectionWindow[data-section-mode="layer"] #sectionBody{ height:468px; }
-    #sectionWindow[data-section-mode="group"] #sectionBody,
+    #sectionWindow[data-section-mode="group"] #sectionBody{
+      grid-template-columns:240px 1fr;
+      height:100%;
+    }
     #sectionWindow[data-section-mode="waypoint"] #sectionBody,
     #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:1fr 240px; }
     #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto auto auto; }
@@ -945,6 +948,11 @@
     #sectionWindow[data-section-mode="group"] #sectionDeleteBtn{ display:none; }
     #sectionWindow[data-section-mode="group"] #groupSelectMembersBtn,
     #sectionWindow[data-section-mode="group"] #groupSaveAsTextBtn{ display:inline-flex; }
+    #sectionWindow[data-section-mode="group"] #sectionActions button{
+      min-height:24px;
+      padding:2px 8px;
+      line-height:1.15;
+    }
     #sectionWindow[data-section-mode="group"] #sectionText{ height:34px; min-height:34px; max-height:34px; resize:none; font-family:Tahoma, Arial, sans-serif; }
     #groupSelectMembersBtn,
     #groupSaveAsTextBtn{ display:none; }
