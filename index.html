@@ -2569,6 +2569,10 @@
     return Number.isInteger(rounded) ? String(rounded) : String(rounded);
   }
 
+  function formatAbsoluteHeightFromRaw(v){
+    return formatCoord(v);
+  }
+
   function getGlbDimensionsForItem(item){
     if (!item || !state.glb.ready || !state.glb.THREE) return null;
 
@@ -2623,11 +2627,19 @@
     const typeLabel = String(def?.type || "").trim() || readKvValue(item, "type");
     const typeIdValue = readKvValue(item, "type_id");
     const glbDimensions = getGlbDimensionsForItem(item);
+    const isHeightLockEnabled = readKvValue(item, "height_lock") === "1";
+    const extraBHeightValue = readKvValue(item, "extra_bheight");
+    const zDetails = [
+      `Absolute Z: ${formatAbsoluteHeightFromRaw(item?.z)}`,
+      `Lock: ${isHeightLockEnabled ? "Enabled" : "Disabled"}`,
+    ];
+    if (extraBHeightValue !== "") zDetails.push(`extra_bheight: ${extraBHeightValue}`);
     const lines = [
       `Item #${state.selectedInfoIndex + 1}: ${itemName}`,
       `SSN: ${readKvValue(item, "id", "ssn", "social_security_number")} | Type: ${typeLabel} | Type ID: ${typeIdValue}`,
       `Heading: ${headingValue} | Pitch: ${pitchValue}`,
       `X: ${formatCoord(item?.x)} | Y: ${formatCoord(item?.y)} | Z: ${formatCoord(item?.z)}`,
+      zDetails.join(" | "),
       "",
       `Group: ${groupValue}`,
       `Blink Groups: ${readKvValue(item, "blink_groups", "blink_group")}`,
