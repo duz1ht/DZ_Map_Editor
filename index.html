@@ -943,6 +943,8 @@
     #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto 1fr auto; }
     #sectionWindow[data-section-mode="group"] #sectionMeta,
     #sectionWindow[data-section-mode="group"] #sectionHint{ display:none; }
+    #sectionWindow[data-section-mode="group"] #sectionKindSelect,
+    #sectionWindow[data-section-mode="group"] #sectionSearch{ display:none; }
     #sectionWindow[data-section-mode="group"] #sectionAddBtn{ display:none; }
     #sectionWindow[data-section-mode="group"] #sectionActions{ display:flex; justify-content:flex-end; align-items:center; }
     #sectionWindow[data-section-mode="group"] #sectionDeleteBtn{ display:none; }
@@ -961,6 +963,9 @@
     #sectionWindow[data-section-mode="waypoint"] #sectionHint{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #sectionActions{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #sectionText{ display:none; }
+    #sectionWindow[data-section-mode="waypoint"] #sectionKindSelect,
+    #sectionWindow[data-section-mode="waypoint"] #sectionSearch,
+    #sectionWindow[data-section-mode="waypoint"] #sectionMeta{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #waypointEditor{ display:grid; }
     #waypointEditor{ display:none; gap:8px; }
     #waypointEditor .checkRow{ margin:0; }
@@ -994,6 +999,61 @@
     #sectionWindow[data-section-mode="layer"] #sectionActions{ display:none; }
     #sectionWindow[data-section-mode="layer"] #sectionBody{ grid-template-columns:260px 1fr; }
     #sectionWindow[data-section-mode="layer"] #sectionEditor{ grid-template-rows:1fr; }
+    #sectionWindow[data-section-mode="areatrig"] #sectionKindSelect,
+    #sectionWindow[data-section-mode="areatrig"] #sectionSearch{ display:none; }
+    #sectionWindow[data-section-mode="event"]{
+      width:min(736px,100%);
+      height:min(600px,100%);
+      max-height:min(600px,100%);
+    }
+    #sectionWindow[data-section-mode="event"] #sectionTopControls{ display:none; }
+    #sectionWindow[data-section-mode="event"] #sectionBody{ grid-template-columns:1fr; height:100%; }
+    #sectionWindow[data-section-mode="event"] #sectionList,
+    #sectionWindow[data-section-mode="event"] #sectionEditor{ display:none; }
+    #eventEditorMock{
+      display:none;
+      border:1px solid #b8b8b8;
+      background:#d4d4d4;
+      color:#000;
+      font-family:Tahoma, Arial, sans-serif;
+      font-size:14px;
+      padding:14px;
+      overflow:auto;
+    }
+    #sectionWindow[data-section-mode="event"] #eventEditorMock{ display:block; }
+    .eventTopFields{ display:grid; grid-template-columns:1fr auto; gap:14px; margin-bottom:6px; }
+    .eventNameField input{ width:100%; }
+    .eventCheckRow{ display:grid; grid-template-columns:auto 1fr 56px; gap:8px; align-items:center; margin-top:2px; }
+    .eventDelayRow{ display:grid; grid-template-columns:1fr 56px; gap:8px; align-items:center; margin-top:18px; }
+    .eventMoveButtons{ display:flex; gap:18px; margin:6px 0 4px 30px; }
+    .eventMoveButtons button{ min-width:74px; }
+    .eventGrid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:10px; }
+    .eventListBox{
+      height:322px;
+      border:1px solid #a2a2a2;
+      background:#ececec;
+      overflow:auto;
+      white-space:pre;
+      font-size:20px;
+      line-height:1.2;
+      padding:3px;
+    }
+    .eventSplitPanel{ display:grid; gap:12px; }
+    .eventGroup{ border:1px solid #a6a6a6; padding:8px; }
+    .eventLegend{ margin:-18px 0 4px 4px; display:inline-block; background:#d4d4d4; padding:0 4px; }
+    .eventGroupBody{ display:grid; grid-template-columns:1fr 70px; gap:6px; }
+    .eventNestedList{
+      border:1px solid #a2a2a2;
+      background:#ececec;
+      min-height:116px;
+      white-space:pre;
+      font-size:19px;
+      line-height:1.2;
+      padding:3px;
+    }
+    .eventSideBtns{ display:grid; gap:8px; }
+    .eventFooterBtns{ display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr auto; gap:14px; margin-top:8px; }
+    .eventFooterBtns button{ min-height:34px; }
     #layerEditor{ display:none; gap:8px; align-content:start; }
     #sectionWindow[data-section-mode="layer"] #layerEditor{ display:grid; }
     .layerField{ display:grid; grid-template-columns:72px 1fr; gap:8px; align-items:center; }
@@ -1231,6 +1291,51 @@
                 <div id="layerActions"><button id="layerOkBtn" type="button">Ok</button></div>
               </div>
               <div class="btnRow" id="sectionActions"><button id="groupSelectMembersBtn">Select Members</button><button id="groupSaveAsTextBtn">Save As Text File</button><button id="sectionDeleteBtn">Delete block</button><button id="sectionApplyBtn">Apply block</button></div>
+            </div>
+            <div id="eventEditorMock" aria-hidden="true">
+              <div class="eventTopFields">
+                <div class="eventNameField">
+                  <div class="inlineLabel">Name</div>
+                  <input value="Event 0" />
+                </div>
+                <div>
+                  <label class="eventCheckRow"><input type="checkbox" /><span>Reset after (seconds)</span><input value="0" /></label>
+                  <div class="eventDelayRow"><span>Delay (seconds)</span><input value="0" /></div>
+                </div>
+              </div>
+              <div class="eventGrid">
+                <div>
+                  <div class="eventMoveButtons"><button>Up</button><button>Down</button></div>
+                  <div class="eventListBox">(0) Event 0
+<< New Event >></div>
+                </div>
+                <div class="eventSplitPanel">
+                  <div class="eventGroup">
+                    <div class="eventLegend">IF ( Triggers )</div>
+                    <div class="eventGroupBody">
+                      <div class="eventNestedList">(0) SSN 3 is within area 1
+<< New Trigger >></div>
+                      <div class="eventSideBtns"><button>Delete</button><button>Copy</button><button disabled>Paste</button></div>
+                    </div>
+                  </div>
+                  <div class="eventGroup">
+                    <div class="eventLegend">THEN ( Actions )</div>
+                    <div class="eventGroupBody">
+                      <div class="eventNestedList">(0) Show Lose Subgoal 1
+<< New Action >></div>
+                      <div class="eventSideBtns"><button>Delete</button><button>Copy</button><button disabled>Paste</button></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="eventFooterBtns">
+                <button>Delete Event</button>
+                <button>Copy Event</button>
+                <button disabled>Paste Event</button>
+                <button>Print Event</button>
+                <button>Print All Events</button>
+                <button>OK</button>
+              </div>
             </div>
           </div>
         </div>
