@@ -5794,7 +5794,7 @@
   function getItemWorldZ(it){
     if (it && kvHas(it, "extra_bheight")){
       const rawExtraBheight = Number(it.kv.extra_bheight);
-      if (Number.isFinite(rawExtraBheight)) return rawToWorld(rawExtraBheight, 'z');
+      if (Number.isFinite(rawExtraBheight) && rawExtraBheight !== 0) return rawToWorld(rawExtraBheight, 'z');
     }
 
     const rawZ = Number(it?.z);
