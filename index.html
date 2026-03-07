@@ -1330,6 +1330,13 @@
                         <input id="ui_posz_frac" class="compactInput" />
                       </div>
                     </div>
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">extra_bheight:</div>
+                      <div class="posDualInputs">
+                        <input id="ui_extraBheight" class="compactInput" disabled />
+                        <input id="ui_extraBheight_frac" class="compactInput" disabled />
+                      </div>
+                    </div>
                   </div>
                   <div class="row" style="margin:2px 0 0 0;">
                     <label class="checkRow" style="margin:0;">
@@ -1816,6 +1823,8 @@
     posyFrac: document.getElementById("ui_posy_frac"),
     posz: document.getElementById("ui_posz"),
     poszFrac: document.getElementById("ui_posz_frac"),
+    extraBheight: document.getElementById("ui_extraBheight"),
+    extraBheightFrac: document.getElementById("ui_extraBheight_frac"),
     absHeight: document.getElementById("ui_absHeight"),
     lock: document.getElementById("ui_lock"),
 
@@ -4613,11 +4622,22 @@
     setValueIf(ui.posz, posZSplit.whole);
     setValueIf(ui.poszFrac, posZSplit.fraction);
 
-    // Locks
-    setEnabled(ui.lock, kvHas(it, "height_lock"));
-    setValueIf(ui.lock, kvHas(it, "height_lock") ? String(it.kv.height_lock) === "1" : false);
+    const hasExtraBheight = kvHas(it, "extra_bheight");
+    const extraBheightRaw = hasExtraBheight ? Number(it.kv.extra_bheight) : NaN;
+    if (hasExtraBheight && Number.isFinite(extraBheightRaw)){
+      const extraBheightSplit = splitFixedPositionRaw(extraBheightRaw);
+      setValueIf(ui.extraBheight, extraBheightSplit.whole);
+      setValueIf(ui.extraBheightFrac, extraBheightSplit.fraction);
+    } else {
+      setValueIf(ui.extraBheight, "-");
+      setValueIf(ui.extraBheightFrac, "-");
+    }
 
-    setEnabled(ui.absHeight, kvHas(it, "absolute_height"));
+    // Locks (read-only in UI)
+    setEnabled(ui.lock, false);
+    setValueIf(ui.lock, kvHas(it, "height_lock") && String(it.kv.height_lock) === "1");
+
+    setEnabled(ui.absHeight, false);
     setValueIf(ui.absHeight, kvHas(it, "absolute_height") ? String(it.kv.absolute_height) === "1" : false);
 
     // Facing (always editable in the window)
@@ -5066,7 +5086,7 @@
     if (!it) return;
     const x = rawToWorld(it.x, 'x');
     const y = rawToWorld(it.y, 'y');
-    const z = rawToWorld(it.z || 0, 'z');
+    const z = getItemWorldZ(it);
     const offset = 72;
     cam.pos = vec3(x + offset, y + offset, z + 32);
     const dx = x - cam.pos.x;
@@ -5771,6 +5791,21 @@
     const n=Number(v)||0;
     return Math.round(n*MIS_POS_SCALE);
   }
+  function getItemWorldZ(it){
+    if (it && kvHas(it, "extra_bheight")){
+      const rawExtraBheight = Number(it.kv.extra_bheight);
+      if (Number.isFinite(rawExtraBheight) && rawExtraBheight !== 0) return rawToWorld(rawExtraBheight, 'z');
+    }
+
+    const rawZ = Number(it?.z);
+    if (rawZ === 0){
+      const x = rawToWorld(it?.x || 0, 'x');
+      const y = rawToWorld(it?.y || 0, 'y');
+      const terrainZ = heightAtWorld(x, y, 1.0);
+      if (Number.isFinite(terrainZ) && terrainZ > -1e8) return terrainZ;
+    }
+    return rawToWorld(it?.z || 0, 'z');
+  }
   let sectorCount=8, terrainOrigin={x:0,y:0}, wrapX=1, wrapY=1, sectors=null, lastDepth=null, lastImg=null, loadedTrnName=null;
   let trnInfo={colormap:null,detailmap:null,polydata:null,tilestrip:null,charmap:null,foliagemap:null,waterHeight:null};
   let texColor=null, texHeight=null, texDelta=null; let meshSectorLods=[];
@@ -6097,7 +6132,7 @@
     for (const it of items){
       const x = rawToWorld(it.x,'x');
       const y = rawToWorld(it.y,'y');
-      const z = rawToWorld(it.z||0,'z');
+      const z = getItemWorldZ(it);
       if (it.id===state.selectedId||state.multiSelectedIds.has(it.id)){
         selectedBuf[selectedLen++]=x; selectedBuf[selectedLen++]=y; selectedBuf[selectedLen++]=z;
       } else if (state.selectedWaypointMarkerIds.has(it.id)){
@@ -6143,7 +6178,7 @@
     obj.position.set(
       rawToWorld(it.x,'x'),
       rawToWorld(it.y,'y'),
-      rawToWorld(it.z||0,'z')
+      getItemWorldZ(it)
     );
     // OpenNova-style orientation correction: sign-flip yaw/pitch and apply a +180° yaw phase shift.
     const yawRad = ((-(Number(it.heading) || 0)) + 180) * Math.PI / 180;
@@ -6797,7 +6832,7 @@
     const center = {
       x: rawToWorld(it.x,'x'),
       y: rawToWorld(it.y,'y'),
-      z: rawToWorld(it.z||0,'z')
+      z: getItemWorldZ(it)
     };
     const gizmoNearDist = 180;
     const gizmoFarDist = 1800;
@@ -7002,7 +7037,7 @@
     scheduleRenderList();
   }
 
-  function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; if(!isItemLayerVisible(it)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
+  function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; if(!isItemLayerVisible(it)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),getItemWorldZ(it)); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
   function getRenderWaterHeightRaw(){
@@ -7194,7 +7229,7 @@
     for (const it of positionedItems){
       const x = rawToWorld(it.x||0,'x');
       const y = rawToWorld(it.y||0,'y');
-      const z = rawToWorld(it.z||0,'z');
+      const z = getItemWorldZ(it);
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
       minX=Math.min(minX,x); maxX=Math.max(maxX,x);
       minY=Math.min(minY,y); maxY=Math.max(maxY,y);
@@ -7400,7 +7435,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   cv.addEventListener("contextmenu", (e) => { e.preventDefault(); if(state.cameraLookActive || (state.cameraLookPending&&state.cameraLookButton===2)) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; const picked=pickItemAtCanvas(sx,sy); if (picked){ if (!(picked.id===state.selectedId||state.multiSelectedIds.has(picked.id))) selectById(picked.id); showItemContextMenu(e.clientX,e.clientY); return; } if (state.selectedId!==null||state.multiSelectedIds.size>0||state.itemClipboardItems.length) showItemContextMenu(e.clientX,e.clientY); });
   cv.addEventListener("dblclick", (e) => { const rect=cv.getBoundingClientRect(); const picked=pickItemAtCanvas(e.clientX-rect.left,e.clientY-rect.top); if(picked){ selectById(picked.id); openModal(); } });
   cv.addEventListener("mousemove", (e) => { if(state.modalOpen) return; const rect=cv.getBoundingClientRect(); const sx=e.clientX-rect.left, sy=e.clientY-rect.top; if(state.cameraLookPending){ const mask=state.cameraLookButton===2?2:1; if(e.buttons & mask){ const start=state.cameraLookStart||{sx,sy}; const moved=Math.hypot(sx-start.sx, sy-start.sy); if(moved>3){ state.cameraLookPending=false; if(state.cameraLookButton===1) state.pendingLeftClick=null; state.cameraLookActive=true; if(document.pointerLockElement!==cv && cv.requestPointerLock) cv.requestPointerLock(); } } else if(!state.cameraLookActive){ state.cameraLookPending=false; state.cameraLookButton=0; } } if(state.pastePlacementActive){ const z=state.selectedId?rawToWorld(getSelected()?.z||0,'z'):0; state.pastePreviewWorld=screenToWorld(sx,sy,z); } if(state.boxSelecting&&state.boxStart) state.boxCurrent={sx,sy}; else if(state.draggingItem&&state.selectedId){ const active=state.items.filter(it=>it.id===state.selectedId||state.multiSelectedIds.has(it.id)); const zPlane=rawToWorld((active[0]?.z)||0,'z'); const nowW=screenToWorld(sx,sy,zPlane); const prevW=state.dragAnchor||nowW; const dx=nowW.x-prevW.x, dy=nowW.y-prevW.y; for(const it of active){ if(!kvHas(it,'position')) continue; it.x=worldToRaw(rawToWorld(it.x,'x')+dx,'x'); it.y=worldToRaw(rawToWorld(it.y,'y')+dy,'y'); it.kv.position=`${it.x} ${it.y} ${it.z}`; markItemTransformDirty(it.id);} markItemsChanged({ structure: false }); state.dragAnchor=nowW; scheduleRenderList(); scheduleLiveMisRefresh(); } state.lastMouse={sx,sy}; });
-  function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const shouldFinalizeClick=!!state.pendingLeftClick && !state.cameraLookActive && !state.gizmoDrag && !state.draggingItem && !had; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; state.cameraLookActive=false; state.cameraLookPending=false; state.cameraLookStart=null; state.cameraLookButton=0; if(document.pointerLockElement===cv && document.exitPointerLock) document.exitPointerLock(); if(shouldFinalizeClick){ const pickedId=state.pendingLeftClick.pickedId; selectById(pickedId != null ? pickedId : null); } state.pendingLeftClick=null; if(had){ const worldA=screenToWorld(x0,y0,0); const worldB=screenToWorld(x1,y1,0); const minX=Math.min(worldA.x,worldB.x), maxX=Math.max(worldA.x,worldB.x), minY=Math.min(worldA.y,worldB.y), maxY=Math.max(worldA.y,worldB.y); const candidates=getSpatialCandidatesByWorldRect(minX,minY,maxX,maxY); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); const ids=[]; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),rawToWorld(it.z||0,'z')); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); refreshLiveMisWindow(false, { force: true }); } }
+  function stopDrag(){ const had=state.boxSelecting&&state.boxStart&&state.boxCurrent; const shouldFinalizeClick=!!state.pendingLeftClick && !state.cameraLookActive && !state.gizmoDrag && !state.draggingItem && !had; const x0=had?Math.min(state.boxStart.sx,state.boxCurrent.sx):0, x1=had?Math.max(state.boxStart.sx,state.boxCurrent.sx):0, y0=had?Math.min(state.boxStart.sy,state.boxCurrent.sy):0, y1=had?Math.max(state.boxStart.sy,state.boxCurrent.sy):0, add=state.boxSelectAdditive; state.draggingItem=false; state.boxSelecting=false; state.boxSelectAdditive=false; state.boxStart=null; state.boxCurrent=null; state.lastMouse=null; state.dragAnchor=null; state.cameraLookActive=false; state.cameraLookPending=false; state.cameraLookStart=null; state.cameraLookButton=0; if(document.pointerLockElement===cv && document.exitPointerLock) document.exitPointerLock(); if(shouldFinalizeClick){ const pickedId=state.pendingLeftClick.pickedId; selectById(pickedId != null ? pickedId : null); } state.pendingLeftClick=null; if(had){ const worldA=screenToWorld(x0,y0,0); const worldB=screenToWorld(x1,y1,0); const minX=Math.min(worldA.x,worldB.x), maxX=Math.max(worldA.x,worldB.x), minY=Math.min(worldA.y,worldB.y), maxY=Math.max(worldA.y,worldB.y); const candidates=getSpatialCandidatesByWorldRect(minX,minY,maxX,maxY); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); const ids=[]; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),getItemWorldZ(it)); if(p.visible&&p.sx>=x0&&p.sx<=x1&&p.sy>=y0&&p.sy<=y1) ids.push(it.id); } if(!add) state.multiSelectedIds.clear(); for(const id of ids) state.multiSelectedIds.add(id); state.selectedId=state.multiSelectedIds.size?Array.from(state.multiSelectedIds).at(-1):null; renderList(); refreshLiveMisWindow(false, { force: true }); } }
   cv.addEventListener('mouseup',stopDrag); cv.addEventListener('mouseleave',()=>{ state.cameraLookActive=false; stopDrag(); });
   cv.addEventListener('wheel',(e)=>{ e.preventDefault(); const lvl=speedLevelEl; if(!lvl) return; const cur=Math.round(parseFloat(lvl.value||'4')||4); const min=Math.round(parseFloat(lvl.min||'1')||1); const max=Math.round(parseFloat(lvl.max||'8')||8); const step=Math.round(parseFloat(lvl.step||'1')||1); const dir=e.deltaY<0?1:-1; const next=Math.max(min,Math.min(max,cur+dir*step)); lvl.value=String(next); syncRenderUiState(); },{passive:false});
 
