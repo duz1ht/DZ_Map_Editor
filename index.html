@@ -1330,6 +1330,13 @@
                         <input id="ui_posz_frac" class="compactInput" />
                       </div>
                     </div>
+                    <div class="kvRow">
+                      <div class="inlineLabel" style="margin:0;">extra_bheight:</div>
+                      <div class="posDualInputs">
+                        <input id="ui_extraBheight" class="compactInput" disabled />
+                        <input id="ui_extraBheight_frac" class="compactInput" disabled />
+                      </div>
+                    </div>
                   </div>
                   <div class="row" style="margin:2px 0 0 0;">
                     <label class="checkRow" style="margin:0;">
@@ -1816,6 +1823,8 @@
     posyFrac: document.getElementById("ui_posy_frac"),
     posz: document.getElementById("ui_posz"),
     poszFrac: document.getElementById("ui_posz_frac"),
+    extraBheight: document.getElementById("ui_extraBheight"),
+    extraBheightFrac: document.getElementById("ui_extraBheight_frac"),
     absHeight: document.getElementById("ui_absHeight"),
     lock: document.getElementById("ui_lock"),
 
@@ -4613,6 +4622,17 @@
     setValueIf(ui.posz, posZSplit.whole);
     setValueIf(ui.poszFrac, posZSplit.fraction);
 
+    const hasExtraBheight = kvHas(it, "extra_bheight");
+    const extraBheightRaw = hasExtraBheight ? Number(it.kv.extra_bheight) : NaN;
+    if (hasExtraBheight && Number.isFinite(extraBheightRaw)){
+      const extraBheightSplit = splitFixedPositionRaw(extraBheightRaw);
+      setValueIf(ui.extraBheight, extraBheightSplit.whole);
+      setValueIf(ui.extraBheightFrac, extraBheightSplit.fraction);
+    } else {
+      setValueIf(ui.extraBheight, "-");
+      setValueIf(ui.extraBheightFrac, "-");
+    }
+
     // Locks
     setEnabled(ui.lock, kvHas(it, "height_lock"));
     setValueIf(ui.lock, kvHas(it, "height_lock") ? String(it.kv.height_lock) === "1" : false);
@@ -5772,6 +5792,11 @@
     return Math.round(n*MIS_POS_SCALE);
   }
   function getItemWorldZ(it){
+    if (it && kvHas(it, "extra_bheight")){
+      const rawExtraBheight = Number(it.kv.extra_bheight);
+      if (Number.isFinite(rawExtraBheight)) return rawToWorld(rawExtraBheight, 'z');
+    }
+
     const rawZ = Number(it?.z);
     if (rawZ === 0){
       const x = rawToWorld(it?.x || 0, 'x');
