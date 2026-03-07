@@ -14,6 +14,7 @@ end
 begin "Area Trigger"
 	type_id 106013
 	graphic 1_areatrigger
+	graphic_scale 5
 end
 
 
