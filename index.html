@@ -4633,11 +4633,11 @@
       setValueIf(ui.extraBheightFrac, "-");
     }
 
-    // Locks
-    setEnabled(ui.lock, kvHas(it, "height_lock"));
-    setValueIf(ui.lock, kvHas(it, "height_lock") ? String(it.kv.height_lock) === "1" : false);
+    // Locks (read-only in UI)
+    setEnabled(ui.lock, false);
+    setValueIf(ui.lock, kvHas(it, "height_lock") && String(it.kv.height_lock) === "1");
 
-    setEnabled(ui.absHeight, kvHas(it, "absolute_height"));
+    setEnabled(ui.absHeight, false);
     setValueIf(ui.absHeight, kvHas(it, "absolute_height") ? String(it.kv.absolute_height) === "1" : false);
 
     // Facing (always editable in the window)
