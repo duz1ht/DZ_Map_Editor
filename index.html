@@ -938,11 +938,13 @@
       grid-template-columns:240px 1fr;
       height:100%;
     }
-    #sectionWindow[data-section-mode="waypoint"] #sectionBody,
-    #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:1fr 240px; }
+    #sectionWindow[data-section-mode="waypoint"] #sectionBody{ grid-template-columns:1fr 240px; }
+    #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:174px 1fr; }
     #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto 1fr auto; }
     #sectionWindow[data-section-mode="group"] #sectionMeta,
     #sectionWindow[data-section-mode="group"] #sectionHint{ display:none; }
+    #sectionWindow[data-section-mode="group"] #sectionKindSelect,
+    #sectionWindow[data-section-mode="group"] #sectionSearch{ display:none; }
     #sectionWindow[data-section-mode="group"] #sectionAddBtn{ display:none; }
     #sectionWindow[data-section-mode="group"] #sectionActions{ display:flex; justify-content:flex-end; align-items:center; }
     #sectionWindow[data-section-mode="group"] #sectionDeleteBtn{ display:none; }
@@ -961,6 +963,9 @@
     #sectionWindow[data-section-mode="waypoint"] #sectionHint{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #sectionActions{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #sectionText{ display:none; }
+    #sectionWindow[data-section-mode="waypoint"] #sectionKindSelect,
+    #sectionWindow[data-section-mode="waypoint"] #sectionSearch,
+    #sectionWindow[data-section-mode="waypoint"] #sectionMeta{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #waypointEditor{ display:grid; }
     #waypointEditor{ display:none; gap:8px; }
     #waypointEditor .checkRow{ margin:0; }
@@ -976,6 +981,19 @@
     #sectionWindow #sectionQuickNav{ max-width:220px; }
     #sectionTopControls{ display:flex; gap:8px; flex-wrap:wrap; }
     #sectionTopControls select, #sectionTopControls input{ max-width:220px; }
+    
+    #briefingEditor{ display:none; height:100%; gap:8px; }
+    #briefingEditor textarea{ width:100%; height:100%; min-height:0; }
+    #briefingActions{ display:flex; justify-content:flex-end; gap:8px; }
+    #sectionWindow[data-section-mode="briefing"] #sectionTopControls,
+    #sectionWindow[data-section-mode="briefing"] #sectionList,
+    #sectionWindow[data-section-mode="briefing"] #sectionMeta,
+    #sectionWindow[data-section-mode="briefing"] #sectionHint,
+    #sectionWindow[data-section-mode="briefing"] #sectionText,
+    #sectionWindow[data-section-mode="briefing"] #sectionActions{ display:none; }
+    #sectionWindow[data-section-mode="briefing"] #sectionBody{ grid-template-columns:1fr; height:100%; }
+    #sectionWindow[data-section-mode="briefing"] #sectionEditor{ grid-template-rows:1fr; }
+    #sectionWindow[data-section-mode="briefing"] #briefingEditor{ display:grid; }
     #sectionWindow[data-section-mode="general_information"]{ width:min(1240px,100%); max-height:min(760px,100%); }
     #sectionWindow[data-section-mode="general_information"] #sectionTopControls,
     #sectionWindow[data-section-mode="general_information"] #sectionList,
@@ -994,6 +1012,69 @@
     #sectionWindow[data-section-mode="layer"] #sectionActions{ display:none; }
     #sectionWindow[data-section-mode="layer"] #sectionBody{ grid-template-columns:260px 1fr; }
     #sectionWindow[data-section-mode="layer"] #sectionEditor{ grid-template-rows:1fr; }
+    #sectionWindow[data-section-mode="areatrig"] #sectionKindSelect,
+    #sectionWindow[data-section-mode="areatrig"] #sectionSearch,
+    #sectionWindow[data-section-mode="areatrig"] #sectionAddBtn,
+    #sectionWindow[data-section-mode="areatrig"] #sectionMeta,
+    #sectionWindow[data-section-mode="areatrig"] #sectionHint,
+    #sectionWindow[data-section-mode="areatrig"] #sectionText,
+    #sectionWindow[data-section-mode="areatrig"] #sectionActions{ display:none; }
+    #areaTrigEditor{ display:none; gap:8px; align-content:start; }
+    #sectionWindow[data-section-mode="areatrig"] #areaTrigEditor{ display:grid; }
+    #areaTrigBottomActions{ display:flex; gap:8px; justify-content:flex-end; margin-top:auto; }
+    #sectionWindow[data-section-mode="areatrig"] #sectionEditor{ grid-template-rows:1fr auto; }
+    #sectionWindow[data-section-mode="event"]{
+      width:min(736px,100%);
+      height:min(600px,100%);
+      max-height:min(600px,100%);
+    }
+    #sectionWindow[data-section-mode="event"] #sectionTopControls{ display:none; }
+    #sectionWindow[data-section-mode="event"] #sectionBody{ grid-template-columns:1fr; height:100%; }
+    #sectionWindow[data-section-mode="event"] #sectionList,
+    #sectionWindow[data-section-mode="event"] #sectionEditor{ display:none; }
+    #eventEditorMock{
+      display:none;
+      border:1px solid var(--line-strong);
+      background:var(--surface-soft);
+      color:var(--text);
+      font-size:12px;
+      padding:10px;
+      overflow:auto;
+    }
+    #sectionWindow[data-section-mode="event"] #eventEditorMock{ display:block; }
+    .eventTopFields{ display:grid; grid-template-columns:1fr auto; gap:14px; margin-bottom:6px; }
+    .eventNameField input{ width:100%; }
+    .eventCheckRow{ display:grid; grid-template-columns:auto 1fr 56px; gap:8px; align-items:center; margin-top:2px; }
+    .eventDelayRow{ display:grid; grid-template-columns:1fr 56px; gap:8px; align-items:center; margin-top:18px; }
+    .eventMoveButtons{ display:flex; gap:8px; margin:6px 0 6px 0; }
+    .eventMoveButtons button{ min-width:74px; }
+    .eventGrid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:10px; }
+    .eventListBox{
+      height:322px;
+      border:1px solid var(--line-muted);
+      background:var(--surface);
+      overflow:auto;
+      white-space:pre;
+      font-size:12px;
+      line-height:1.2;
+      padding:3px;
+    }
+    .eventSplitPanel{ display:grid; gap:12px; }
+    .eventGroup{ border:1px solid var(--line); padding:8px; }
+    .eventLegend{ margin:-15px 0 4px 4px; display:inline-block; background:var(--surface-soft); padding:0 4px; }
+    .eventGroupBody{ display:grid; grid-template-columns:1fr 70px; gap:6px; }
+    .eventNestedList{
+      border:1px solid var(--line-muted);
+      background:var(--surface);
+      min-height:116px;
+      white-space:pre;
+      font-size:12px;
+      line-height:1.2;
+      padding:3px;
+    }
+    .eventSideBtns{ display:grid; gap:8px; }
+    .eventFooterBtns{ display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr auto; gap:14px; margin-top:8px; }
+    .eventFooterBtns button{ min-height:34px; }
     #layerEditor{ display:none; gap:8px; align-content:start; }
     #sectionWindow[data-section-mode="layer"] #layerEditor{ display:grid; }
     .layerField{ display:grid; grid-template-columns:72px 1fr; gap:8px; align-items:center; }
@@ -1211,6 +1292,11 @@
                   </div>
                 </div>
               </div>
+              <div id="briefingEditor">
+                <div class="inlineLabel">Briefing</div>
+                <textarea id="briefingText"></textarea>
+                <div id="briefingActions"><button id="briefingCancelBtn" type="button">Cancel</button><button id="briefingOkBtn" type="button">Ok</button></div>
+              </div>
               <div id="waypointEditor">
                 <div>
                   <div class="inlineLabel">Description</div>
@@ -1225,12 +1311,70 @@
                 <label class="checkRow"><input type="checkbox" id="wpRedTeam" /><span>Red Team Waypoint</span></label>
                 <div id="wpMarkerCount">Markers selected: 0</div>
               </div>
+              <div id="areaTrigEditor">
+                <div>
+                  <div class="inlineLabel">Description</div>
+                  <input id="areaTrigDesc" />
+                </div>
+                <div>
+                  <div class="inlineLabel">Color</div>
+                  <select id="areaTrigColor"><option>Default</option><option>Blue</option><option>Red</option><option>Green</option><option>Yellow</option></select>
+                </div>
+                <label class="checkRow"><input type="checkbox" id="areaTrigDesignated" /><span>Designated Mission Areia</span></label>
+                <label class="checkRow"><input type="checkbox" id="areaTrigVol3d" /><span>!3D Volume trigger</span></label>
+                <div id="areaTrigBottomActions"><button type="button">Select Markers</button><button type="button">Save As</button><button type="button">Ok</button></div>
+              </div>
               <div id="layerEditor">
                 <div class="layerField"><label for="layerNameInput">Name:</label><input id="layerNameInput" /></div>
                 <div class="layerField"><label for="layerColorInput">Color:</label><input id="layerColorInput" /></div>
                 <div id="layerActions"><button id="layerOkBtn" type="button">Ok</button></div>
               </div>
               <div class="btnRow" id="sectionActions"><button id="groupSelectMembersBtn">Select Members</button><button id="groupSaveAsTextBtn">Save As Text File</button><button id="sectionDeleteBtn">Delete block</button><button id="sectionApplyBtn">Apply block</button></div>
+            </div>
+            <div id="eventEditorMock" aria-hidden="true">
+              <div class="eventTopFields">
+                <div class="eventNameField">
+                  <div class="inlineLabel">Name</div>
+                  <input value="Event 0" />
+                </div>
+                <div>
+                  <label class="eventCheckRow"><input type="checkbox" /><span>Reset after (seconds)</span><input value="0" /></label>
+                  <div class="eventDelayRow"><span>Delay (seconds)</span><input value="0" /></div>
+                </div>
+              </div>
+              <div class="eventGrid">
+                <div>
+                  <div class="eventMoveButtons"><button>Up</button><button>Down</button></div>
+                  <div class="eventListBox">(0) Event 0
+<< New Event >></div>
+                </div>
+                <div class="eventSplitPanel">
+                  <div class="eventGroup">
+                    <div class="eventLegend">IF ( Triggers )</div>
+                    <div class="eventGroupBody">
+                      <div class="eventNestedList">(0) SSN 3 is within area 1
+<< New Trigger >></div>
+                      <div class="eventSideBtns"><button>Delete</button><button>Copy</button><button disabled>Paste</button></div>
+                    </div>
+                  </div>
+                  <div class="eventGroup">
+                    <div class="eventLegend">THEN ( Actions )</div>
+                    <div class="eventGroupBody">
+                      <div class="eventNestedList">(0) Show Lose Subgoal 1
+<< New Action >></div>
+                      <div class="eventSideBtns"><button>Delete</button><button>Copy</button><button disabled>Paste</button></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="eventFooterBtns">
+                <button>Delete Event</button>
+                <button>Copy Event</button>
+                <button disabled>Paste Event</button>
+                <button>Print Event</button>
+                <button>Print All Events</button>
+                <button>OK</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1730,6 +1874,8 @@
   const wpBlueTeam = document.getElementById("wpBlueTeam");
   const wpRedTeam = document.getElementById("wpRedTeam");
   const wpMarkerCount = document.getElementById("wpMarkerCount");
+  const briefingCancelBtn = document.getElementById("briefingCancelBtn");
+  const briefingOkBtn = document.getElementById("briefingOkBtn");
   const layerNameInput = document.getElementById("layerNameInput");
   const layerColorInput = document.getElementById("layerColorInput");
   const layerOkBtn = document.getElementById("layerOkBtn");
@@ -5246,6 +5392,8 @@
   wpSelectMarkersBtn.addEventListener("click", selectWaypointMarkers);
   wpSaveAsBtn.addEventListener("click", saveWaypointsAs);
   wpOkBtn.addEventListener("click", () => { saveCurrentWaypoint(); closeSectionEditor(); });
+  briefingCancelBtn?.addEventListener("click", closeSectionEditor);
+  briefingOkBtn?.addEventListener("click", () => sectionApplyBtn.click());
 
   function closeItemContextMenu(){
     state.contextMenuOpen = false;
