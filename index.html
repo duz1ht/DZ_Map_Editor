@@ -1344,7 +1344,7 @@
                       <span>Absolute Height</span>
                     </label>
                     <label class="checkRow" style="margin:0;">
-                      <input type="checkbox" id="ui_lock" />
+                      <input type="checkbox" id="ui_lock" disabled />
                       <span>Lock</span>
                     </label>
                   </div>
@@ -4765,7 +4765,6 @@
       it.kv.position = `${it.x} ${it.y} ${it.z}`;
     }
 
-    if (kvHas(it, "height_lock")) it.kv.height_lock = ui.lock.checked ? "1" : "0";
     if (kvHas(it, "absolute_height")) it.kv.absolute_height = ui.absHeight.checked ? "1" : "0";
 
     if (applyOrientation){
