@@ -5106,7 +5106,11 @@
       else delete it.kv.wpnumber;
     }
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
-    if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
+    if (wpDistanceKey){
+      const wpDistanceValue = parseFloatSafe(ui.wpDistance.value);
+      if (Math.abs(wpDistanceValue) < 1e-9) delete it.kv[wpDistanceKey];
+      else it.kv[wpDistanceKey] = String(wpDistanceValue);
+    }
     const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
     const hasWaypointContext = hasWaypointRef || kvHas(it, "wpnumber") || kvHas(it, "ttoolindex") || !!wpAdvKey || kvHas(it, "nav_wp") || !!wpDistanceKey;
     if (state.wpNames.length && hasWaypointContext){
