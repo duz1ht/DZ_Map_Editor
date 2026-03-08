@@ -1564,7 +1564,7 @@
                   <div class="miniGrid">
                     <div>
                       <div class="inlineLabel">AI Textfile</div>
-                      <input id="ui_aiTextfile" class="midInput" />
+                      <select id="ui_aiTextfile" class="midInput"></select>
                     </div>
                     <div>
                       <div class="inlineLabel">Group</div>
@@ -1754,6 +1754,8 @@
     gameStrings: new Map(),
     weaponDefs: new Map(),
     wpNames: [],
+    aiTextfileNames: [],
+    aiTextfileLabels: new Map(),
     isLocalRuntime: window.location.protocol === "file:",
     editorFolderHandle: null,
     currentMisFileHandle: null,
@@ -3121,6 +3123,107 @@
     }
     names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     return names;
+  }
+
+
+  function parseAiTextfileLabelsFromMeditens(raw){
+    const map = new Map();
+    const lines = String(raw || "").replace(/\r\n/g, "\n").split("\n");
+    for (const line of lines){
+      const clean = line.split(";")[0].trim();
+      if (!clean) continue;
+      const m = clean.match(/^STR_AIP_([A-Za-z0-9_]+)\s*=\s*(.+)$/i);
+      if (!m) continue;
+      const aipName = String(m[1] || "").trim().toUpperCase();
+      if (!aipName || map.has(aipName)) continue;
+      const label = unescapeMisString(stripOuterQuotes(String(m[2] || "").trim()));
+      map.set(aipName, label || aipName);
+    }
+    return map;
+  }
+
+  function collectAiTextfileNamesFromStaticIndex(){
+    const names = [];
+    const seen = new Set();
+    for (const fileName of Object.keys(AI_TEXTFILE_FILE_INDEX || {})){
+      const base = String(fileName || "").replace(/\.aip$/i, "").trim();
+      if (!base) continue;
+      const key = base.toUpperCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(key);
+    }
+    names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    return names;
+  }
+
+  async function listAiTextfileNamesFromEditorFolder(){
+    if (!state.editorFolderHandle) return null;
+    try{
+      let dir = state.editorFolderHandle;
+      for (const part of ["resources", "ai_textfile"]){
+        dir = await dir.getDirectoryHandle(part);
+      }
+
+      const names = [];
+      const seen = new Set();
+      for await (const [fileName, handle] of dir.entries()){
+        if (handle.kind !== "file") continue;
+        if (!/\.aip$/i.test(fileName)) continue;
+        const base = String(fileName || "").replace(/\.aip$/i, "").trim();
+        if (!base) continue;
+        const key = base.toUpperCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        names.push(key);
+      }
+
+      names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      addLog(`[ai_textfile] list loaded from editor folder (.aip names): ${names.length}`);
+      return names;
+    } catch (err){
+      addLog(`[ai_textfile] error building ai_textfile list from editor folder: ${err?.message || err}`);
+      return null;
+    }
+  }
+
+  function getAiTextfileDisplayLabel(aipName){
+    const key = String(aipName || "").trim().toUpperCase();
+    if (!key) return "";
+    return state.aiTextfileLabels?.get(key) || key;
+  }
+
+  function normalizeAiTextfileValue(value){
+    const normalized = String(value || "").trim();
+    if (!normalized) return "";
+    return normalized.replace(/\.aip$/i, "").toUpperCase();
+  }
+
+  function refreshAiTextfileOptions(currentValue = ""){
+    const options = [{ value: "", label: "(none)" }, ...state.aiTextfileNames.map((name) => ({
+      value: name,
+      label: getAiTextfileDisplayLabel(name),
+    }))];
+    ensureSelectOptions(ui.aiTextfile, options, normalizeAiTextfileValue(currentValue), { caseInsensitive: true });
+  }
+
+  async function loadAiTextfileCatalog(){
+    const meditensText = await loadTextResource("resources/game_strings/meditens.bin");
+    state.aiTextfileLabels = meditensText === null
+      ? new Map()
+      : parseAiTextfileLabelsFromMeditens(meditensText);
+
+    let names = null;
+    if (state.isLocalRuntime && state.editorFolderHandle){
+      names = await listAiTextfileNamesFromEditorFolder();
+    }
+    if (!names || !names.length){
+      names = collectAiTextfileNamesFromStaticIndex();
+    }
+
+    state.aiTextfileNames = names;
+    refreshAiTextfileOptions();
+    addLog(`[ai_textfile] catalog loaded: files=${state.aiTextfileNames.length}, labels=${state.aiTextfileLabels.size}`);
   }
 
   async function listTerrainNamesFromEditorFolder(){
@@ -4811,8 +4914,9 @@
     setEnabled(ui.activeArea, !!activeAreaKey);
     setValueIf(ui.activeArea, activeAreaKey ? it.kv[activeAreaKey] : "");
 
-    setEnabled(ui.aiTextfile, kvHas(it, "ai_textfile"));
-    setValueIf(ui.aiTextfile, kvHas(it, "ai_textfile") ? it.kv.ai_textfile : "");
+    const aiTextfileEnabled = kvHas(it, "ai_textfile");
+    setEnabled(ui.aiTextfile, aiTextfileEnabled);
+    refreshAiTextfileOptions(aiTextfileEnabled ? it.kv.ai_textfile : "");
 
     buildGroupOptions();
     setEnabled(ui.group, true);
@@ -4932,7 +5036,7 @@
 
     const activeAreaKey = kvFindKey(it, ["active_area", "attention"]);
     if (activeAreaKey) it.kv[activeAreaKey] = String(parseFloatSafe(ui.activeArea.value));
-    if (kvHas(it, "ai_textfile")) it.kv.ai_textfile = ui.aiTextfile.value;
+    if (kvHas(it, "ai_textfile")) it.kv.ai_textfile = normalizeAiTextfileValue(ui.aiTextfile.value);
     if (!ui.group.disabled){
       if (ui.group.value) it.kv.group_id = ui.group.value;
       else delete it.kv.group_id;
@@ -5588,7 +5692,7 @@
         state.editorFolderHandle = handle;
         statusEl.textContent = `Editor folder set: ${handle.name}`;
         await loadAndApplyItemCatalogs();
-        await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames(), preloadEnvironmentFiles()]);
+        await Promise.all([loadGameStrings(), loadWeaponDefs(), loadWpNames(), loadAiTextfileCatalog(), preloadEnvironmentFiles()]);
         await refreshGeneralTerrainOptions();
         renderMenuBar();
       } catch (err){
@@ -7234,6 +7338,7 @@
     return (files || []).find(f => String(f).toLowerCase() === low) || null;
   }
 
+  const AI_TEXTFILE_FILE_INDEX={"boat.aip": ["boat.aip"], "G_Aveng2.AIP": ["G_Aveng2.AIP"], "G_Avengr.AIP": ["G_Avengr.AIP"], "G_BMP.AIP": ["G_BMP.AIP"], "G_bmpG.AIP": ["G_bmpG.AIP"], "G_Bradly.AIP": ["G_Bradly.AIP"], "G_BRDM.AIP": ["G_BRDM.AIP"], "G_Buggy.AIP": ["G_Buggy.AIP"], "G_buggyS.AIP": ["G_buggyS.AIP"], "G_Jeep.AIP": ["G_Jeep.AIP"], "G_JeepS.AIP": ["G_JeepS.AIP"], "G_MIM23.AIP": ["G_MIM23.AIP"], "G_MIM23R.AIP": ["G_MIM23R.AIP"], "G_SA6.AIP": ["G_SA6.AIP"], "G_sa6R.AIP": ["G_sa6R.AIP"], "G_SA8.AIP": ["G_SA8.AIP"], "G_SA8R.AIP": ["G_SA8R.AIP"], "G_Snow.AIP": ["G_Snow.AIP"], "G_SnowR.AIP": ["G_SnowR.AIP"], "G_SnowS.AIP": ["G_SnowS.AIP"], "G_tngska.AIP": ["G_tngska.AIP"], "G_tngskR.AIP": ["G_tngskR.AIP"], "GMG.AIP": ["GMG.AIP"], "GMG_F.AIP": ["GMG_F.AIP"], "GMG_P.AIP": ["GMG_P.AIP"], "GMGF_P.AIP": ["GMGF_P.AIP"], "ground1.AIP": ["ground1.AIP"], "GS.AIP": ["GS.AIP"], "GS_F.AIP": ["GS_F.AIP"], "GS_P.AIP": ["GS_P.AIP"], "GT.AIP": ["GT.AIP"], "GT_F.AIP": ["GT_F.AIP"], "GTR.AIP": ["GTR.AIP"], "GU.AIP": ["GU.AIP"], "GU_F.AIP": ["GU_F.AIP"], "GU_S.AIP": ["GU_S.AIP"], "H_AH6.AIP": ["H_AH6.AIP"], "h_ah6b_z.aip": ["h_ah6b_z.aip"], "h_ah6z.aip": ["h_ah6z.aip"], "H_Apach2.AIP": ["H_Apach2.AIP"], "H_Apache.AIP": ["H_Apache.AIP"], "H_BHawk.AIP": ["H_BHawk.AIP"], "h_bhawkf.aip": ["h_bhawkf.aip"], "H_BHawkN.AIP": ["H_BHawkN.AIP"], "H_BHawkZ.AIP": ["H_BHawkZ.AIP"], "h_bhawmp.aip": ["h_bhawmp.aip"], "H_ComanZ.AIP": ["H_ComanZ.AIP"], "H_Havoc.aip": ["H_Havoc.aip"], "H_HavocR.AIP": ["H_HavocR.AIP"], "H_Helix.AIP": ["H_Helix.AIP"], "H_Hind.aip": ["H_Hind.aip"], "H_Hokum.AIP": ["H_Hokum.AIP"], "H_Hokum2.AIP": ["H_Hokum2.AIP"], "H_Hokum3.AIP": ["H_Hokum3.AIP"], "H_MGNF.AIP": ["H_MGNF.AIP"], "HELO1.AIP": ["HELO1.AIP"], "HMG.AIP": ["HMG.AIP"], "HS_F.AIP": ["HS_F.AIP"], "HU.AIP": ["HU.AIP"], "P_AF1.AIP": ["P_AF1.AIP"], "P_cessna.aip": ["P_cessna.aip"], "P_drone.aip": ["P_drone.aip"], "P_Drone2.AIP": ["P_Drone2.AIP"], "plane.AIP": ["plane.AIP"], "planesit.AIP": ["planesit.AIP"], "PR_F.AIP": ["PR_F.AIP"], "PR_S.AIP": ["PR_S.AIP"], "PRETTY.AIP": ["PRETTY.AIP"], "PRF_F.AIP": ["PRF_F.AIP"], "PRF_S.AIP": ["PRF_S.AIP"], "PS_F.AIP": ["PS_F.AIP"], "PS_FZ.AIP": ["PS_FZ.AIP"], "PSE_F.AIP": ["PSE_F.AIP"], "PSE_FZ.AIP": ["PSE_FZ.AIP"], "Pu_s.aip": ["Pu_s.aip"], "sitboat.aip": ["sitboat.aip"], "sitgrnd1.AIP": ["sitgrnd1.AIP"], "T_Cannon.AIP": ["T_Cannon.AIP"], "T_Gun.AIP": ["T_Gun.AIP"], "T_Rocket.AIP": ["T_Rocket.AIP"], "T_SAM.AIP": ["T_SAM.AIP"], "W_big.AIP": ["W_big.AIP"], "W_Cargo.AIP": ["W_Cargo.AIP"], "W_Frig.AIP": ["W_Frig.AIP"], "W_LCAC.AIP": ["W_LCAC.AIP"], "W_Zode.AIP": ["W_Zode.AIP"], "Wingman.AIP": ["Wingman.AIP"], "WMG_F.AIP": ["WMG_F.AIP"], "WMG_VF.AIP": ["WMG_VF.AIP"], "WMP.AIP": ["WMP.AIP"], "WU.AIP": ["WU.AIP"], "WU_F.AIP": ["WU_F.AIP"]};
   const TERRAIN_FILE_INDEX={"CINE": ["CINE.TRN"], "DVD1": ["DVD1.TRN"], "dvd2": ["dvd2.trn"], "dvd3": ["dvd3.trn"], "DVD4": ["DVD4.TRN"], "dvd5": ["dvd5.trn"], "dvdg1": ["dvdg1.trn"], "DVDG2": ["DVDG2.TRN"], "dvg1": ["dvg1.trn"], "dvt1": ["dvt1.trn"], "Flat": ["Flat.TRN"], "MIS1": ["MIS1.TRN"], "mis10": ["mis10.trn"], "MIS11": ["MIS11.TRN"], "MIS13": ["MIS13.TRN"], "Mis14": ["Mis14.trn"], "MIS15": ["MIS15.TRN"], "MIS16": ["MIS16.TRN"], "MIS17": ["MIS17.TRN"], "MIS18": ["MIS18.TRN"], "MIS19B": ["MIS19B.TRN"], "MIS2": ["MIS2.TRN"], "MIS3": ["MIS3.TRN"], "MIS4": ["MIS4.TRN"], "MIS5": ["MIS5.TRN"], "MIS6": ["MIS6.TRN"], "MIS7": ["MIS7.TRN"], "MIS8": ["MIS8.TRN"], "MIS9": ["MIS9.TRN"], "MIST1": ["MIST1.TRN"], "MIST2": ["MIST2.TRN"], "rmp02b": ["rmp02b.trn"], "rmp03p": ["rmp03p.trn"], "rmp03r": ["rmp03r.trn"], "TKHR_04": ["TKHR_04.trn"], "ts_01": ["ts_01.trn"], "ts_02": ["ts_02.trn"], "TS_05": ["TS_05.trn"], "TS_09": ["TS_09.trn"], "ts_11": ["ts_11.trn"], "TSBHD_04": ["TSBHD_04.trn"], "TSBHD_06": ["TSBHD_06.trn"], "zoo": ["zoo.trn"]};
   async function loadTerrainFromMis(terrainOverride = null){
     const terrainRaw = terrainOverride ?? extractTerrainNameFromMis();
@@ -7791,6 +7896,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     }
 
     await preloadEnvironmentFiles();
+    await loadAiTextfileCatalog();
 
     if (state.isLocalRuntime){
       addLog("Local runtime detected (file://). Waiting for 'Set Editor Folder'.");
