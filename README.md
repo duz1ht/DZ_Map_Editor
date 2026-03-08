@@ -13,3 +13,9 @@ Todo:
 - [ ] Global Replace
 - [ ] Weapon Loadouts
 - [ ] Item Attributes
+
+
+
+## Feedback
+If you’ve got any feedback, hit me up on Discord, username duz1ht.
+
