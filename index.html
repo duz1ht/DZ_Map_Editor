@@ -4986,7 +4986,7 @@
     setValueIf(ui.wpNumber, kvHas(it, "wpnumber") ? it.kv.wpnumber : "");
     setValueIf(ui.wpDistance, wpDistanceKey ? it.kv[wpDistanceKey] : "");
     const tt = Number(it?.kv?.ttoolindex ?? "");
-    const ttIdx = Number.isFinite(tt) && tt >= 0 ? Math.trunc(tt) : 0;
+    const ttIdx = Number.isFinite(tt) && tt > 0 ? Math.trunc(tt) : 0;
     setValueIf(ui.wpName, String(Math.min(ttIdx, Math.max(0, state.wpNames.length - 1))));
     setValueIf(ui.advEvent, wpAdvKey ? it.kv[wpAdvKey] : "");
     const navFromAttrib = (attribValue & 4194304) !== 0;
@@ -5094,9 +5094,12 @@
     }
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
-    if (state.wpNames.length && kvHas(it, "ttoolindex")){
+    if (state.wpNames.length && (kvHas(it, "ttoolindex") || hasWaypointRef)){
       const idx = Math.trunc(Number(ui.wpName.value));
-      if (Number.isFinite(idx) && idx >= 0) it.kv.ttoolindex = String(idx);
+      if (Number.isFinite(idx)){
+        if (idx > 0) it.kv.ttoolindex = String(idx);
+        else delete it.kv.ttoolindex;
+      }
     }
     const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
     if (wpAdvKey) it.kv[wpAdvKey] = ui.advEvent.value;
