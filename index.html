@@ -4781,17 +4781,14 @@
       row.className = "checkRow";
       const cb = document.createElement("input");
       cb.type = "checkbox";
+      cb.dataset.aiBit = String(flag.bit);
       cb.checked = (getItemAttribValue(it) & flag.bit) !== 0;
 
       cb.addEventListener("change", () => {
-        setAttribBit(it, flag.bit, cb.checked);
-
         if (flag.bit === 64) setValueIf(ui.multiplayerOnly, cb.checked);
         if (flag.bit === 4194304) setValueIf(ui.navWp, cb.checked);
         if (flag.bit === 16 && !cb.checked && parseFloatSafe(ui.lessThan.value) > 0) setValueIf(ui.lessThan, "0");
         if (flag.bit === 32 && !cb.checked && parseFloatSafe(ui.moreThan.value) > 0) setValueIf(ui.moreThan, "0");
-
-        commitFromWindow();
       });
 
       const span = document.createElement("span");
@@ -4801,6 +4798,18 @@
       row.appendChild(span);
       ui.aiAttrs.appendChild(row);
     }
+  }
+
+  function getItemAttribValueFromWindow(it){
+    let value = getItemAttribValue(it);
+    const checks = ui.aiAttrs.querySelectorAll("input[type='checkbox'][data-ai-bit]");
+    checks.forEach((cb) => {
+      const bit = Math.trunc(Number(cb.dataset.aiBit));
+      if (!Number.isFinite(bit) || bit <= 0) return;
+      if (cb.checked) value |= bit;
+      else value &= ~bit;
+    });
+    return value;
   }
 
   function renderItemWindow(){
@@ -5093,6 +5102,7 @@
     if (wpAdvKey) it.kv[wpAdvKey] = ui.advEvent.value;
     if (kvHas(it, "nav_wp")) it.kv.nav_wp = ui.navWp.checked ? "1" : "0";
 
+    setItemAttribValue(it, getItemAttribValueFromWindow(it));
     updateAttribFromCoreControls(it);
 
     scheduleLiveMisRefresh();
