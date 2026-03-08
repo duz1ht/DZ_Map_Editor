@@ -5108,6 +5108,7 @@
         if (idx > 0){
           it.kv.ttoolindex = String(idx);
           delete it.kv.obliqueness;
+          it.lines = (it.lines || []).filter((raw) => !/^\s*obliqueness\b/i.test(String(raw || "")));
           it.kv.ai_textfile = '""';
           it.kv.map_symbol = "-1";
         } else {
