@@ -4911,7 +4911,7 @@
 
     // AI Variables
     const activeAreaKey = kvFindKey(it, ["active_area", "blink_group_a"]);
-    setEnabled(ui.activeArea, !!activeAreaKey);
+    setEnabled(ui.activeArea, true);
     setValueIf(ui.activeArea, activeAreaKey ? it.kv[activeAreaKey] : "");
 
     const aiTextfileEnabled = kvHas(it, "ai_textfile");
@@ -5034,10 +5034,21 @@
     if (ui.spinmapColor.value) it.kv.color_override = ui.spinmapColor.value;
     else delete it.kv.color_override;
 
-    const activeAreaValue = String(parseFloatSafe(ui.activeArea.value));
-    if (kvHas(it, "active_area")) it.kv.active_area = activeAreaValue;
-    if (kvHas(it, "blink_group_a")) it.kv.blink_group_a = activeAreaValue;
-    if (kvHas(it, "ai_textfile")) it.kv.ai_textfile = normalizeAiTextfileValue(ui.aiTextfile.value);
+    const activeAreaRaw = String(ui.activeArea.value || "").trim();
+    if (activeAreaRaw){
+      const activeAreaValue = String(parseFloatSafe(activeAreaRaw));
+      it.kv.active_area = activeAreaValue;
+      it.kv.blink_group_a = activeAreaValue;
+    } else {
+      delete it.kv.active_area;
+      delete it.kv.blink_group_a;
+    }
+
+    if (kvHas(it, "ai_textfile")){
+      const normalizedAiTextfile = normalizeAiTextfileValue(ui.aiTextfile.value);
+      if (normalizedAiTextfile) it.kv.ai_textfile = normalizedAiTextfile;
+      else delete it.kv.ai_textfile;
+    }
     if (!ui.group.disabled){
       if (ui.group.value) it.kv.group_id = ui.group.value;
       else delete it.kv.group_id;
