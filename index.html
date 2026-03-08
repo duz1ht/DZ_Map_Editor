@@ -5100,7 +5100,9 @@
     }
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
-    if (state.wpNames.length && (kvHas(it, "ttoolindex") || hasWaypointRef)){
+    const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
+    const hasWaypointContext = hasWaypointRef || kvHas(it, "wpnumber") || kvHas(it, "ttoolindex") || !!wpAdvKey || kvHas(it, "nav_wp") || !!wpDistanceKey;
+    if (state.wpNames.length && hasWaypointContext){
       const idx = Math.trunc(Number(ui.wpName.value));
       if (Number.isFinite(idx)){
         if (idx > 0){
@@ -5113,7 +5115,6 @@
         }
       }
     }
-    const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
     if (wpAdvKey) it.kv[wpAdvKey] = ui.advEvent.value;
     if (kvHas(it, "nav_wp")) it.kv.nav_wp = ui.navWp.checked ? "1" : "0";
 
