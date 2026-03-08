@@ -4012,7 +4012,12 @@
         if (!m) { newBlock.push(raw); continue; }
         const key = m[1];
         if (Object.prototype.hasOwnProperty.call(kv, key)){
-          newBlock.push(`  ${key} ${kv[key]}`);
+          const rawValue = m[2].trim();
+          const rawUnquoted = rawValue.startsWith('"') && rawValue.endsWith('"')
+            ? rawValue.slice(1, -1)
+            : rawValue;
+          if (String(kv[key]) === rawUnquoted) newBlock.push(raw);
+          else newBlock.push(`  ${key} ${kv[key]}`);
           seen.add(key);
         } else {
           newBlock.push(raw);
@@ -5060,7 +5065,9 @@
 
     if (kvHas(it, "ai_textfile")){
       const normalizedAiTextfile = normalizeAiTextfileValue(ui.aiTextfile.value);
+      const hadExplicitEmptyAiTextfile = (it.lines || []).some((raw) => /^\s*ai_textfile\s+""\s*$/i.test(String(raw || "")));
       if (normalizedAiTextfile) it.kv.ai_textfile = normalizedAiTextfile;
+      else if (hadExplicitEmptyAiTextfile) it.kv.ai_textfile = '""';
       else delete it.kv.ai_textfile;
     }
     if (!ui.group.disabled){
