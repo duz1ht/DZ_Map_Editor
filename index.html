@@ -5005,12 +5005,15 @@
     if (state.defLoaded && kvHas(it, "type_id") && !ui.subtype.disabled){
       const selectedDefId = ui.subtype.value;
       if (selectedDefId){
+        const currentTypeId = String(it.kv.type_id || "");
+        const currentDefId = toDefIdFromMisTypeId(currentTypeId) || currentTypeId;
+        const subtypeChanged = String(selectedDefId) !== String(currentDefId);
         const misTypeId = toMisTypeIdFromDefId(selectedDefId);
         it.kv.type_id = String(misTypeId || selectedDefId);
-        // Update name to the DEF name (the official editor shows this)
+        // Update name to the DEF name only when subtype changed.
         const def = state.defsById.get(String(selectedDefId));
-        if (def && kvHas(it, "name")) it.kv.name = `"${def.name}"`.replace(/^"|"$/g,"");
-        if (def && kvHas(it, "iai_name")) it.kv.iai_name = `"${def.name}"`.replace(/^"|"$/g,"");
+        if (subtypeChanged && def && kvHas(it, "name")) it.kv.name = `"${def.name}"`.replace(/^"|"$/g,"");
+        if (subtypeChanged && def && kvHas(it, "iai_name")) it.kv.iai_name = `"${def.name}"`.replace(/^"|"$/g,"");
         // If name/iai_name doesn't exist, do not invent a new key (keep rule: only modify if key exists)
       }
     }
@@ -5030,7 +5033,9 @@
       it.heading = parseFloatSafe(ui.heading.value);
       it.pitch = parseFloatSafe(ui.pitch.value);
       if (kvHas(it, "facing") || !kvHas(it, "rot")){
-        it.kv.facing = `${it.heading} ${it.pitch}`;
+        const facingIsZero = Math.abs(it.heading) < 1e-9 && Math.abs(it.pitch) < 1e-9;
+        if (facingIsZero) delete it.kv.facing;
+        else it.kv.facing = `${it.heading} ${it.pitch}`;
       } else {
         it.kv.rot = String(it.heading);
       }
@@ -5062,7 +5067,8 @@
       if (ui.group.value) it.kv.group_id = ui.group.value;
       else delete it.kv.group_id;
     }
-    it.kv.team = ui.team.value;
+    if (ui.team.value === "0") delete it.kv.team;
+    else it.kv.team = ui.team.value;
 
     if (kvHas(it, "waccuracy1")) it.kv.waccuracy1 = String(parseFloatSafe(ui.wacc1.value));
     if (kvHas(it, "waccuracy2")) it.kv.waccuracy2 = String(parseFloatSafe(ui.wacc2.value));
@@ -7094,8 +7100,11 @@
 
   function applyItemOrientationToKv(it){
     if (!it) return;
-    if (kvHas(it, "facing") || !kvHas(it, "rot")) it.kv.facing = `${it.heading} ${it.pitch}`;
-    else it.kv.rot = String(it.heading);
+    if (kvHas(it, "facing") || !kvHas(it, "rot")){
+      const facingIsZero = Math.abs(Number(it.heading) || 0) < 1e-9 && Math.abs(Number(it.pitch) || 0) < 1e-9;
+      if (facingIsZero) delete it.kv.facing;
+      else it.kv.facing = `${it.heading} ${it.pitch}`;
+    } else it.kv.rot = String(it.heading);
   }
 
   function updateItemGizmo(){
