@@ -4012,7 +4012,12 @@
         if (!m) { newBlock.push(raw); continue; }
         const key = m[1];
         if (Object.prototype.hasOwnProperty.call(kv, key)){
-          newBlock.push(`  ${key} ${kv[key]}`);
+          const rawValue = m[2].trim();
+          const rawUnquoted = rawValue.startsWith('"') && rawValue.endsWith('"')
+            ? rawValue.slice(1, -1)
+            : rawValue;
+          if (String(kv[key]) === rawUnquoted) newBlock.push(raw);
+          else newBlock.push(`  ${key} ${kv[key]}`);
           seen.add(key);
         } else {
           newBlock.push(raw);
@@ -4781,17 +4786,14 @@
       row.className = "checkRow";
       const cb = document.createElement("input");
       cb.type = "checkbox";
+      cb.dataset.aiBit = String(flag.bit);
       cb.checked = (getItemAttribValue(it) & flag.bit) !== 0;
 
       cb.addEventListener("change", () => {
-        setAttribBit(it, flag.bit, cb.checked);
-
         if (flag.bit === 64) setValueIf(ui.multiplayerOnly, cb.checked);
         if (flag.bit === 4194304) setValueIf(ui.navWp, cb.checked);
         if (flag.bit === 16 && !cb.checked && parseFloatSafe(ui.lessThan.value) > 0) setValueIf(ui.lessThan, "0");
         if (flag.bit === 32 && !cb.checked && parseFloatSafe(ui.moreThan.value) > 0) setValueIf(ui.moreThan, "0");
-
-        commitFromWindow();
       });
 
       const span = document.createElement("span");
@@ -4801,6 +4803,18 @@
       row.appendChild(span);
       ui.aiAttrs.appendChild(row);
     }
+  }
+
+  function getItemAttribValueFromWindow(it){
+    let value = getItemAttribValue(it);
+    const checks = ui.aiAttrs.querySelectorAll("input[type='checkbox'][data-ai-bit]");
+    checks.forEach((cb) => {
+      const bit = Math.trunc(Number(cb.dataset.aiBit));
+      if (!Number.isFinite(bit) || bit <= 0) return;
+      if (cb.checked) value |= bit;
+      else value &= ~bit;
+    });
+    return value;
   }
 
   function renderItemWindow(){
@@ -4968,7 +4982,7 @@
     const hasWaypointChoices = state.sectionBlocks.some(s => s.kind === "waypoint");
     setEnabled(ui.wpList, hasWaypointChoices || (wpEnabled && kvHas(it, "waypoint_id")));
     setEnabled(ui.wpNumber, hasWaypointChoices || wpEnabled || kvHas(it, "wpnumber"));
-    setEnabled(ui.wpDistance, wpEnabled && !!wpDistanceKey);
+    setEnabled(ui.wpDistance, hasWaypointChoices || wpEnabled);
     setEnabled(ui.wpName, state.wpNames.length > 0);
     setEnabled(ui.advEvent, wpEnabled && !!wpAdvKey);
     setEnabled(ui.navWp, wpEnabled && (kvHas(it, "nav_wp") || kvHas(it, "attrib")));
@@ -4977,7 +4991,7 @@
     setValueIf(ui.wpNumber, kvHas(it, "wpnumber") ? it.kv.wpnumber : "");
     setValueIf(ui.wpDistance, wpDistanceKey ? it.kv[wpDistanceKey] : "");
     const tt = Number(it?.kv?.ttoolindex ?? "");
-    const ttIdx = Number.isFinite(tt) && tt >= 0 ? Math.trunc(tt) : 0;
+    const ttIdx = Number.isFinite(tt) && tt > 0 ? Math.trunc(tt) : 0;
     setValueIf(ui.wpName, String(Math.min(ttIdx, Math.max(0, state.wpNames.length - 1))));
     setValueIf(ui.advEvent, wpAdvKey ? it.kv[wpAdvKey] : "");
     const navFromAttrib = (attribValue & 4194304) !== 0;
@@ -4996,12 +5010,15 @@
     if (state.defLoaded && kvHas(it, "type_id") && !ui.subtype.disabled){
       const selectedDefId = ui.subtype.value;
       if (selectedDefId){
+        const currentTypeId = String(it.kv.type_id || "");
+        const currentDefId = toDefIdFromMisTypeId(currentTypeId) || currentTypeId;
+        const subtypeChanged = String(selectedDefId) !== String(currentDefId);
         const misTypeId = toMisTypeIdFromDefId(selectedDefId);
         it.kv.type_id = String(misTypeId || selectedDefId);
-        // Update name to the DEF name (the official editor shows this)
+        // Update name to the DEF name only when subtype changed.
         const def = state.defsById.get(String(selectedDefId));
-        if (def && kvHas(it, "name")) it.kv.name = `"${def.name}"`.replace(/^"|"$/g,"");
-        if (def && kvHas(it, "iai_name")) it.kv.iai_name = `"${def.name}"`.replace(/^"|"$/g,"");
+        if (subtypeChanged && def && kvHas(it, "name")) it.kv.name = `"${def.name}"`.replace(/^"|"$/g,"");
+        if (subtypeChanged && def && kvHas(it, "iai_name")) it.kv.iai_name = `"${def.name}"`.replace(/^"|"$/g,"");
         // If name/iai_name doesn't exist, do not invent a new key (keep rule: only modify if key exists)
       }
     }
@@ -5021,7 +5038,9 @@
       it.heading = parseFloatSafe(ui.heading.value);
       it.pitch = parseFloatSafe(ui.pitch.value);
       if (kvHas(it, "facing") || !kvHas(it, "rot")){
-        it.kv.facing = `${it.heading} ${it.pitch}`;
+        const facingIsZero = Math.abs(it.heading) < 1e-9 && Math.abs(it.pitch) < 1e-9;
+        if (facingIsZero) delete it.kv.facing;
+        else it.kv.facing = `${it.heading} ${it.pitch}`;
       } else {
         it.kv.rot = String(it.heading);
       }
@@ -5046,14 +5065,17 @@
 
     if (kvHas(it, "ai_textfile")){
       const normalizedAiTextfile = normalizeAiTextfileValue(ui.aiTextfile.value);
+      const hadExplicitEmptyAiTextfile = (it.lines || []).some((raw) => /^\s*ai_textfile\s+""\s*$/i.test(String(raw || "")));
       if (normalizedAiTextfile) it.kv.ai_textfile = normalizedAiTextfile;
+      else if (hadExplicitEmptyAiTextfile) it.kv.ai_textfile = '""';
       else delete it.kv.ai_textfile;
     }
     if (!ui.group.disabled){
       if (ui.group.value) it.kv.group_id = ui.group.value;
       else delete it.kv.group_id;
     }
-    it.kv.team = ui.team.value;
+    if (ui.team.value === "0") delete it.kv.team;
+    else it.kv.team = ui.team.value;
 
     if (kvHas(it, "waccuracy1")) it.kv.waccuracy1 = String(parseFloatSafe(ui.wacc1.value));
     if (kvHas(it, "waccuracy2")) it.kv.waccuracy2 = String(parseFloatSafe(ui.wacc2.value));
@@ -5084,15 +5106,36 @@
       else delete it.kv.wpnumber;
     }
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
-    if (wpDistanceKey) it.kv[wpDistanceKey] = String(parseFloatSafe(ui.wpDistance.value));
-    if (state.wpNames.length && kvHas(it, "ttoolindex")){
-      const idx = Math.trunc(Number(ui.wpName.value));
-      if (Number.isFinite(idx) && idx >= 0) it.kv.ttoolindex = String(idx);
+    if (!ui.wpDistance.disabled){
+      const wpDistanceValue = parseFloatSafe(ui.wpDistance.value);
+      const wpDistanceTargetKey = wpDistanceKey || "wpdistance";
+      if (Math.abs(wpDistanceValue) < 1e-9){
+        delete it.kv.wpdistance;
+        delete it.kv.waypoint_distance;
+        it.lines = (it.lines || []).filter((raw) => !/^\s*(wpdistance|waypoint_distance)\b/i.test(String(raw || "")));
+      } else {
+        it.kv[wpDistanceTargetKey] = String(wpDistanceValue);
+      }
     }
     const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
+    const hasWaypointContext = hasWaypointRef || kvHas(it, "wpnumber") || kvHas(it, "ttoolindex") || !!wpAdvKey || kvHas(it, "nav_wp") || !!wpDistanceKey;
+    if (state.wpNames.length && hasWaypointContext){
+      const idx = Math.trunc(Number(ui.wpName.value));
+      if (Number.isFinite(idx)){
+        if (idx > 0){
+          it.kv.ttoolindex = String(idx);
+          delete it.kv.obliqueness;
+          it.lines = (it.lines || []).filter((raw) => !/^\s*obliqueness\b/i.test(String(raw || "")));
+          it.kv.map_symbol = "-1";
+        } else {
+          delete it.kv.ttoolindex;
+        }
+      }
+    }
     if (wpAdvKey) it.kv[wpAdvKey] = ui.advEvent.value;
     if (kvHas(it, "nav_wp")) it.kv.nav_wp = ui.navWp.checked ? "1" : "0";
 
+    setItemAttribValue(it, getItemAttribValueFromWindow(it));
     updateAttribFromCoreControls(it);
 
     scheduleLiveMisRefresh();
@@ -7075,8 +7118,11 @@
 
   function applyItemOrientationToKv(it){
     if (!it) return;
-    if (kvHas(it, "facing") || !kvHas(it, "rot")) it.kv.facing = `${it.heading} ${it.pitch}`;
-    else it.kv.rot = String(it.heading);
+    if (kvHas(it, "facing") || !kvHas(it, "rot")){
+      const facingIsZero = Math.abs(Number(it.heading) || 0) < 1e-9 && Math.abs(Number(it.pitch) || 0) < 1e-9;
+      if (facingIsZero) delete it.kv.facing;
+      else it.kv.facing = `${it.heading} ${it.pitch}`;
+    } else it.kv.rot = String(it.heading);
   }
 
   function updateItemGizmo(){
