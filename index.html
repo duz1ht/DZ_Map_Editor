@@ -4982,7 +4982,7 @@
     const hasWaypointChoices = state.sectionBlocks.some(s => s.kind === "waypoint");
     setEnabled(ui.wpList, hasWaypointChoices || (wpEnabled && kvHas(it, "waypoint_id")));
     setEnabled(ui.wpNumber, hasWaypointChoices || wpEnabled || kvHas(it, "wpnumber"));
-    setEnabled(ui.wpDistance, wpEnabled);
+    setEnabled(ui.wpDistance, hasWaypointChoices || wpEnabled);
     setEnabled(ui.wpName, state.wpNames.length > 0);
     setEnabled(ui.advEvent, wpEnabled && !!wpAdvKey);
     setEnabled(ui.navWp, wpEnabled && (kvHas(it, "nav_wp") || kvHas(it, "attrib")));
