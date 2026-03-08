@@ -5097,8 +5097,14 @@
     if (state.wpNames.length && (kvHas(it, "ttoolindex") || hasWaypointRef)){
       const idx = Math.trunc(Number(ui.wpName.value));
       if (Number.isFinite(idx)){
-        if (idx > 0) it.kv.ttoolindex = String(idx);
-        else delete it.kv.ttoolindex;
+        if (idx > 0){
+          it.kv.ttoolindex = String(idx);
+          delete it.kv.obliqueness;
+          it.kv.ai_textfile = '""';
+          it.kv.map_symbol = "-1";
+        } else {
+          delete it.kv.ttoolindex;
+        }
       }
     }
     const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
