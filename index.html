@@ -4910,7 +4910,7 @@
     setValueIf(ui.spinmapColor, kvHas(it, "color_override") ? it.kv.color_override : "");
 
     // AI Variables
-    const activeAreaKey = kvFindKey(it, ["active_area", "attention"]);
+    const activeAreaKey = kvFindKey(it, ["active_area", "blink_group_a"]);
     setEnabled(ui.activeArea, !!activeAreaKey);
     setValueIf(ui.activeArea, activeAreaKey ? it.kv[activeAreaKey] : "");
 
@@ -5034,8 +5034,9 @@
     if (ui.spinmapColor.value) it.kv.color_override = ui.spinmapColor.value;
     else delete it.kv.color_override;
 
-    const activeAreaKey = kvFindKey(it, ["active_area", "attention"]);
-    if (activeAreaKey) it.kv[activeAreaKey] = String(parseFloatSafe(ui.activeArea.value));
+    const activeAreaValue = String(parseFloatSafe(ui.activeArea.value));
+    if (kvHas(it, "active_area")) it.kv.active_area = activeAreaValue;
+    if (kvHas(it, "blink_group_a")) it.kv.blink_group_a = activeAreaValue;
     if (kvHas(it, "ai_textfile")) it.kv.ai_textfile = normalizeAiTextfileValue(ui.aiTextfile.value);
     if (!ui.group.disabled){
       if (ui.group.value) it.kv.group_id = ui.group.value;
