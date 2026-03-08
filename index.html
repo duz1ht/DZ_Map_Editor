@@ -4982,7 +4982,7 @@
     const hasWaypointChoices = state.sectionBlocks.some(s => s.kind === "waypoint");
     setEnabled(ui.wpList, hasWaypointChoices || (wpEnabled && kvHas(it, "waypoint_id")));
     setEnabled(ui.wpNumber, hasWaypointChoices || wpEnabled || kvHas(it, "wpnumber"));
-    setEnabled(ui.wpDistance, wpEnabled && !!wpDistanceKey);
+    setEnabled(ui.wpDistance, wpEnabled);
     setEnabled(ui.wpName, state.wpNames.length > 0);
     setEnabled(ui.advEvent, wpEnabled && !!wpAdvKey);
     setEnabled(ui.navWp, wpEnabled && (kvHas(it, "nav_wp") || kvHas(it, "attrib")));
@@ -5106,10 +5106,11 @@
       else delete it.kv.wpnumber;
     }
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
-    if (wpDistanceKey){
+    if (!ui.wpDistance.disabled){
       const wpDistanceValue = parseFloatSafe(ui.wpDistance.value);
-      if (Math.abs(wpDistanceValue) < 1e-9) delete it.kv[wpDistanceKey];
-      else it.kv[wpDistanceKey] = String(wpDistanceValue);
+      const wpDistanceTargetKey = wpDistanceKey || "wpdistance";
+      if (Math.abs(wpDistanceValue) < 1e-9) delete it.kv[wpDistanceTargetKey];
+      else it.kv[wpDistanceTargetKey] = String(wpDistanceValue);
     }
     const wpAdvKey = kvFindKey(it, ["wp_adv_trigger", "adv_event"]);
     const hasWaypointContext = hasWaypointRef || kvHas(it, "wpnumber") || kvHas(it, "ttoolindex") || !!wpAdvKey || kvHas(it, "nav_wp") || !!wpDistanceKey;
