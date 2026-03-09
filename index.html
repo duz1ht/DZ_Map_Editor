@@ -6013,12 +6013,12 @@
     return sh;
   }
 
-  const vsSrc=`attribute vec3 aPos; attribute vec2 aUV; uniform mat4 uMVP; varying vec2 vUV; void main(){ gl_Position=uMVP*vec4(aPos,1.0); vUV=aUV; }`;
-  const fsSrc=`precision mediump float; varying vec2 vUV; uniform sampler2D uTex; uniform float uFlipV; void main(){ vec2 uv=vec2(vUV.x, mix(vUV.y,1.0-vUV.y,uFlipV)); gl_FragColor=texture2D(uTex,uv); }`;
+  const vsSrc=`attribute vec3 aPos; attribute vec2 aUV; uniform mat4 uMVP; uniform vec2 uModelOffset; varying vec2 vUV; varying vec3 vWorldPos; void main(){ vec3 worldPos=vec3(aPos.x+uModelOffset.x,aPos.y+uModelOffset.y,aPos.z); gl_Position=uMVP*vec4(aPos,1.0); vUV=aUV; vWorldPos=worldPos; }`;
+  const fsSrc=`precision mediump float; varying vec2 vUV; varying vec3 vWorldPos; uniform sampler2D uTex; uniform float uFlipV; uniform float uFogEnabled; uniform float uFogDistance; uniform vec3 uFogColor; uniform vec3 uCamPos; void main(){ vec2 uv=vec2(vUV.x, mix(vUV.y,1.0-vUV.y,uFlipV)); vec4 texel=texture2D(uTex,uv); vec3 color=texel.rgb; if(uFogEnabled>0.5&&uFogDistance>0.0){ float distToCam=distance(vWorldPos,uCamPos); float fogAmount=smoothstep(uFogDistance*0.35,uFogDistance,distToCam); color=mix(color,uFogColor,clamp(fogAmount,0.0,1.0)); } gl_FragColor=vec4(color,texel.a); }`;
   const prog=gl.createProgram(); gl.attachShader(prog,compile(gl.VERTEX_SHADER,vsSrc)); gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fsSrc)); gl.linkProgram(prog);
   if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog)||'link failed');
   const aPos=gl.getAttribLocation(prog,'aPos'), aUV=gl.getAttribLocation(prog,'aUV');
-  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex');
+  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex'), uModelOffset=gl.getUniformLocation(prog,'uModelOffset'), uFogEnabled=gl.getUniformLocation(prog,'uFogEnabled'), uFogDistance=gl.getUniformLocation(prog,'uFogDistance'), uFogColor=gl.getUniformLocation(prog,'uFogColor'), uCamPos=gl.getUniformLocation(prog,'uCamPos');
 
   const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; }`;
   const itemFs=`precision mediump float; uniform vec4 uColor; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; gl_FragColor=uColor; }`;
@@ -6285,6 +6285,11 @@
     gl.activeTexture(gl.TEXTURE0);
     gl.uniform1i(uTex,0);
     gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0);
+    const fogRender = getRenderFogSettings();
+    gl.uniform1f(uFogEnabled, fogRender.enabled ? 1.0 : 0.0);
+    gl.uniform1f(uFogDistance, fogRender.distance);
+    gl.uniform3f(uFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
+    gl.uniform3f(uCamPos, cam.pos.x, cam.pos.y, cam.pos.z);
     gl.bindTexture(gl.TEXTURE_2D,tex);
 
     const ox=originWorldX(),oy=originWorldY(),radius=renderUiState.drawRadius;
@@ -6319,9 +6324,12 @@
       const m=meshSectorLods[lodLevel]?.[sectorIndex] || meshSectorLods[0]?.[sectorIndex];
       if(!m||!m.indexCount) continue;
 
-      mat4TranslateInto(scratchModelMatrix,ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE,0);
+      const tileOffsetX = ox+gx*SECTOR_STRIDE;
+      const tileOffsetY = oy+gy*SECTOR_STRIDE;
+      mat4TranslateInto(scratchModelMatrix,tileOffsetX, tileOffsetY,0);
       mat4MulInto(scratchMVPMatrix, PV, scratchModelMatrix);
       gl.uniformMatrix4fv(uMVP,false,scratchMVPMatrix);
+      gl.uniform2f(uModelOffset,tileOffsetX,tileOffsetY);
       bindMesh(m);
       gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0);
       draws++;
@@ -7347,6 +7355,41 @@
   }
 
   function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; if(!isItemLayerVisible(it)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),getItemWorldZ(it)); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
+
+  function getRenderFogSettings(){
+    const fallback = { enabled: false, distance: 0, color: { r: 0.65, g: 0.7, b: 0.75 }, source: 'disabled' };
+    const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
+    if (!(gi && gi.kv)) return fallback;
+
+    const attrib = Number(gi.kv.attrib || 0);
+    const fogDistanceEnabled = Number.isFinite(attrib) && ((Math.trunc(attrib) & GENERAL_ATTRIB_BITS.fogDistanceOverride) !== 0);
+    if (!fogDistanceEnabled) return fallback;
+
+    const fogDistance = fixed16ToNumber(gi.kv.fog_level || 0);
+    if (!(Number.isFinite(fogDistance) && fogDistance > 0)) return fallback;
+
+    let fogColorRgb = null;
+    const fogColorEnabled = Number.isFinite(attrib) && ((Math.trunc(attrib) & GENERAL_ATTRIB_BITS.fogColorOverride) !== 0);
+    if (fogColorEnabled) fogColorRgb = decodeFogColor(gi.kv.fog_color || 0);
+
+    if (!fogColorRgb){
+      const envName = String(gi.kv.sunset || giEnvironment?.value || '').trim().toLowerCase();
+      const envData = envName ? GENERAL_ENV_DATA.get(envName) : null;
+      if (envData?.fogRgb) fogColorRgb = envData.fogRgb;
+    }
+
+    const rgb = fogColorRgb || { r: 166, g: 179, b: 191 };
+    return {
+      enabled: true,
+      distance: fogDistance,
+      color: {
+        r: Math.max(0, Math.min(255, Number(rgb.r) || 0)) / 255,
+        g: Math.max(0, Math.min(255, Number(rgb.g) || 0)) / 255,
+        b: Math.max(0, Math.min(255, Number(rgb.b) || 0)) / 255,
+      },
+      source: fogColorEnabled ? 'MIS fog override' : 'environment fog color',
+    };
+  }
 
   function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
   function getRenderWaterHeightRaw(){
