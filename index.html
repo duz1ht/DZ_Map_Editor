@@ -7362,21 +7362,21 @@
     if (!(gi && gi.kv)) return fallback;
 
     const attrib = Number(gi.kv.attrib || 0);
-    const fogDistanceEnabled = Number.isFinite(attrib) && ((Math.trunc(attrib) & GENERAL_ATTRIB_BITS.fogDistanceOverride) !== 0);
-    if (!fogDistanceEnabled) return fallback;
+    const attribInt = Number.isFinite(attrib) ? Math.trunc(attrib) : 0;
+    const fogDistanceEnabled = (attribInt & GENERAL_ATTRIB_BITS.fogDistanceOverride) !== 0;
+    const fogColorEnabled = (attribInt & GENERAL_ATTRIB_BITS.fogColorOverride) !== 0;
 
-    const fogDistance = fixed16ToNumber(gi.kv.fog_level || 0);
+    const envName = String(gi.kv.sunset || giEnvironment?.value || '').trim().toLowerCase();
+    const envData = envName ? GENERAL_ENV_DATA.get(envName) : null;
+
+    const fogDistance = fogDistanceEnabled
+      ? fixed16ToNumber(gi.kv.fog_level || 0)
+      : Math.max(0, Math.trunc(Number(envData?.fogLevel) || 0));
     if (!(Number.isFinite(fogDistance) && fogDistance > 0)) return fallback;
 
     let fogColorRgb = null;
-    const fogColorEnabled = Number.isFinite(attrib) && ((Math.trunc(attrib) & GENERAL_ATTRIB_BITS.fogColorOverride) !== 0);
     if (fogColorEnabled) fogColorRgb = decodeFogColor(gi.kv.fog_color || 0);
-
-    if (!fogColorRgb){
-      const envName = String(gi.kv.sunset || giEnvironment?.value || '').trim().toLowerCase();
-      const envData = envName ? GENERAL_ENV_DATA.get(envName) : null;
-      if (envData?.fogRgb) fogColorRgb = envData.fogRgb;
-    }
+    if (!fogColorRgb && envData?.fogRgb) fogColorRgb = envData.fogRgb;
 
     const rgb = fogColorRgb || { r: 166, g: 179, b: 191 };
     return {
@@ -7387,7 +7387,7 @@
         g: Math.max(0, Math.min(255, Number(rgb.g) || 0)) / 255,
         b: Math.max(0, Math.min(255, Number(rgb.b) || 0)) / 255,
       },
-      source: fogColorEnabled ? 'MIS fog override' : 'environment fog color',
+      source: `${fogDistanceEnabled ? 'MIS fog distance' : 'ENV fog level'} + ${fogColorEnabled ? 'MIS fog color' : 'ENV fog rgb'}`,
     };
   }
 
