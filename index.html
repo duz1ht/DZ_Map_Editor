@@ -7352,8 +7352,12 @@
   function getRenderWaterHeightRaw(){
     const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
     if (gi && gi.kv){
-      const overrideRaw = Number(gi.kv.water_level);
-      if (Number.isFinite(overrideRaw)) return { raw: overrideRaw, source: 'MIS override' };
+      const attrib = Number(gi.kv.attrib || 0);
+      const waterOverrideEnabled = Number.isFinite(attrib) && ((Math.trunc(attrib) & GENERAL_ATTRIB_BITS.waterOverride) !== 0);
+      if (waterOverrideEnabled){
+        const overrideRaw = Number(gi.kv.water_level);
+        if (Number.isFinite(overrideRaw)) return { raw: overrideRaw, source: 'MIS override' };
+      }
     }
 
     const trnRaw = Number(trnInfo.waterHeight);
