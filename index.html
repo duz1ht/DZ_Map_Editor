@@ -6103,13 +6103,6 @@
       if (Number.isFinite(rawExtraBheight) && rawExtraBheight !== 0) return rawToWorld(rawExtraBheight, 'z');
     }
 
-    const rawZ = Number(it?.z);
-    if (rawZ === 0){
-      const x = rawToWorld(it?.x || 0, 'x');
-      const y = rawToWorld(it?.y || 0, 'y');
-      const terrainZ = heightAtWorld(x, y, 1.0);
-      if (Number.isFinite(terrainZ) && terrainZ > -1e8) return terrainZ;
-    }
     return rawToWorld(it?.z || 0, 'z');
   }
   let sectorCount=8, terrainOrigin={x:0,y:0}, wrapX=1, wrapY=1, sectors=null, lastDepth=null, lastImg=null, loadedTrnName=null;
