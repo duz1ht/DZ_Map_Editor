@@ -5987,6 +5987,7 @@
     buildGroupOptions();
 
     statusEl.textContent = `${file.name} loaded. items: ${state.items.length}`;
+    try{ await loadTerrainFromMis(); }catch(err){ addLog(`[terrain] load error: ${err?.message || err}`); camDebugEl.textContent = `Failed to load terrain: ${err.message||err}`; }
     fitView();
     renderList();
     requestRender();
@@ -7962,14 +7963,6 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
     if (!state.gizmoDrag) return;
     state.gizmoDrag = null;
   });
-
-  const _origLoadMisFile = loadMisFile;
-  loadMisFile = async function(file, fileHandle = null){
-    await _origLoadMisFile(file, fileHandle);
-    try{ await loadTerrainFromMis(); }catch(err){ addLog(`[terrain] load error: ${err?.message || err}`); camDebugEl.textContent = `Failed to load terrain: ${err.message||err}`; }
-    fitView();
-    requestRender();
-  };
 
   function applyTheme(theme){
     const normalized = theme && theme !== "default" ? theme : "";
