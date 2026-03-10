@@ -6983,6 +6983,7 @@
     updateGlbTransformsFromState();
 
     const { renderer, scene } = state.glb;
+    syncGlbFogFromRenderSettings(scene);
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
 
@@ -6990,6 +6991,27 @@
     renderer.render(scene, state.glb.camera);
     renderer.resetState();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  function syncGlbFogFromRenderSettings(scene){
+    if (!state.glb.ready || !state.glb.THREE || !scene) return;
+    const fogRender = getRenderFogSettings();
+    if (!fogRender.enabled || fogRender.distance <= 0){
+      if (scene.fog !== null) scene.fog = null;
+      return;
+    }
+
+    const { THREE } = state.glb;
+    const near = Math.max(1, fogRender.distance * 0.35);
+    const far = Math.max(near + 1, fogRender.distance);
+    const color = new THREE.Color(fogRender.color.r, fogRender.color.g, fogRender.color.b);
+    if (!(scene.fog instanceof THREE.Fog)){
+      scene.fog = new THREE.Fog(color, near, far);
+      return;
+    }
+    scene.fog.color.copy(color);
+    scene.fog.near = near;
+    scene.fog.far = far;
   }
 
   function applyThreeCameraFromPV(P, V){
