@@ -6440,6 +6440,8 @@
   function drawItems(PV){
     if (!renderUiState.showAnchorPoints) return;
     const items = getFilteredItems().filter((it) => isItemLayerVisible(it));
+    const fogRender = getRenderFogSettings();
+    const fogVisibilityLimit = fogRender.enabled ? Math.max(0, Number(fogRender.far) || 0) : Infinity;
     if (!items.length && !(state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length)) return;
 
     const normalCount = 3 * items.length;
@@ -6456,6 +6458,13 @@
       const x = rawToWorld(it.x,'x');
       const y = rawToWorld(it.y,'y');
       const z = getItemWorldZ(it);
+      if (Number.isFinite(fogVisibilityLimit)){
+        const dx = x - cam.pos.x;
+        const dy = y - cam.pos.y;
+        const dz = z - cam.pos.z;
+        const distToCam = Math.hypot(dx, dy, dz);
+        if (distToCam > fogVisibilityLimit) continue;
+      }
       if (it.id===state.selectedId||state.multiSelectedIds.has(it.id)){
         selectedBuf[selectedLen++]=x; selectedBuf[selectedLen++]=y; selectedBuf[selectedLen++]=z;
       } else if (state.selectedWaypointMarkerIds.has(it.id)){
@@ -6721,6 +6730,7 @@
             alphaTest: m.alphaTest || 0,
             vertexColors: !!m.vertexColors,
             flatShading: !!m.flatShading,
+            fog: true,
           });
         });
 
@@ -6893,8 +6903,8 @@
           instance = template.clone(true);
           instance.traverse((obj) => {
             if (!obj.isMesh) return;
-            if (Array.isArray(obj.material)) obj.material = obj.material.map(m => m ? m.clone() : m);
-            else if (obj.material) obj.material = obj.material.clone();
+            if (Array.isArray(obj.material)) obj.material = obj.material.map(m => { const cloned = m ? m.clone() : m; if (cloned) cloned.fog = true; return cloned; });
+            else if (obj.material){ obj.material = obj.material.clone(); obj.material.fog = true; }
           });
           applyWireframeToGlbObject(instance);
           instance.userData.itemId = it.id;
@@ -6974,6 +6984,27 @@
     state.glb.transformDirtyIds.clear();
   }
 
+  function syncThreeSceneFog(scene){
+    if (!scene || !state.glb.ready || !state.glb.THREE) return;
+    const { THREE } = state.glb;
+    const fogRender = getRenderFogSettings();
+    if (!(fogRender.enabled && fogRender.far > fogRender.near)){
+      scene.fog = null;
+      return;
+    }
+
+    const r = Math.max(0, Math.min(1, Number(fogRender.color?.r) || 0));
+    const g = Math.max(0, Math.min(1, Number(fogRender.color?.g) || 0));
+    const b = Math.max(0, Math.min(1, Number(fogRender.color?.b) || 0));
+    if (!scene.fog || !(scene.fog instanceof THREE.Fog)){
+      scene.fog = new THREE.Fog(new THREE.Color(r, g, b), fogRender.near, fogRender.far);
+      return;
+    }
+    scene.fog.color.setRGB(r, g, b);
+    scene.fog.near = fogRender.near;
+    scene.fog.far = fogRender.far;
+  }
+
   function drawGlbItems(P, V){
     if (!state.glb.ready){
       ensureGlbRendererReady().then((ready) => {
@@ -6986,6 +7017,7 @@
     const { renderer, scene } = state.glb;
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
+    syncThreeSceneFog(scene);
 
     renderer.resetState();
     renderer.render(scene, state.glb.camera);
