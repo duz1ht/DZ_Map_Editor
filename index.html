@@ -7415,9 +7415,17 @@
     const fogRender = getRenderFogSettings();
     if (!fogRender.enabled) return;
 
-    const far = Math.max(1, Number(fogRender.far) || 0);
-    const density = Math.max(0, Math.min(1, 1 - (far / 4000)));
-    const alpha = Math.max(0, Math.min(0.7, 0.12 + density * 0.5));
+    const fogNear = Math.max(0, Number(fogRender.near) || 0);
+    const fogFar = Math.max(fogNear + 1, Number(fogRender.far) || (fogNear + 1));
+    const fogRange = Math.max(1, fogFar - fogNear);
+
+    // Aproximação para pass global sem depth: só aplica cortina quando a faixa de visão
+    // atual alcança a região onde o fog começaria (near), respeitando melhor a distância.
+    const visibleDistance = Math.max(1, Number(renderUiState?.drawRadius) || 1);
+    const coverage = Math.max(0, Math.min(1, (visibleDistance - fogNear) / fogRange));
+
+    const density = Math.max(0, Math.min(1, 1200 / fogRange));
+    const alpha = Math.max(0, Math.min(0.65, coverage * (0.2 + density * 0.45)));
     if (alpha <= 0.001) return;
 
     gl.useProgram(fogCurtainProg);
