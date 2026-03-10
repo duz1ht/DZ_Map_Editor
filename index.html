@@ -6028,9 +6028,9 @@
   const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex'), uModelOffset=gl.getUniformLocation(prog,'uModelOffset'), uFogEnabled=gl.getUniformLocation(prog,'uFogEnabled'), uFogNear=gl.getUniformLocation(prog,'uFogNear'), uFogFar=gl.getUniformLocation(prog,'uFogFar'), uFogColor=gl.getUniformLocation(prog,'uFogColor');
 
   const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; }`;
-  const itemFs=`precision mediump float; uniform vec4 uColor; uniform float uFogEnabled; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFogColor; float fogLinearFactor(){ if(uFogEnabled<0.5||uFogFar<=uFogNear) return 0.0; float depth=gl_FragCoord.z/gl_FragCoord.w; return clamp((depth-uFogNear)/(uFogFar-uFogNear),0.0,1.0); } void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; vec3 color=mix(uColor.rgb,uFogColor,fogLinearFactor()); gl_FragColor=vec4(color,uColor.a); }`;
+  const itemFs=`precision mediump float; uniform vec4 uColor; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; gl_FragColor=uColor; }`;
   const itemProg=gl.createProgram(); gl.attachShader(itemProg,compile(gl.VERTEX_SHADER,itemVs)); gl.attachShader(itemProg,compile(gl.FRAGMENT_SHADER,itemFs)); gl.linkProgram(itemProg);
-  const iaPos=gl.getAttribLocation(itemProg,'aPos'), iuMVP=gl.getUniformLocation(itemProg,'uMVP'), iuPointSize=gl.getUniformLocation(itemProg,'uPointSize'), iuColor=gl.getUniformLocation(itemProg,'uColor'), iuFogEnabled=gl.getUniformLocation(itemProg,'uFogEnabled'), iuFogNear=gl.getUniformLocation(itemProg,'uFogNear'), iuFogFar=gl.getUniformLocation(itemProg,'uFogFar'), iuFogColor=gl.getUniformLocation(itemProg,'uFogColor');
+  const iaPos=gl.getAttribLocation(itemProg,'aPos'), iuMVP=gl.getUniformLocation(itemProg,'uMVP'), iuPointSize=gl.getUniformLocation(itemProg,'uPointSize'), iuColor=gl.getUniformLocation(itemProg,'uColor');
   const itemVB=gl.createBuffer();
 
   const lineVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z+=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
@@ -6473,11 +6473,6 @@
     gl.enableVertexAttribArray(iaPos);
     gl.vertexAttribPointer(iaPos,3,gl.FLOAT,false,0,0);
     gl.uniformMatrix4fv(iuMVP,false,PV);
-    const fogRender = getRenderFogSettings();
-    gl.uniform1f(iuFogEnabled, fogRender.enabled ? 1.0 : 0.0);
-    gl.uniform1f(iuFogNear, fogRender.near);
-    gl.uniform1f(iuFogFar, fogRender.far);
-    gl.uniform3f(iuFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
 
     function drawGroup(buffer, len, color, size){
       if (!len) return;
