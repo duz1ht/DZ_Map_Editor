@@ -6027,10 +6027,10 @@
   const aPos=gl.getAttribLocation(prog,'aPos'), aUV=gl.getAttribLocation(prog,'aUV');
   const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex'), uModelOffset=gl.getUniformLocation(prog,'uModelOffset'), uFogEnabled=gl.getUniformLocation(prog,'uFogEnabled'), uFogDistance=gl.getUniformLocation(prog,'uFogDistance'), uFogColor=gl.getUniformLocation(prog,'uFogColor'), uCamPos=gl.getUniformLocation(prog,'uCamPos');
 
-  const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; }`;
-  const itemFs=`precision mediump float; uniform vec4 uColor; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; gl_FragColor=uColor; }`;
+  const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; varying vec3 vWorldPos; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; vWorldPos=aPos; }`;
+  const itemFs=`precision mediump float; uniform vec4 uColor; uniform float uFogEnabled; uniform float uFogDistance; uniform vec3 uFogColor; uniform vec3 uCamPos; varying vec3 vWorldPos; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; vec3 color=uColor.rgb; if(uFogEnabled>0.5&&uFogDistance>0.0){ float distToCam=distance(vWorldPos,uCamPos); float fogAmount=smoothstep(uFogDistance*0.35,uFogDistance,distToCam); color=mix(color,uFogColor,clamp(fogAmount,0.0,1.0)); } gl_FragColor=vec4(color,uColor.a); }`;
   const itemProg=gl.createProgram(); gl.attachShader(itemProg,compile(gl.VERTEX_SHADER,itemVs)); gl.attachShader(itemProg,compile(gl.FRAGMENT_SHADER,itemFs)); gl.linkProgram(itemProg);
-  const iaPos=gl.getAttribLocation(itemProg,'aPos'), iuMVP=gl.getUniformLocation(itemProg,'uMVP'), iuPointSize=gl.getUniformLocation(itemProg,'uPointSize'), iuColor=gl.getUniformLocation(itemProg,'uColor');
+  const iaPos=gl.getAttribLocation(itemProg,'aPos'), iuMVP=gl.getUniformLocation(itemProg,'uMVP'), iuPointSize=gl.getUniformLocation(itemProg,'uPointSize'), iuColor=gl.getUniformLocation(itemProg,'uColor'), iuFogEnabled=gl.getUniformLocation(itemProg,'uFogEnabled'), iuFogDistance=gl.getUniformLocation(itemProg,'uFogDistance'), iuFogColor=gl.getUniformLocation(itemProg,'uFogColor'), iuCamPos=gl.getUniformLocation(itemProg,'uCamPos');
   const itemVB=gl.createBuffer();
 
   const lineVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z+=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
@@ -6469,6 +6469,11 @@
     gl.enableVertexAttribArray(iaPos);
     gl.vertexAttribPointer(iaPos,3,gl.FLOAT,false,0,0);
     gl.uniformMatrix4fv(iuMVP,false,PV);
+    const fogRender = getRenderFogSettings();
+    gl.uniform1f(iuFogEnabled, fogRender.enabled ? 1.0 : 0.0);
+    gl.uniform1f(iuFogDistance, fogRender.distance);
+    gl.uniform3f(iuFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
+    gl.uniform3f(iuCamPos, cam.pos.x, cam.pos.y, cam.pos.z);
 
     function drawGroup(buffer, len, color, size){
       if (!len) return;
@@ -6973,7 +6978,28 @@
     state.glb.transformDirtyIds.clear();
   }
 
-  function drawGlbItems(P, V){
+  function applyGlbFogSettings(fogRender){
+    if (!state.glb.ready || !state.glb.scene || !state.glb.THREE) return;
+    const { scene, THREE } = state.glb;
+    const defaultBg = { r: 0.05, g: 0.06, b: 0.08 };
+    const color = fogRender.enabled ? fogRender.color : defaultBg;
+    if (!state.glb.fogColor) state.glb.fogColor = new THREE.Color();
+    state.glb.fogColor.setRGB(color.r, color.g, color.b);
+    scene.background = state.glb.fogColor;
+
+    if (!fogRender.enabled || fogRender.distance <= 0){
+      scene.fog = null;
+      return;
+    }
+    const fogNear = Math.max(1, fogRender.distance * 0.35);
+    const fogFar = Math.max(fogNear + 1, fogRender.distance);
+    if (!(scene.fog && scene.fog.isFog)) scene.fog = new THREE.Fog(state.glb.fogColor, fogNear, fogFar);
+    scene.fog.color.copy(state.glb.fogColor);
+    scene.fog.near = fogNear;
+    scene.fog.far = fogFar;
+  }
+
+  function drawGlbItems(P, V, fogRender){
     if (!state.glb.ready){
       ensureGlbRendererReady().then((ready) => {
         if (ready) syncGlbItems();
@@ -6985,6 +7011,7 @@
     const { renderer, scene } = state.glb;
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
+    applyGlbFogSettings(fogRender);
 
     renderer.resetState();
     renderer.render(scene, state.glb.camera);
@@ -7668,8 +7695,10 @@
     const {forwardXY,right,forward}=cameraBasis(); const canMoveWithKeys=(document.pointerLockElement===cv && state.cameraLookActive); let dir=vec3(0,0,0); if(canMoveWithKeys&&move.w) dir=vec3Add(dir,forwardXY); if(canMoveWithKeys&&move.s) dir=vec3Sub(dir,forwardXY); if(canMoveWithKeys&&move.d) dir=vec3Add(dir,right); if(canMoveWithKeys&&move.a) dir=vec3Sub(dir,right); if(canMoveWithKeys&&move.e) dir=vec3Add(dir,vec3(0,0,1)); if(canMoveWithKeys&&move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); const speedTable=[12.5,25,50,100,200,300,450,600]; const lvl=Math.max(1,Math.min(8,renderUiState.speedLevel|0)); const scalar=Math.max(0.1,renderUiState.speedScalar||1); const base=speedTable[lvl-1]*scalar; const spd=base; state.camera.speed=spd; const targetVel=dlen>0?vec3Scale(dir,spd/dlen):vec3(0,0,0); const smoothBoost=1.3; const accel=12.0/smoothBoost, decel=10.0/smoothBoost; const blend=Math.min(1, (dlen>0?accel:decel)*dt); camVel=vec3Add(camVel, vec3Scale(vec3Sub(targetVel,camVel), blend)); cam.pos=vec3Add(cam.pos,vec3Scale(camVel,dt));
     if(renderUiState.groundClamp && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=renderUiState.clearance; if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
     resetFixedGlState();
-    gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
+    const fogRender = getRenderFogSettings();
+    const clearColor = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
+    gl.clearColor(clearColor.r,clearColor.g,clearColor.b,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V, fogRender);
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
