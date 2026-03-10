@@ -6985,7 +6985,6 @@
     const color = fogRender.enabled ? fogRender.color : defaultBg;
     if (!state.glb.fogColor) state.glb.fogColor = new THREE.Color();
     state.glb.fogColor.setRGB(color.r, color.g, color.b);
-    scene.background = state.glb.fogColor;
 
     if (!fogRender.enabled || fogRender.distance <= 0){
       scene.fog = null;
