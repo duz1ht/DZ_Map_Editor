@@ -6053,6 +6053,14 @@
   const waterIB=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array([0,1,2,0,2,3]),gl.STATIC_DRAW);
   const lineVB=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,lineVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,0,1,0,0,1,0,0,1,1,0,1,1,0,0,1,0,0,1,0,0,0,0]),gl.STATIC_DRAW);
 
+  const fogCurtainVs=`attribute vec2 aPos; void main(){ gl_Position=vec4(aPos,0.0,1.0); }`;
+  const fogCurtainFs=`precision mediump float; uniform vec3 uColor; uniform float uAlpha; void main(){ gl_FragColor=vec4(uColor, uAlpha); }`;
+  const fogCurtainProg=gl.createProgram(); gl.attachShader(fogCurtainProg,compile(gl.VERTEX_SHADER,fogCurtainVs)); gl.attachShader(fogCurtainProg,compile(gl.FRAGMENT_SHADER,fogCurtainFs)); gl.linkProgram(fogCurtainProg);
+  const fcaPos=gl.getAttribLocation(fogCurtainProg,'aPos'), fcuColor=gl.getUniformLocation(fogCurtainProg,'uColor'), fcuAlpha=gl.getUniformLocation(fogCurtainProg,'uAlpha');
+  const fogCurtainVB=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,fogCurtainVB);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1]),gl.STATIC_DRAW);
+
   const scratchGrid = { verts: new Float32Array(0) };
   const itemDrawScratch = {
     normal: new Float32Array(0),
@@ -6294,7 +6302,7 @@
     gl.uniform1i(uTex,0);
     gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0);
     const fogRender = getRenderFogSettings();
-    gl.uniform1f(uFogEnabled, fogRender.enabled ? 1.0 : 0.0);
+    gl.uniform1f(uFogEnabled, 0.0);
     gl.uniform1f(uFogNear, fogRender.near);
     gl.uniform1f(uFogFar, fogRender.far);
     gl.uniform3f(uFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
@@ -6440,8 +6448,6 @@
   function drawItems(PV){
     if (!renderUiState.showAnchorPoints) return;
     const items = getFilteredItems().filter((it) => isItemLayerVisible(it));
-    const fogRender = getRenderFogSettings();
-    const fogVisibilityLimit = fogRender.enabled ? Math.max(0, Number(fogRender.far) || 0) : Infinity;
     if (!items.length && !(state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length)) return;
 
     const normalCount = 3 * items.length;
@@ -6458,13 +6464,6 @@
       const x = rawToWorld(it.x,'x');
       const y = rawToWorld(it.y,'y');
       const z = getItemWorldZ(it);
-      if (Number.isFinite(fogVisibilityLimit)){
-        const dx = x - cam.pos.x;
-        const dy = y - cam.pos.y;
-        const dz = z - cam.pos.z;
-        const distToCam = Math.hypot(dx, dy, dz);
-        if (distToCam > fogVisibilityLimit) continue;
-      }
       if (it.id===state.selectedId||state.multiSelectedIds.has(it.id)){
         selectedBuf[selectedLen++]=x; selectedBuf[selectedLen++]=y; selectedBuf[selectedLen++]=z;
       } else if (state.selectedWaypointMarkerIds.has(it.id)){
@@ -6730,7 +6729,6 @@
             alphaTest: m.alphaTest || 0,
             vertexColors: !!m.vertexColors,
             flatShading: !!m.flatShading,
-            fog: true,
           });
         });
 
@@ -6903,8 +6901,8 @@
           instance = template.clone(true);
           instance.traverse((obj) => {
             if (!obj.isMesh) return;
-            if (Array.isArray(obj.material)) obj.material = obj.material.map(m => { const cloned = m ? m.clone() : m; if (cloned) cloned.fog = true; return cloned; });
-            else if (obj.material){ obj.material = obj.material.clone(); obj.material.fog = true; }
+            if (Array.isArray(obj.material)) obj.material = obj.material.map(m => m ? m.clone() : m);
+            else if (obj.material) obj.material = obj.material.clone();
           });
           applyWireframeToGlbObject(instance);
           instance.userData.itemId = it.id;
@@ -6984,26 +6982,7 @@
     state.glb.transformDirtyIds.clear();
   }
 
-  function syncThreeSceneFog(scene){
-    if (!scene || !state.glb.ready || !state.glb.THREE) return;
-    const { THREE } = state.glb;
-    const fogRender = getRenderFogSettings();
-    if (!(fogRender.enabled && fogRender.far > fogRender.near)){
-      scene.fog = null;
-      return;
-    }
 
-    const r = Math.max(0, Math.min(1, Number(fogRender.color?.r) || 0));
-    const g = Math.max(0, Math.min(1, Number(fogRender.color?.g) || 0));
-    const b = Math.max(0, Math.min(1, Number(fogRender.color?.b) || 0));
-    if (!scene.fog || !(scene.fog instanceof THREE.Fog)){
-      scene.fog = new THREE.Fog(new THREE.Color(r, g, b), fogRender.near, fogRender.far);
-      return;
-    }
-    scene.fog.color.setRGB(r, g, b);
-    scene.fog.near = fogRender.near;
-    scene.fog.far = fogRender.far;
-  }
 
   function drawGlbItems(P, V){
     if (!state.glb.ready){
@@ -7017,7 +6996,6 @@
     const { renderer, scene } = state.glb;
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
-    syncThreeSceneFog(scene);
 
     renderer.resetState();
     renderer.render(scene, state.glb.camera);
@@ -7433,6 +7411,32 @@
     };
   }
 
+  function drawGlobalFogCurtain(){
+    const fogRender = getRenderFogSettings();
+    if (!fogRender.enabled) return;
+
+    const far = Math.max(1, Number(fogRender.far) || 0);
+    const density = Math.max(0, Math.min(1, 1 - (far / 4000)));
+    const alpha = Math.max(0, Math.min(0.7, 0.12 + density * 0.5));
+    if (alpha <= 0.001) return;
+
+    gl.useProgram(fogCurtainProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, fogCurtainVB);
+    gl.enableVertexAttribArray(fcaPos);
+    gl.vertexAttribPointer(fcaPos,2,gl.FLOAT,false,0,0);
+    gl.uniform3f(fcuColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
+    gl.uniform1f(fcuAlpha, alpha);
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.disable(gl.BLEND);
+    gl.depthMask(true);
+    gl.enable(gl.DEPTH_TEST);
+  }
+
   function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
   function getRenderWaterHeightRaw(){
     const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
@@ -7703,7 +7707,7 @@
     if(renderUiState.groundClamp && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=renderUiState.clearance; if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
     resetFixedGlState();
     gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
+    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V); drawGlobalFogCurtain();
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
