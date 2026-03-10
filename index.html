@@ -1789,6 +1789,7 @@
       loader: null,
       templateByGraphic: new Map(),
       dimensionsByGraphic: new Map(),
+      groundMinZByGraphic: new Map(),
       missingGraphics: new Set(),
       itemInstances: new Map(),
       syncPromise: null,
@@ -1809,6 +1810,8 @@
       raycaster: null,
       pointerNdc: null,
       ready: false,
+      groundAlignDebug: false,
+      groundAlignLoggedIds: new Set(),
     },
   };
 
@@ -2758,6 +2761,40 @@
     };
     state.glb.dimensionsByGraphic.set(graphicKey, dims);
     return dims;
+  }
+
+  function shouldAutoGroundAlignGlb(item){
+    if (!item) return false;
+    if (Number(item.z) !== 0) return false;
+    if (!kvHas(item, "extra_bheight")) return true;
+    const rawExtraBheight = Number(item.kv.extra_bheight);
+    return !(Number.isFinite(rawExtraBheight) && rawExtraBheight !== 0);
+  }
+
+  function getGlbGroundLiftForItem(item, scale = 1){
+    if (!item || !state.glb.ready || !state.glb.THREE) return 0;
+
+    const instance = state.glb.itemInstances.get(item.id) || null;
+    const graphicKey = String(instance?.userData?.graphic || "").trim().toLowerCase();
+    if (!graphicKey) return 0;
+
+    let minZ = state.glb.groundMinZByGraphic.get(graphicKey);
+    if (!Number.isFinite(minZ)){
+      const source = state.glb.templateByGraphic.get(graphicKey) || instance;
+      if (!source) return 0;
+
+      const { THREE } = state.glb;
+      const box = new THREE.Box3();
+      source.updateMatrixWorld?.(true);
+      box.setFromObject(source);
+      if (!Number.isFinite(box.min.z) || box.isEmpty()) return 0;
+      minZ = box.min.z;
+      state.glb.groundMinZByGraphic.set(graphicKey, minZ);
+    }
+
+    if (!Number.isFinite(minZ)) return 0;
+    const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    return -minZ * safeScale;
   }
 
   function renderSelectedInfoPanel(){
@@ -6489,10 +6526,17 @@
 
   function applyItemTransformToObject(obj, it){
     if (!obj || !it) return;
+    const scale = getItemGraphicScale(it);
+    const baseZ = getItemWorldZ(it);
+    const groundLift = shouldAutoGroundAlignGlb(it)
+      ? getGlbGroundLiftForItem(it, scale)
+      : 0;
+    const visualZ = baseZ + groundLift;
+
     obj.position.set(
       rawToWorld(it.x,'x'),
       rawToWorld(it.y,'y'),
-      getItemWorldZ(it)
+      visualZ
     );
     // OpenNova-style orientation correction: sign-flip yaw/pitch and apply a +180° yaw phase shift.
     const yawRad = ((-(Number(it.heading) || 0)) + 180) * Math.PI / 180;
@@ -6501,8 +6545,12 @@
     obj.rotation.order = "ZXY";
     obj.rotation.z = yawRad;
     obj.rotation.x = pitchRad;
-    const scale = getItemGraphicScale(it);
     obj.scale.set(scale, scale, scale);
+
+    if (state.glb.groundAlignDebug && Math.abs(groundLift) > 1e-5 && !state.glb.groundAlignLoggedIds.has(it.id)){
+      addLog(`[3d_items][ground-align] item #${it.id} baseZ=${baseZ.toFixed(4)} lift=${groundLift.toFixed(4)} visualZ=${visualZ.toFixed(4)}`);
+      state.glb.groundAlignLoggedIds.add(it.id);
+    }
   }
 
   function lodDistanceForLevel(level){
