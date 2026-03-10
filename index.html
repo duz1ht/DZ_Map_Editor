@@ -267,6 +267,15 @@
       height:24px;
       padding:0 10px;
     }
+    #debugFogBtn{
+      position:absolute;
+      top:10px;
+      left:144px;
+      z-index:10;
+      min-width:84px;
+      height:24px;
+      padding:0 10px;
+    }
     #fpsCounter{
       position:absolute;
       top:10px;
@@ -394,6 +403,30 @@
     #layerVisibilityControls button{ min-height:22px; padding:2px 8px; font-size:11px; }
     #layerVisibilityList{ display:grid; grid-template-columns:1fr; gap:4px; font-size:12px; overflow:auto; min-height:0; }
     #layerVisibilityList label{ display:flex; align-items:center; gap:6px; }
+    #debugFogPanel{
+      position:absolute;
+      top:42px;
+      left:144px;
+      z-index:11;
+      min-width:360px;
+      max-width:min(58vw, 620px);
+      max-height:360px;
+      display:none;
+      background:var(--panel);
+      border:1px solid var(--line-strong);
+      border-radius:var(--radius-md);
+      box-shadow:var(--shadow-md);
+      padding:10px;
+      overflow:auto;
+      font-size:12px;
+    }
+    #debugFogPanel.open{ display:block; }
+    #debugFogPanel .presetTabs{ display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap; }
+    #debugFogPanel .presetTab{ min-height:22px; padding:2px 8px; font-size:11px; }
+    #debugFogPanel .presetTab.active{ background:#2c7be5; border-color:#67a2ff; color:#fff; }
+    #debugFogPanel .fogRow{ display:grid; grid-template-columns:74px 1fr 56px; gap:8px; align-items:center; margin-bottom:6px; }
+    #debugFogPanel .fogRow input[type="range"]{ width:100%; }
+    #debugFogPanel .fogHint{ color:var(--text-muted); margin-top:6px; }
     #misRealtimePanel{
       margin-top:12px;
       border:1px solid var(--line);
@@ -1164,6 +1197,7 @@
     <div id="canvasWrap">
       <button id="showPanelBtn" type="button" class="modeBtn">Show</button>
       <button id="showLayersBtn" type="button" class="modeBtn">Layers</button>
+      <button id="debugFogBtn" type="button" class="modeBtn">Debug Fog</button>
       <canvas id="cv"></canvas>
       <div id="camDebug"></div>
       <div id="fpsCounter">0 FPS</div>
@@ -1197,6 +1231,17 @@
           <button id="showAllLayersBtn" type="button">Show All</button>
         </div>
         <div id="layerVisibilityList"></div>
+      </div>
+
+      <div id="debugFogPanel" aria-hidden="true">
+        <div class="presetTabs" id="debugFogPresetTabs"></div>
+        <div class="fogRow"><label for="dbgFogNearRatio">Near ratio</label><input id="dbgFogNearRatio" type="range" min="0.01" max="1.5" step="0.005" /><span id="dbgFogNearRatioVal"></span></div>
+        <div class="fogRow"><label for="dbgFogMidRatio">Mid ratio</label><input id="dbgFogMidRatio" type="range" min="0.01" max="2.0" step="0.005" /><span id="dbgFogMidRatioVal"></span></div>
+        <div class="fogRow"><label for="dbgFogFarRatio">Far ratio</label><input id="dbgFogFarRatio" type="range" min="0.05" max="3.0" step="0.005" /><span id="dbgFogFarRatioVal"></span></div>
+        <div class="fogRow"><label for="dbgFogNearStrength">Near force</label><input id="dbgFogNearStrength" type="range" min="0" max="1" step="0.01" /><span id="dbgFogNearStrengthVal"></span></div>
+        <div class="fogRow"><label for="dbgFogMidStrength">Mid force</label><input id="dbgFogMidStrength" type="range" min="0" max="1" step="0.01" /><span id="dbgFogMidStrengthVal"></span></div>
+        <div class="fogRow"><label for="dbgFogFarStrength">Far force</label><input id="dbgFogFarStrength" type="range" min="0" max="1" step="0.01" /><span id="dbgFogFarStrengthVal"></span></div>
+        <div class="fogHint">Ratios são proporcionais ao Fog Distance (m). Ex: 0.5 = 50% da distância base.</div>
       </div>
 
       <div id="sectionOverlay" aria-hidden="true">
@@ -1828,10 +1873,25 @@
   const exportBtn = document.getElementById("exportBtn");
   const showPanelBtn = document.getElementById("showPanelBtn");
   const showLayersBtn = document.getElementById("showLayersBtn");
+  const debugFogBtn = document.getElementById("debugFogBtn");
   const hideAllLayersBtn = document.getElementById("hideAllLayersBtn");
   const showAllLayersBtn = document.getElementById("showAllLayersBtn");
   const canvasShowPanelEl = document.getElementById("canvasShowPanel");
   const layerVisibilityPanelEl = document.getElementById("layerVisibilityPanel");
+  const debugFogPanelEl = document.getElementById("debugFogPanel");
+  const debugFogPresetTabsEl = document.getElementById("debugFogPresetTabs");
+  const dbgFogNearRatio = document.getElementById("dbgFogNearRatio");
+  const dbgFogMidRatio = document.getElementById("dbgFogMidRatio");
+  const dbgFogFarRatio = document.getElementById("dbgFogFarRatio");
+  const dbgFogNearStrength = document.getElementById("dbgFogNearStrength");
+  const dbgFogMidStrength = document.getElementById("dbgFogMidStrength");
+  const dbgFogFarStrength = document.getElementById("dbgFogFarStrength");
+  const dbgFogNearRatioVal = document.getElementById("dbgFogNearRatioVal");
+  const dbgFogMidRatioVal = document.getElementById("dbgFogMidRatioVal");
+  const dbgFogFarRatioVal = document.getElementById("dbgFogFarRatioVal");
+  const dbgFogNearStrengthVal = document.getElementById("dbgFogNearStrengthVal");
+  const dbgFogMidStrengthVal = document.getElementById("dbgFogMidStrengthVal");
+  const dbgFogFarStrengthVal = document.getElementById("dbgFogFarStrengthVal");
   const layerVisibilityListEl = document.getElementById("layerVisibilityList");
   const canvasWrapEl = document.getElementById("canvasWrap");
   const statusEl = document.getElementById("status");
@@ -3406,6 +3466,16 @@
       fogRgb: parseEnvRgb(env.fog_rgb),
     };
   }
+
+  const FOG_PRESET_DEBUG_DEFAULTS = {
+    0: { nearRatio: 5 / 128, midRatio: 17 / 128, farRatio: 38 / 128, nearStrength: 0.30, midStrength: 0.65, farStrength: 1.00 },
+    1: { nearRatio: 10 / 128, midRatio: 40 / 128, farRatio: 90 / 128, nearStrength: 0.12, midStrength: 0.65, farStrength: 1.00 },
+    2: { nearRatio: 50 / 128, midRatio: 70 / 128, farRatio: 115 / 128, nearStrength: 0.30, midStrength: 0.65, farStrength: 1.00 },
+    3: { nearRatio: 25 / 128, midRatio: 50 / 128, farRatio: 110 / 128, nearStrength: 0.30, midStrength: 0.65, farStrength: 1.00 },
+  };
+
+  state.fogDebugPresetValues = new Map(Object.entries(FOG_PRESET_DEBUG_DEFAULTS).map(([k, v]) => [Number(k), { ...v }]));
+  state.fogDebugActivePreset = 0;
 
   async function preloadEnvironmentFiles(){
     if (state.isLocalRuntime && !state.editorFolderHandle){
@@ -5393,6 +5463,90 @@
     showPanelBtn?.classList.toggle("active", visible);
   }
 
+  function positionDebugFogPanel(){
+    if (!debugFogPanelEl || !debugFogBtn || !canvasWrapEl) return;
+    const wrapRect = canvasWrapEl.getBoundingClientRect();
+    const btnRect = debugFogBtn.getBoundingClientRect();
+    const top = Math.max(8, (btnRect.bottom - wrapRect.top) + 6);
+    const left = Math.max(8, btnRect.left - wrapRect.left);
+    debugFogPanelEl.style.top = `${Math.round(top)}px`;
+    debugFogPanelEl.style.left = `${Math.round(left)}px`;
+  }
+
+  function fogDebugPresetLabel(preset){
+    const labels = ["0: fog", "1: haze", "2: haze wall", "3: mild haze wall"];
+    return labels[preset] || `${preset}`;
+  }
+
+  function getFogDebugPresetValues(preset){
+    const key = Math.max(0, Math.min(3, Math.trunc(Number(preset) || 0)));
+    const existing = state.fogDebugPresetValues.get(key);
+    if (existing) return existing;
+    const fallback = { ...FOG_PRESET_DEBUG_DEFAULTS[key] };
+    state.fogDebugPresetValues.set(key, fallback);
+    return fallback;
+  }
+
+  function renderDebugFogPresetTabs(){
+    if (!debugFogPresetTabsEl) return;
+    const rows = [];
+    for (let preset = 0; preset <= 3; preset++){
+      const active = preset === state.fogDebugActivePreset ? 'active' : '';
+      rows.push(`<button type="button" class="presetTab ${active}" data-fog-preset-tab="${preset}">${escapeHtml(fogDebugPresetLabel(preset))}</button>`);
+    }
+    debugFogPresetTabsEl.innerHTML = rows.join('');
+    debugFogPresetTabsEl.querySelectorAll('[data-fog-preset-tab]').forEach((el) => {
+      el.addEventListener('click', (ev) => {
+        const preset = Number(ev.currentTarget.dataset.fogPresetTab);
+        if (!Number.isFinite(preset)) return;
+        state.fogDebugActivePreset = Math.max(0, Math.min(3, Math.trunc(preset)));
+        renderDebugFogPanelControls();
+      });
+    });
+  }
+
+  function renderDebugFogPanelControls(){
+    const preset = state.fogDebugActivePreset;
+    const values = getFogDebugPresetValues(preset);
+    renderDebugFogPresetTabs();
+    if (dbgFogNearRatio) dbgFogNearRatio.value = String(values.nearRatio);
+    if (dbgFogMidRatio) dbgFogMidRatio.value = String(values.midRatio);
+    if (dbgFogFarRatio) dbgFogFarRatio.value = String(values.farRatio);
+    if (dbgFogNearStrength) dbgFogNearStrength.value = String(values.nearStrength);
+    if (dbgFogMidStrength) dbgFogMidStrength.value = String(values.midStrength);
+    if (dbgFogFarStrength) dbgFogFarStrength.value = String(values.farStrength);
+    if (dbgFogNearRatioVal) dbgFogNearRatioVal.textContent = `${(values.nearRatio * 100).toFixed(1)}%`;
+    if (dbgFogMidRatioVal) dbgFogMidRatioVal.textContent = `${(values.midRatio * 100).toFixed(1)}%`;
+    if (dbgFogFarRatioVal) dbgFogFarRatioVal.textContent = `${(values.farRatio * 100).toFixed(1)}%`;
+    if (dbgFogNearStrengthVal) dbgFogNearStrengthVal.textContent = values.nearStrength.toFixed(2);
+    if (dbgFogMidStrengthVal) dbgFogMidStrengthVal.textContent = values.midStrength.toFixed(2);
+    if (dbgFogFarStrengthVal) dbgFogFarStrengthVal.textContent = values.farStrength.toFixed(2);
+  }
+
+  function updateDebugFogFromControls(){
+    const values = getFogDebugPresetValues(state.fogDebugActivePreset);
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    values.nearRatio = clamp(Number(dbgFogNearRatio?.value || values.nearRatio), 0.01, 1.5);
+    values.midRatio = clamp(Number(dbgFogMidRatio?.value || values.midRatio), values.nearRatio + 0.005, 2.0);
+    values.farRatio = clamp(Number(dbgFogFarRatio?.value || values.farRatio), values.midRatio + 0.005, 3.0);
+    values.nearStrength = clamp(Number(dbgFogNearStrength?.value || values.nearStrength), 0, 1);
+    values.midStrength = clamp(Number(dbgFogMidStrength?.value || values.midStrength), values.nearStrength, 1);
+    values.farStrength = clamp(Number(dbgFogFarStrength?.value || values.farStrength), values.midStrength, 1);
+    renderDebugFogPanelControls();
+    requestRender();
+  }
+
+  function setDebugFogPanelOpen(open){
+    const visible = !!open;
+    if (visible){
+      positionDebugFogPanel();
+      renderDebugFogPanelControls();
+    }
+    debugFogPanelEl?.classList.toggle('open', visible);
+    debugFogPanelEl?.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    debugFogBtn?.classList.toggle('active', visible);
+  }
+
   function focusCameraNearItem(it){
     if (!it) return;
     const x = rawToWorld(it.x, 'x');
@@ -5417,16 +5571,35 @@
   showPanelBtn?.addEventListener("click", (event) => {
     event.stopPropagation();
     const next = !canvasShowPanelEl?.classList.contains("open");
-    if (next) setLayerVisibilityPanelOpen(false);
+    if (next){
+      setLayerVisibilityPanelOpen(false);
+      setDebugFogPanelOpen(false);
+    }
     setCanvasShowPanelOpen(next);
   });
 
   showLayersBtn?.addEventListener("click", (event) => {
     event.stopPropagation();
     const next = !layerVisibilityPanelEl?.classList.contains("open");
-    if (next) setCanvasShowPanelOpen(false);
+    if (next){
+      setCanvasShowPanelOpen(false);
+      setDebugFogPanelOpen(false);
+    }
     setLayerVisibilityPanelOpen(next);
   });
+
+  debugFogBtn?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const next = !debugFogPanelEl?.classList.contains('open');
+    if (next){
+      setCanvasShowPanelOpen(false);
+      setLayerVisibilityPanelOpen(false);
+    }
+    setDebugFogPanelOpen(next);
+  });
+
+  [dbgFogNearRatio, dbgFogMidRatio, dbgFogFarRatio, dbgFogNearStrength, dbgFogMidStrength, dbgFogFarStrength]
+    .forEach((el) => el?.addEventListener('input', updateDebugFogFromControls));
 
   hideAllLayersBtn?.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -5441,6 +5614,7 @@
   canvasShowPanelEl?.addEventListener("click", (event) => {
     event.stopPropagation();
   });
+  debugFogPanelEl?.addEventListener('click', (event) => event.stopPropagation());
 
   document.addEventListener("mousedown", (event) => {
     if (!canvasShowPanelEl?.classList.contains("open")) return;
@@ -5448,9 +5622,19 @@
     setCanvasShowPanelOpen(false);
   });
 
+  document.addEventListener('mousedown', (event) => {
+    if (!debugFogPanelEl?.classList.contains('open')) return;
+    if (debugFogPanelEl.contains(event.target) || debugFogBtn?.contains(event.target)) return;
+    setDebugFogPanelOpen(false);
+  });
+
   addEventListener("resize", () => {
     if (!canvasShowPanelEl?.classList.contains("open")) return;
     positionCanvasShowPanel();
+  });
+  addEventListener('resize', () => {
+    if (!debugFogPanelEl?.classList.contains('open')) return;
+    positionDebugFogPanel();
   });
 
   exportBtn.addEventListener("click", () => {
@@ -6021,11 +6205,11 @@
   }
 
   const vsSrc=`attribute vec3 aPos; attribute vec2 aUV; uniform mat4 uMVP; uniform vec2 uModelOffset; varying vec2 vUV; varying vec3 vWorldPos; void main(){ vec3 worldPos=vec3(aPos.x+uModelOffset.x,aPos.y+uModelOffset.y,aPos.z); gl_Position=uMVP*vec4(aPos,1.0); vUV=aUV; vWorldPos=worldPos; }`;
-  const fsSrc=`precision mediump float; varying vec2 vUV; uniform sampler2D uTex; uniform float uFlipV; uniform float uFogEnabled; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFogColor; float fogLinearFactor(){ if(uFogEnabled<0.5||uFogFar<=uFogNear) return 0.0; float depth=gl_FragCoord.z/gl_FragCoord.w; return clamp((depth-uFogNear)/(uFogFar-uFogNear),0.0,1.0); } void main(){ vec2 uv=vec2(vUV.x, mix(vUV.y,1.0-vUV.y,uFlipV)); vec4 texel=texture2D(uTex,uv); vec3 color=mix(texel.rgb,uFogColor,fogLinearFactor()); gl_FragColor=vec4(color,texel.a); }`;
+  const fsSrc=`precision mediump float; varying vec2 vUV; uniform sampler2D uTex; uniform float uFlipV; uniform float uFogEnabled; uniform vec3 uFogStops; uniform vec3 uFogStrengths; uniform vec3 uFogColor; float fogFactor(float d){ if(uFogEnabled<0.5) return 0.0; float n=uFogStops.x, m=max(uFogStops.y,n+0.001), f=max(uFogStops.z,m+0.001); float sn=clamp(uFogStrengths.x,0.0,1.0), sm=clamp(uFogStrengths.y,0.0,1.0), sf=clamp(uFogStrengths.z,0.0,1.0); if(d<n) return 0.0; if(d<m) return mix(sn,sm,clamp((d-n)/(m-n),0.0,1.0)); if(d<f) return mix(sm,sf,clamp((d-m)/(f-m),0.0,1.0)); return sf; } void main(){ vec2 uv=vec2(vUV.x, mix(vUV.y,1.0-vUV.y,uFlipV)); vec4 texel=texture2D(uTex,uv); float depth=gl_FragCoord.z/gl_FragCoord.w; vec3 color=mix(texel.rgb,uFogColor,fogFactor(depth)); gl_FragColor=vec4(color,texel.a); }`;
   const prog=gl.createProgram(); gl.attachShader(prog,compile(gl.VERTEX_SHADER,vsSrc)); gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fsSrc)); gl.linkProgram(prog);
   if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog)||'link failed');
   const aPos=gl.getAttribLocation(prog,'aPos'), aUV=gl.getAttribLocation(prog,'aUV');
-  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex'), uModelOffset=gl.getUniformLocation(prog,'uModelOffset'), uFogEnabled=gl.getUniformLocation(prog,'uFogEnabled'), uFogNear=gl.getUniformLocation(prog,'uFogNear'), uFogFar=gl.getUniformLocation(prog,'uFogFar'), uFogColor=gl.getUniformLocation(prog,'uFogColor');
+  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex'), uModelOffset=gl.getUniformLocation(prog,'uModelOffset'), uFogEnabled=gl.getUniformLocation(prog,'uFogEnabled'), uFogStops=gl.getUniformLocation(prog,'uFogStops'), uFogStrengths=gl.getUniformLocation(prog,'uFogStrengths'), uFogColor=gl.getUniformLocation(prog,'uFogColor');
 
   const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; }`;
   const itemFs=`precision mediump float; uniform vec4 uColor; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; gl_FragColor=uColor; }`;
@@ -6045,9 +6229,9 @@
   const gridVB=gl.createBuffer();
 
   const waterVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
-  const waterFs=`precision mediump float; uniform vec3 uColor; uniform float uAlpha; uniform float uFogEnabled; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFogColor; float fogLinearFactor(){ if(uFogEnabled<0.5||uFogFar<=uFogNear) return 0.0; float depth=gl_FragCoord.z/gl_FragCoord.w; return clamp((depth-uFogNear)/(uFogFar-uFogNear),0.0,1.0); } void main(){ gl_FragColor=vec4(mix(uColor,uFogColor,fogLinearFactor()),uAlpha); }`;
+  const waterFs=`precision mediump float; uniform vec3 uColor; uniform float uAlpha; uniform float uFogEnabled; uniform vec3 uFogStops; uniform vec3 uFogStrengths; uniform vec3 uFogColor; float fogFactor(float d){ if(uFogEnabled<0.5) return 0.0; float n=uFogStops.x, m=max(uFogStops.y,n+0.001), f=max(uFogStops.z,m+0.001); float sn=clamp(uFogStrengths.x,0.0,1.0), sm=clamp(uFogStrengths.y,0.0,1.0), sf=clamp(uFogStrengths.z,0.0,1.0); if(d<n) return 0.0; if(d<m) return mix(sn,sm,clamp((d-n)/(m-n),0.0,1.0)); if(d<f) return mix(sm,sf,clamp((d-m)/(f-m),0.0,1.0)); return sf; } void main(){ float depth=gl_FragCoord.z/gl_FragCoord.w; gl_FragColor=vec4(mix(uColor,uFogColor,fogFactor(depth)),uAlpha); }`;
   const waterProg=gl.createProgram(); gl.attachShader(waterProg,compile(gl.VERTEX_SHADER,waterVs)); gl.attachShader(waterProg,compile(gl.FRAGMENT_SHADER,waterFs)); gl.linkProgram(waterProg);
-  const waPos=gl.getAttribLocation(waterProg,'aPos'), wuMVP=gl.getUniformLocation(waterProg,'uMVP'), wuOffsetXY=gl.getUniformLocation(waterProg,'uOffsetXY'), wuScaleXY=gl.getUniformLocation(waterProg,'uScaleXY'), wuZ=gl.getUniformLocation(waterProg,'uZ'), wuColor=gl.getUniformLocation(waterProg,'uColor'), wuAlpha=gl.getUniformLocation(waterProg,'uAlpha'), wuFogEnabled=gl.getUniformLocation(waterProg,'uFogEnabled'), wuFogNear=gl.getUniformLocation(waterProg,'uFogNear'), wuFogFar=gl.getUniformLocation(waterProg,'uFogFar'), wuFogColor=gl.getUniformLocation(waterProg,'uFogColor');
+  const waPos=gl.getAttribLocation(waterProg,'aPos'), wuMVP=gl.getUniformLocation(waterProg,'uMVP'), wuOffsetXY=gl.getUniformLocation(waterProg,'uOffsetXY'), wuScaleXY=gl.getUniformLocation(waterProg,'uScaleXY'), wuZ=gl.getUniformLocation(waterProg,'uZ'), wuColor=gl.getUniformLocation(waterProg,'uColor'), wuAlpha=gl.getUniformLocation(waterProg,'uAlpha'), wuFogEnabled=gl.getUniformLocation(waterProg,'uFogEnabled'), wuFogStops=gl.getUniformLocation(waterProg,'uFogStops'), wuFogStrengths=gl.getUniformLocation(waterProg,'uFogStrengths'), wuFogColor=gl.getUniformLocation(waterProg,'uFogColor');
 
   const waterVB=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,0,1,0,0,1,1,0,0,1,0]),gl.STATIC_DRAW);
   const waterIB=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array([0,1,2,0,2,3]),gl.STATIC_DRAW);
@@ -6295,8 +6479,8 @@
     gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0);
     const fogRender = getRenderFogSettings();
     gl.uniform1f(uFogEnabled, fogRender.enabled ? 1.0 : 0.0);
-    gl.uniform1f(uFogNear, fogRender.near);
-    gl.uniform1f(uFogFar, fogRender.far);
+    gl.uniform3f(uFogStops, fogRender.stops.near, fogRender.stops.mid, fogRender.stops.far);
+    gl.uniform3f(uFogStrengths, fogRender.strengths.near, fogRender.strengths.mid, fogRender.strengths.far);
     gl.uniform3f(uFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
     gl.bindTexture(gl.TEXTURE_2D,tex);
 
@@ -6356,8 +6540,8 @@
       gl.uniform1f(wuAlpha,0.28);
       gl.uniform1f(wuZ,waterRender.raw*0.5);
       gl.uniform1f(wuFogEnabled, fogRender.enabled ? 1.0 : 0.0);
-      gl.uniform1f(wuFogNear, fogRender.near);
-      gl.uniform1f(wuFogFar, fogRender.far);
+      gl.uniform3f(wuFogStops, fogRender.stops.near, fogRender.stops.mid, fogRender.stops.far);
+      gl.uniform3f(wuFogStrengths, fogRender.strengths.near, fogRender.strengths.mid, fogRender.strengths.far);
       gl.uniform3f(wuFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
@@ -7376,7 +7560,16 @@
   function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; if(!isItemLayerVisible(it)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),getItemWorldZ(it)); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   function getRenderFogSettings(){
-    const fallback = { enabled: false, near: 0, far: 0, fogType: 0, color: { r: 0.65, g: 0.7, b: 0.75 }, source: 'disabled' };
+    const fallback = {
+      enabled: false,
+      near: 0,
+      far: 0,
+      fogType: 0,
+      stops: { near: 0, mid: 0, far: 0 },
+      strengths: { near: 0, mid: 0, far: 0 },
+      color: { r: 0.65, g: 0.7, b: 0.75 },
+      source: 'disabled'
+    };
     const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
     if (!(gi && gi.kv)) return fallback;
 
@@ -7388,15 +7581,20 @@
     const envName = String(gi.kv.sunset || giEnvironment?.value || '').trim().toLowerCase();
     const envData = envName ? GENERAL_ENV_DATA.get(envName) : null;
 
-    const fogNear = fogDistanceEnabled
+    const fogDistanceBase = fogDistanceEnabled
       ? fixed16ToNumber(gi.kv.fog_level || 0)
       : Math.max(0, Math.trunc(Number(envData?.fogLevel) || 0));
-    if (!(Number.isFinite(fogNear) && fogNear > 0)) return fallback;
+    if (!(Number.isFinite(fogDistanceBase) && fogDistanceBase > 0)) return fallback;
 
     const fogTypeRaw = Math.max(0, Math.trunc(Number(envData?.fogType) || 0));
     const fogType = Math.min(3, fogTypeRaw);
-    const fogFarMultipliers = [1.45, 1.75, 1.2, 1.55];
-    const fogFar = Math.max(fogNear + 1, fogNear * (fogFarMultipliers[fogType] || fogFarMultipliers[0]));
+    const preset = getFogDebugPresetValues(fogType);
+    const fogNear = Math.max(1, fogDistanceBase * Math.max(0.01, Number(preset.nearRatio) || 0.01));
+    const fogMid = Math.max(fogNear + 0.5, fogDistanceBase * Math.max(Number(preset.midRatio) || 0, 0.015));
+    const fogFar = Math.max(fogMid + 0.5, fogDistanceBase * Math.max(Number(preset.farRatio) || 0, 0.02));
+    const fogStrengthNear = Math.max(0, Math.min(1, Number(preset.nearStrength) || 0));
+    const fogStrengthMid = Math.max(fogStrengthNear, Math.min(1, Number(preset.midStrength) || 0));
+    const fogStrengthFar = Math.max(fogStrengthMid, Math.min(1, Number(preset.farStrength) || 0));
 
     let fogColorRgb = null;
     if (fogColorEnabled) fogColorRgb = decodeFogColor(gi.kv.fog_color || 0);
@@ -7408,12 +7606,14 @@
       near: fogNear,
       far: fogFar,
       fogType,
+      stops: { near: fogNear, mid: fogMid, far: fogFar },
+      strengths: { near: fogStrengthNear, mid: fogStrengthMid, far: fogStrengthFar },
       color: {
         r: Math.max(0, Math.min(255, Number(rgb.r) || 0)) / 255,
         g: Math.max(0, Math.min(255, Number(rgb.g) || 0)) / 255,
         b: Math.max(0, Math.min(255, Number(rgb.b) || 0)) / 255,
       },
-      source: `${fogDistanceEnabled ? 'MIS fog distance (near)' : 'ENV fog level (near)'} + ENV fog_type (far preset) + ${fogColorEnabled ? 'MIS fog color' : 'ENV fog rgb'}`,
+      source: `${fogDistanceEnabled ? 'MIS fog distance base' : 'ENV fog level base'} + DebugFog preset ratios/strengths + ${fogColorEnabled ? 'MIS fog color' : 'ENV fog rgb'}`,
     };
   }
 
