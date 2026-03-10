@@ -6021,33 +6021,33 @@
   }
 
   const vsSrc=`attribute vec3 aPos; attribute vec2 aUV; uniform mat4 uMVP; uniform vec2 uModelOffset; varying vec2 vUV; varying vec3 vWorldPos; void main(){ vec3 worldPos=vec3(aPos.x+uModelOffset.x,aPos.y+uModelOffset.y,aPos.z); gl_Position=uMVP*vec4(aPos,1.0); vUV=aUV; vWorldPos=worldPos; }`;
-  const fsSrc=`precision mediump float; varying vec2 vUV; varying vec3 vWorldPos; uniform sampler2D uTex; uniform float uFlipV; uniform float uFogEnabled; uniform float uFogDistance; uniform vec3 uFogColor; uniform vec3 uCamPos; void main(){ vec2 uv=vec2(vUV.x, mix(vUV.y,1.0-vUV.y,uFlipV)); vec4 texel=texture2D(uTex,uv); vec3 color=texel.rgb; if(uFogEnabled>0.5&&uFogDistance>0.0){ float distToCam=distance(vWorldPos,uCamPos); float fogAmount=smoothstep(uFogDistance*0.35,uFogDistance,distToCam); color=mix(color,uFogColor,clamp(fogAmount,0.0,1.0)); } gl_FragColor=vec4(color,texel.a); }`;
+  const fsSrc=`precision mediump float; varying vec2 vUV; uniform sampler2D uTex; uniform float uFlipV; uniform float uFogEnabled; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFogColor; float fogLinearFactor(){ if(uFogEnabled<0.5||uFogFar<=uFogNear) return 0.0; float depth=gl_FragCoord.z/gl_FragCoord.w; return clamp((depth-uFogNear)/(uFogFar-uFogNear),0.0,1.0); } void main(){ vec2 uv=vec2(vUV.x, mix(vUV.y,1.0-vUV.y,uFlipV)); vec4 texel=texture2D(uTex,uv); vec3 color=mix(texel.rgb,uFogColor,fogLinearFactor()); gl_FragColor=vec4(color,texel.a); }`;
   const prog=gl.createProgram(); gl.attachShader(prog,compile(gl.VERTEX_SHADER,vsSrc)); gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fsSrc)); gl.linkProgram(prog);
   if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog)||'link failed');
   const aPos=gl.getAttribLocation(prog,'aPos'), aUV=gl.getAttribLocation(prog,'aUV');
-  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex'), uModelOffset=gl.getUniformLocation(prog,'uModelOffset'), uFogEnabled=gl.getUniformLocation(prog,'uFogEnabled'), uFogDistance=gl.getUniformLocation(prog,'uFogDistance'), uFogColor=gl.getUniformLocation(prog,'uFogColor'), uCamPos=gl.getUniformLocation(prog,'uCamPos');
+  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex'), uModelOffset=gl.getUniformLocation(prog,'uModelOffset'), uFogEnabled=gl.getUniformLocation(prog,'uFogEnabled'), uFogNear=gl.getUniformLocation(prog,'uFogNear'), uFogFar=gl.getUniformLocation(prog,'uFogFar'), uFogColor=gl.getUniformLocation(prog,'uFogColor');
 
   const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; }`;
-  const itemFs=`precision mediump float; uniform vec4 uColor; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; gl_FragColor=uColor; }`;
+  const itemFs=`precision mediump float; uniform vec4 uColor; uniform float uFogEnabled; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFogColor; float fogLinearFactor(){ if(uFogEnabled<0.5||uFogFar<=uFogNear) return 0.0; float depth=gl_FragCoord.z/gl_FragCoord.w; return clamp((depth-uFogNear)/(uFogFar-uFogNear),0.0,1.0); } void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; vec3 color=mix(uColor.rgb,uFogColor,fogLinearFactor()); gl_FragColor=vec4(color,uColor.a); }`;
   const itemProg=gl.createProgram(); gl.attachShader(itemProg,compile(gl.VERTEX_SHADER,itemVs)); gl.attachShader(itemProg,compile(gl.FRAGMENT_SHADER,itemFs)); gl.linkProgram(itemProg);
-  const iaPos=gl.getAttribLocation(itemProg,'aPos'), iuMVP=gl.getUniformLocation(itemProg,'uMVP'), iuPointSize=gl.getUniformLocation(itemProg,'uPointSize'), iuColor=gl.getUniformLocation(itemProg,'uColor');
+  const iaPos=gl.getAttribLocation(itemProg,'aPos'), iuMVP=gl.getUniformLocation(itemProg,'uMVP'), iuPointSize=gl.getUniformLocation(itemProg,'uPointSize'), iuColor=gl.getUniformLocation(itemProg,'uColor'), iuFogEnabled=gl.getUniformLocation(itemProg,'uFogEnabled'), iuFogNear=gl.getUniformLocation(itemProg,'uFogNear'), iuFogFar=gl.getUniformLocation(itemProg,'uFogFar'), iuFogColor=gl.getUniformLocation(itemProg,'uFogColor');
   const itemVB=gl.createBuffer();
 
   const lineVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z+=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
-  const lineFs=`precision mediump float; uniform vec3 uColor; void main(){ gl_FragColor=vec4(uColor,1.0); }`;
+  const lineFs=`precision mediump float; uniform vec3 uColor; uniform float uFogEnabled; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFogColor; float fogLinearFactor(){ if(uFogEnabled<0.5||uFogFar<=uFogNear) return 0.0; float depth=gl_FragCoord.z/gl_FragCoord.w; return clamp((depth-uFogNear)/(uFogFar-uFogNear),0.0,1.0); } void main(){ vec3 color=mix(uColor,uFogColor,fogLinearFactor()); gl_FragColor=vec4(color,1.0); }`;
   const lineProg=gl.createProgram(); gl.attachShader(lineProg,compile(gl.VERTEX_SHADER,lineVs)); gl.attachShader(lineProg,compile(gl.FRAGMENT_SHADER,lineFs)); gl.linkProgram(lineProg);
-  const laPos=gl.getAttribLocation(lineProg,'aPos'), luMVP=gl.getUniformLocation(lineProg,'uMVP'), luOffsetXY=gl.getUniformLocation(lineProg,'uOffsetXY'), luScaleXY=gl.getUniformLocation(lineProg,'uScaleXY'), luZ=gl.getUniformLocation(lineProg,'uZ'), luColor=gl.getUniformLocation(lineProg,'uColor');
+  const laPos=gl.getAttribLocation(lineProg,'aPos'), luMVP=gl.getUniformLocation(lineProg,'uMVP'), luOffsetXY=gl.getUniformLocation(lineProg,'uOffsetXY'), luScaleXY=gl.getUniformLocation(lineProg,'uScaleXY'), luZ=gl.getUniformLocation(lineProg,'uZ'), luColor=gl.getUniformLocation(lineProg,'uColor'), luFogEnabled=gl.getUniformLocation(lineProg,'uFogEnabled'), luFogNear=gl.getUniformLocation(lineProg,'uFogNear'), luFogFar=gl.getUniformLocation(lineProg,'uFogFar'), luFogColor=gl.getUniformLocation(lineProg,'uFogColor');
 
   const gridVs=`attribute vec3 aPos; uniform mat4 uMVP; void main(){ gl_Position=uMVP*vec4(aPos,1.0); }`;
-  const gridFs=`precision mediump float; void main(){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); }`;
+  const gridFs=`precision mediump float; uniform float uFogEnabled; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFogColor; float fogLinearFactor(){ if(uFogEnabled<0.5||uFogFar<=uFogNear) return 0.0; float depth=gl_FragCoord.z/gl_FragCoord.w; return clamp((depth-uFogNear)/(uFogFar-uFogNear),0.0,1.0); } void main(){ vec3 base=vec3(0.0); gl_FragColor=vec4(mix(base,uFogColor,fogLinearFactor()),1.0); }`;
   const gridProg=gl.createProgram(); gl.attachShader(gridProg,compile(gl.VERTEX_SHADER,gridVs)); gl.attachShader(gridProg,compile(gl.FRAGMENT_SHADER,gridFs)); gl.linkProgram(gridProg);
-  const gaPos=gl.getAttribLocation(gridProg,'aPos'), guMVP=gl.getUniformLocation(gridProg,'uMVP');
+  const gaPos=gl.getAttribLocation(gridProg,'aPos'), guMVP=gl.getUniformLocation(gridProg,'uMVP'), guFogEnabled=gl.getUniformLocation(gridProg,'uFogEnabled'), guFogNear=gl.getUniformLocation(gridProg,'uFogNear'), guFogFar=gl.getUniformLocation(gridProg,'uFogFar'), guFogColor=gl.getUniformLocation(gridProg,'uFogColor');
   const gridVB=gl.createBuffer();
 
   const waterVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
-  const waterFs=`precision mediump float; uniform vec3 uColor; uniform float uAlpha; void main(){ gl_FragColor=vec4(uColor,uAlpha); }`;
+  const waterFs=`precision mediump float; uniform vec3 uColor; uniform float uAlpha; uniform float uFogEnabled; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFogColor; float fogLinearFactor(){ if(uFogEnabled<0.5||uFogFar<=uFogNear) return 0.0; float depth=gl_FragCoord.z/gl_FragCoord.w; return clamp((depth-uFogNear)/(uFogFar-uFogNear),0.0,1.0); } void main(){ gl_FragColor=vec4(mix(uColor,uFogColor,fogLinearFactor()),uAlpha); }`;
   const waterProg=gl.createProgram(); gl.attachShader(waterProg,compile(gl.VERTEX_SHADER,waterVs)); gl.attachShader(waterProg,compile(gl.FRAGMENT_SHADER,waterFs)); gl.linkProgram(waterProg);
-  const waPos=gl.getAttribLocation(waterProg,'aPos'), wuMVP=gl.getUniformLocation(waterProg,'uMVP'), wuOffsetXY=gl.getUniformLocation(waterProg,'uOffsetXY'), wuScaleXY=gl.getUniformLocation(waterProg,'uScaleXY'), wuZ=gl.getUniformLocation(waterProg,'uZ'), wuColor=gl.getUniformLocation(waterProg,'uColor'), wuAlpha=gl.getUniformLocation(waterProg,'uAlpha');
+  const waPos=gl.getAttribLocation(waterProg,'aPos'), wuMVP=gl.getUniformLocation(waterProg,'uMVP'), wuOffsetXY=gl.getUniformLocation(waterProg,'uOffsetXY'), wuScaleXY=gl.getUniformLocation(waterProg,'uScaleXY'), wuZ=gl.getUniformLocation(waterProg,'uZ'), wuColor=gl.getUniformLocation(waterProg,'uColor'), wuAlpha=gl.getUniformLocation(waterProg,'uAlpha'), wuFogEnabled=gl.getUniformLocation(waterProg,'uFogEnabled'), wuFogNear=gl.getUniformLocation(waterProg,'uFogNear'), wuFogFar=gl.getUniformLocation(waterProg,'uFogFar'), wuFogColor=gl.getUniformLocation(waterProg,'uFogColor');
 
   const waterVB=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,0,1,0,0,1,1,0,0,1,0]),gl.STATIC_DRAW);
   const waterIB=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array([0,1,2,0,2,3]),gl.STATIC_DRAW);
@@ -6295,9 +6295,9 @@
     gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0);
     const fogRender = getRenderFogSettings();
     gl.uniform1f(uFogEnabled, fogRender.enabled ? 1.0 : 0.0);
-    gl.uniform1f(uFogDistance, fogRender.distance);
+    gl.uniform1f(uFogNear, fogRender.near);
+    gl.uniform1f(uFogFar, fogRender.far);
     gl.uniform3f(uFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
-    gl.uniform3f(uCamPos, cam.pos.x, cam.pos.y, cam.pos.z);
     gl.bindTexture(gl.TEXTURE_2D,tex);
 
     const ox=originWorldX(),oy=originWorldY(),radius=renderUiState.drawRadius;
@@ -6355,6 +6355,10 @@
       gl.uniform3f(wuColor,0.55,0.85,1.0);
       gl.uniform1f(wuAlpha,0.28);
       gl.uniform1f(wuZ,waterRender.raw*0.5);
+      gl.uniform1f(wuFogEnabled, fogRender.enabled ? 1.0 : 0.0);
+      gl.uniform1f(wuFogNear, fogRender.near);
+      gl.uniform1f(wuFogFar, fogRender.far);
+      gl.uniform3f(wuFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
       gl.depthMask(false);
@@ -6399,6 +6403,10 @@
           gl.enableVertexAttribArray(gaPos);
           gl.vertexAttribPointer(gaPos,3,gl.FLOAT,false,12,0);
           gl.uniformMatrix4fv(guMVP,false,PV);
+          gl.uniform1f(guFogEnabled, fogRender.enabled ? 1.0 : 0.0);
+          gl.uniform1f(guFogNear, fogRender.near);
+          gl.uniform1f(guFogFar, fogRender.far);
+          gl.uniform3f(guFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
           gl.disable(gl.DEPTH_TEST);
           gl.drawArrays(gl.LINES,0,lineCount*2);
           gl.enable(gl.DEPTH_TEST);
@@ -6416,6 +6424,10 @@
       gl.vertexAttribPointer(laPos,3,gl.FLOAT,false,12,0);
       gl.uniformMatrix4fv(luMVP,false,MVPcam);
       gl.uniform1f(luZ,0.25);
+      gl.uniform1f(luFogEnabled, fogRender.enabled ? 1.0 : 0.0);
+      gl.uniform1f(luFogNear, fogRender.near);
+      gl.uniform1f(luFogFar, fogRender.far);
+      gl.uniform3f(luFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
       gl.disable(gl.DEPTH_TEST);
       const spanX=terrainSpanX(), spanY=terrainSpanY();
       function drawRect(offsetX, offsetY, scaleX, scaleY, color3){ gl.uniform3f(luColor,color3[0],color3[1],color3[2]); gl.uniform2f(luOffsetXY,offsetX,offsetY); gl.uniform2f(luScaleXY,scaleX,scaleY); gl.drawArrays(gl.LINES,0,8);}
@@ -6469,6 +6481,11 @@
     gl.enableVertexAttribArray(iaPos);
     gl.vertexAttribPointer(iaPos,3,gl.FLOAT,false,0,0);
     gl.uniformMatrix4fv(iuMVP,false,PV);
+    const fogRender = getRenderFogSettings();
+    gl.uniform1f(iuFogEnabled, fogRender.enabled ? 1.0 : 0.0);
+    gl.uniform1f(iuFogNear, fogRender.near);
+    gl.uniform1f(iuFogFar, fogRender.far);
+    gl.uniform3f(iuFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
 
     function drawGroup(buffer, len, color, size){
       if (!len) return;
@@ -6795,7 +6812,7 @@
       alphaTest: baseMat?.alphaTest || 0,
       depthTest: baseMat?.depthTest !== false,
       depthWrite: baseMat?.depthWrite !== false,
-      fog: false,
+      fog: true,
       toneMapped: false,
     });
     mat.needsUpdate = true;
@@ -6982,7 +6999,14 @@
     }
     updateGlbTransformsFromState();
 
-    const { renderer, scene } = state.glb;
+    const { renderer, scene, THREE } = state.glb;
+    const fogRender = getRenderFogSettings();
+    if (fogRender.enabled){
+      const fogColor = new THREE.Color(fogRender.color.r, fogRender.color.g, fogRender.color.b);
+      scene.fog = new THREE.Fog(fogColor, fogRender.near, fogRender.far);
+    } else {
+      scene.fog = null;
+    }
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
 
@@ -7365,7 +7389,7 @@
   function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; if(!isItemLayerVisible(it)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),getItemWorldZ(it)); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   function getRenderFogSettings(){
-    const fallback = { enabled: false, distance: 0, color: { r: 0.65, g: 0.7, b: 0.75 }, source: 'disabled' };
+    const fallback = { enabled: false, near: 0, far: 0, fogType: 0, color: { r: 0.65, g: 0.7, b: 0.75 }, source: 'disabled' };
     const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
     if (!(gi && gi.kv)) return fallback;
 
@@ -7377,10 +7401,15 @@
     const envName = String(gi.kv.sunset || giEnvironment?.value || '').trim().toLowerCase();
     const envData = envName ? GENERAL_ENV_DATA.get(envName) : null;
 
-    const fogDistance = fogDistanceEnabled
+    const fogNear = fogDistanceEnabled
       ? fixed16ToNumber(gi.kv.fog_level || 0)
       : Math.max(0, Math.trunc(Number(envData?.fogLevel) || 0));
-    if (!(Number.isFinite(fogDistance) && fogDistance > 0)) return fallback;
+    if (!(Number.isFinite(fogNear) && fogNear > 0)) return fallback;
+
+    const fogTypeRaw = Math.max(0, Math.trunc(Number(envData?.fogType) || 0));
+    const fogType = Math.min(3, fogTypeRaw);
+    const fogFarMultipliers = [1.45, 1.75, 1.2, 1.55];
+    const fogFar = Math.max(fogNear + 1, fogNear * (fogFarMultipliers[fogType] || fogFarMultipliers[0]));
 
     let fogColorRgb = null;
     if (fogColorEnabled) fogColorRgb = decodeFogColor(gi.kv.fog_color || 0);
@@ -7389,13 +7418,15 @@
     const rgb = fogColorRgb || { r: 166, g: 179, b: 191 };
     return {
       enabled: true,
-      distance: fogDistance,
+      near: fogNear,
+      far: fogFar,
+      fogType,
       color: {
         r: Math.max(0, Math.min(255, Number(rgb.r) || 0)) / 255,
         g: Math.max(0, Math.min(255, Number(rgb.g) || 0)) / 255,
         b: Math.max(0, Math.min(255, Number(rgb.b) || 0)) / 255,
       },
-      source: `${fogDistanceEnabled ? 'MIS fog distance' : 'ENV fog level'} + ${fogColorEnabled ? 'MIS fog color' : 'ENV fog rgb'}`,
+      source: `${fogDistanceEnabled ? 'MIS fog distance (near)' : 'ENV fog level (near)'} + ENV fog_type (far preset) + ${fogColorEnabled ? 'MIS fog color' : 'ENV fog rgb'}`,
     };
   }
 
@@ -7667,8 +7698,9 @@
     }
     const {forwardXY,right,forward}=cameraBasis(); const canMoveWithKeys=(document.pointerLockElement===cv && state.cameraLookActive); let dir=vec3(0,0,0); if(canMoveWithKeys&&move.w) dir=vec3Add(dir,forwardXY); if(canMoveWithKeys&&move.s) dir=vec3Sub(dir,forwardXY); if(canMoveWithKeys&&move.d) dir=vec3Add(dir,right); if(canMoveWithKeys&&move.a) dir=vec3Sub(dir,right); if(canMoveWithKeys&&move.e) dir=vec3Add(dir,vec3(0,0,1)); if(canMoveWithKeys&&move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); const speedTable=[12.5,25,50,100,200,300,450,600]; const lvl=Math.max(1,Math.min(8,renderUiState.speedLevel|0)); const scalar=Math.max(0.1,renderUiState.speedScalar||1); const base=speedTable[lvl-1]*scalar; const spd=base; state.camera.speed=spd; const targetVel=dlen>0?vec3Scale(dir,spd/dlen):vec3(0,0,0); const smoothBoost=1.3; const accel=12.0/smoothBoost, decel=10.0/smoothBoost; const blend=Math.min(1, (dlen>0?accel:decel)*dt); camVel=vec3Add(camVel, vec3Scale(vec3Sub(targetVel,camVel), blend)); cam.pos=vec3Add(cam.pos,vec3Scale(camVel,dt));
     if(renderUiState.groundClamp && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=renderUiState.clearance; if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
+    const fogRender = getRenderFogSettings();
     resetFixedGlState();
-    gl.clearColor(0.05,0.06,0.08,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+    gl.clearColor(fogRender.color.r,fogRender.color.g,fogRender.color.b,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
     const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
