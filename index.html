@@ -6034,14 +6034,14 @@
   const itemVB=gl.createBuffer();
 
   const lineVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z+=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
-  const lineFs=`precision mediump float; uniform vec3 uColor; uniform float uFogEnabled; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFogColor; float fogLinearFactor(){ if(uFogEnabled<0.5||uFogFar<=uFogNear) return 0.0; float depth=gl_FragCoord.z/gl_FragCoord.w; return clamp((depth-uFogNear)/(uFogFar-uFogNear),0.0,1.0); } void main(){ vec3 color=mix(uColor,uFogColor,fogLinearFactor()); gl_FragColor=vec4(color,1.0); }`;
+  const lineFs=`precision mediump float; uniform vec3 uColor; void main(){ gl_FragColor=vec4(uColor,1.0); }`;
   const lineProg=gl.createProgram(); gl.attachShader(lineProg,compile(gl.VERTEX_SHADER,lineVs)); gl.attachShader(lineProg,compile(gl.FRAGMENT_SHADER,lineFs)); gl.linkProgram(lineProg);
-  const laPos=gl.getAttribLocation(lineProg,'aPos'), luMVP=gl.getUniformLocation(lineProg,'uMVP'), luOffsetXY=gl.getUniformLocation(lineProg,'uOffsetXY'), luScaleXY=gl.getUniformLocation(lineProg,'uScaleXY'), luZ=gl.getUniformLocation(lineProg,'uZ'), luColor=gl.getUniformLocation(lineProg,'uColor'), luFogEnabled=gl.getUniformLocation(lineProg,'uFogEnabled'), luFogNear=gl.getUniformLocation(lineProg,'uFogNear'), luFogFar=gl.getUniformLocation(lineProg,'uFogFar'), luFogColor=gl.getUniformLocation(lineProg,'uFogColor');
+  const laPos=gl.getAttribLocation(lineProg,'aPos'), luMVP=gl.getUniformLocation(lineProg,'uMVP'), luOffsetXY=gl.getUniformLocation(lineProg,'uOffsetXY'), luScaleXY=gl.getUniformLocation(lineProg,'uScaleXY'), luZ=gl.getUniformLocation(lineProg,'uZ'), luColor=gl.getUniformLocation(lineProg,'uColor');
 
   const gridVs=`attribute vec3 aPos; uniform mat4 uMVP; void main(){ gl_Position=uMVP*vec4(aPos,1.0); }`;
-  const gridFs=`precision mediump float; uniform float uFogEnabled; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFogColor; float fogLinearFactor(){ if(uFogEnabled<0.5||uFogFar<=uFogNear) return 0.0; float depth=gl_FragCoord.z/gl_FragCoord.w; return clamp((depth-uFogNear)/(uFogFar-uFogNear),0.0,1.0); } void main(){ vec3 base=vec3(0.0); gl_FragColor=vec4(mix(base,uFogColor,fogLinearFactor()),1.0); }`;
+  const gridFs=`precision mediump float; void main(){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); }`;
   const gridProg=gl.createProgram(); gl.attachShader(gridProg,compile(gl.VERTEX_SHADER,gridVs)); gl.attachShader(gridProg,compile(gl.FRAGMENT_SHADER,gridFs)); gl.linkProgram(gridProg);
-  const gaPos=gl.getAttribLocation(gridProg,'aPos'), guMVP=gl.getUniformLocation(gridProg,'uMVP'), guFogEnabled=gl.getUniformLocation(gridProg,'uFogEnabled'), guFogNear=gl.getUniformLocation(gridProg,'uFogNear'), guFogFar=gl.getUniformLocation(gridProg,'uFogFar'), guFogColor=gl.getUniformLocation(gridProg,'uFogColor');
+  const gaPos=gl.getAttribLocation(gridProg,'aPos'), guMVP=gl.getUniformLocation(gridProg,'uMVP');
   const gridVB=gl.createBuffer();
 
   const waterVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
@@ -6403,10 +6403,6 @@
           gl.enableVertexAttribArray(gaPos);
           gl.vertexAttribPointer(gaPos,3,gl.FLOAT,false,12,0);
           gl.uniformMatrix4fv(guMVP,false,PV);
-          gl.uniform1f(guFogEnabled, fogRender.enabled ? 1.0 : 0.0);
-          gl.uniform1f(guFogNear, fogRender.near);
-          gl.uniform1f(guFogFar, fogRender.far);
-          gl.uniform3f(guFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
           gl.disable(gl.DEPTH_TEST);
           gl.drawArrays(gl.LINES,0,lineCount*2);
           gl.enable(gl.DEPTH_TEST);
@@ -6424,10 +6420,6 @@
       gl.vertexAttribPointer(laPos,3,gl.FLOAT,false,12,0);
       gl.uniformMatrix4fv(luMVP,false,MVPcam);
       gl.uniform1f(luZ,0.25);
-      gl.uniform1f(luFogEnabled, fogRender.enabled ? 1.0 : 0.0);
-      gl.uniform1f(luFogNear, fogRender.near);
-      gl.uniform1f(luFogFar, fogRender.far);
-      gl.uniform3f(luFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
       gl.disable(gl.DEPTH_TEST);
       const spanX=terrainSpanX(), spanY=terrainSpanY();
       function drawRect(offsetX, offsetY, scaleX, scaleY, color3){ gl.uniform3f(luColor,color3[0],color3[1],color3[2]); gl.uniform2f(luOffsetXY,offsetX,offsetY); gl.uniform2f(luScaleXY,scaleX,scaleY); gl.drawArrays(gl.LINES,0,8);}
