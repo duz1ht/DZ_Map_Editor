@@ -2171,6 +2171,13 @@
     }
   }
 
+  function markAllItemTransformsDirty(){
+    for (const it of state.items || []){
+      if (it?.id == null) continue;
+      state.glb.transformDirtyIds.add(it.id);
+    }
+  }
+
   function scheduleRenderList(){
     if (state.pendingUiRenderRaf) return;
     state.pendingUiRenderRaf = requestAnimationFrame(() => {
@@ -6110,6 +6117,7 @@
       const terrainZ = heightAtWorld(x, y, 1.0);
       if (Number.isFinite(terrainZ) && terrainZ > -1e8) return terrainZ;
     }
+
     return rawToWorld(it?.z || 0, 'z');
   }
   let sectorCount=8, terrainOrigin={x:0,y:0}, wrapX=1, wrapY=1, sectors=null, lastDepth=null, lastImg=null, loadedTrnName=null;
@@ -7563,6 +7571,7 @@
     addLog(`[terrain] TGA decoded: ${lastImg.w}x${lastImg.h}`);
 
     rebuildTerrain();
+    markAllItemTransformsDirty();
     addLog(`[terrain] terrain rebuild complete: ${folder}/${trnFile}`);
   }
 
