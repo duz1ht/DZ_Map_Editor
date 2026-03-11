@@ -5487,6 +5487,19 @@
     return fallback;
   }
 
+  function getMapFogTypePreset(){
+    const gi = state.sectionBlocks.find((s) => s.kind === 'general_information');
+    const envName = String(gi?.kv?.sunset || giEnvironment?.value || '').trim().toLowerCase();
+    const envData = envName ? GENERAL_ENV_DATA.get(envName) : null;
+    const fogTypeRaw = Math.max(0, Math.trunc(Number(envData?.fogType) || 0));
+    return Math.min(3, fogTypeRaw);
+  }
+
+  function syncDebugFogPresetFromMap(){
+    state.fogDebugActivePreset = getMapFogTypePreset();
+    if (debugFogPanelEl?.classList.contains('open')) renderDebugFogPanelControls();
+  }
+
   function renderDebugFogPresetTabs(){
     if (!debugFogPresetTabsEl) return;
     const rows = [];
@@ -5733,6 +5746,7 @@
     if (el) el.addEventListener("change", updateGeneralInfoEnables);
   });
   giEnvironment.addEventListener("change", applyEnvironmentFogToInputs);
+  giEnvironment.addEventListener("change", syncDebugFogPresetFromMap);
   giFogDistEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   giFogColorEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   giTerrain.addEventListener("change", applyTerrainWaterToInput);
@@ -8194,6 +8208,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   const _origLoadMisFile = loadMisFile;
   loadMisFile = async function(file, fileHandle = null){
     await _origLoadMisFile(file, fileHandle);
+    syncDebugFogPresetFromMap();
     try{ await loadTerrainFromMis(); }catch(err){ addLog(`[terrain] load error: ${err?.message || err}`); camDebugEl.textContent = `Failed to load terrain: ${err.message||err}`; }
     fitView();
     requestRender();
