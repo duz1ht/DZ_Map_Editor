@@ -7092,7 +7092,7 @@
     if (state.glb.THREE){
       const fogLinear = new state.glb.THREE.Color(fogRender.color.r, fogRender.color.g, fogRender.color.b).convertSRGBToLinear();
       scene.fog = fogRender.enabled ? new state.glb.THREE.Fog(fogLinear, 0.0, Math.max(1.0, fogRender.farDistance)) : null;
-      scene.background = fogRender.enabled ? fogLinear.clone() : null;
+      scene.background = null;
     }
 
     renderer.resetState();
@@ -7814,7 +7814,7 @@
     gl.clearColor(clearColor.r, clearColor.g, clearColor.b,1);
     gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
+    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawGlbItems(P, V); drawItems(PV);
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
