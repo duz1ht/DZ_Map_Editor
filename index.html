@@ -267,6 +267,15 @@
       height:24px;
       padding:0 10px;
     }
+    #debugFogBtn{
+      position:absolute;
+      top:10px;
+      left:144px;
+      z-index:10;
+      min-width:82px;
+      height:24px;
+      padding:0 10px;
+    }
     #fpsCounter{
       position:absolute;
       top:10px;
@@ -394,6 +403,29 @@
     #layerVisibilityControls button{ min-height:22px; padding:2px 8px; font-size:11px; }
     #layerVisibilityList{ display:grid; grid-template-columns:1fr; gap:4px; font-size:12px; overflow:auto; min-height:0; }
     #layerVisibilityList label{ display:flex; align-items:center; gap:6px; }
+    #debugFogPanel{
+      position:absolute;
+      top:42px;
+      left:144px;
+      z-index:12;
+      width:min(460px, calc(100% - 20px));
+      max-height:min(72vh, 560px);
+      overflow:auto;
+      display:none;
+      background:var(--panel);
+      border:1px solid var(--line-strong);
+      border-radius:var(--radius-md);
+      box-shadow:var(--shadow-md);
+      padding:10px;
+    }
+    #debugFogPanel.open{ display:block; }
+    .debugFogPresetRow{ display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+    .debugFogPresetBtn.active{ background:#2c7be5; border-color:#67a2ff; color:#fff; }
+    .debugFogGrid{ display:grid; grid-template-columns:130px 1fr 62px; gap:6px; align-items:center; font-size:12px; }
+    .debugFogGrid input[type="range"]{ width:100%; }
+    .debugFogValue{ text-align:right; color:var(--text-subtle); font-variant-numeric:tabular-nums; }
+    .debugFogColorRow{ margin-top:10px; display:flex; align-items:center; gap:8px; font-size:12px; }
+    .debugFogSwatch{ width:22px; height:22px; border-radius:4px; border:1px solid var(--line); }
     #misRealtimePanel{
       margin-top:12px;
       border:1px solid var(--line);
@@ -1164,6 +1196,7 @@
     <div id="canvasWrap">
       <button id="showPanelBtn" type="button" class="modeBtn">Show</button>
       <button id="showLayersBtn" type="button" class="modeBtn">Layers</button>
+      <button id="debugFogBtn" type="button" class="modeBtn">Debug Fog</button>
       <canvas id="cv"></canvas>
       <div id="camDebug"></div>
       <div id="fpsCounter">0 FPS</div>
@@ -1197,6 +1230,26 @@
           <button id="showAllLayersBtn" type="button">Show All</button>
         </div>
         <div id="layerVisibilityList"></div>
+      </div>
+
+      <div id="debugFogPanel" aria-hidden="true">
+        <div class="debugFogPresetRow">
+          <button type="button" class="debugFogPresetBtn" data-fog-preset="0">Fog</button>
+          <button type="button" class="debugFogPresetBtn" data-fog-preset="1">Haze</button>
+          <button type="button" class="debugFogPresetBtn" data-fog-preset="2">Haze Wall</button>
+          <button type="button" class="debugFogPresetBtn" data-fog-preset="3">Mild Haze Wall</button>
+        </div>
+        <div class="debugFogGrid">
+          <label for="debugFogNearRatio">Near ratio</label><input id="debugFogNearRatio" type="range" min="0" max="1" step="0.001" /><span id="debugFogNearRatioVal" class="debugFogValue">0.000</span>
+          <label for="debugFogMidRatio">Mid ratio</label><input id="debugFogMidRatio" type="range" min="0" max="1" step="0.001" /><span id="debugFogMidRatioVal" class="debugFogValue">0.000</span>
+          <label for="debugFogFarRatio">Far ratio</label><input id="debugFogFarRatio" type="range" min="0" max="1" step="0.001" /><span id="debugFogFarRatioVal" class="debugFogValue">0.000</span>
+          <label for="debugFogNearStrength">Near strength</label><input id="debugFogNearStrength" type="range" min="0" max="1" step="0.01" /><span id="debugFogNearStrengthVal" class="debugFogValue">0.00</span>
+          <label for="debugFogMidStrength">Mid strength</label><input id="debugFogMidStrength" type="range" min="0" max="1" step="0.01" /><span id="debugFogMidStrengthVal" class="debugFogValue">0.00</span>
+        </div>
+        <div class="debugFogColorRow">
+          <span>Fog RGB atual: <strong id="debugFogRgb">0,0,0</strong></span>
+          <span id="debugFogColorSwatch" class="debugFogSwatch" aria-hidden="true"></span>
+        </div>
       </div>
 
       <div id="sectionOverlay" aria-hidden="true">
@@ -1779,6 +1832,7 @@
     itemsById: new Map(),
     itemSectionByStart: new Map(),
     layerVisibility: new Map(),
+    debugFogSelectedPreset: 0,
 
     glb: {
       THREE: null,
@@ -1828,11 +1882,26 @@
   const exportBtn = document.getElementById("exportBtn");
   const showPanelBtn = document.getElementById("showPanelBtn");
   const showLayersBtn = document.getElementById("showLayersBtn");
+  const debugFogBtn = document.getElementById("debugFogBtn");
   const hideAllLayersBtn = document.getElementById("hideAllLayersBtn");
   const showAllLayersBtn = document.getElementById("showAllLayersBtn");
   const canvasShowPanelEl = document.getElementById("canvasShowPanel");
   const layerVisibilityPanelEl = document.getElementById("layerVisibilityPanel");
   const layerVisibilityListEl = document.getElementById("layerVisibilityList");
+  const debugFogPanelEl = document.getElementById("debugFogPanel");
+  const debugFogRgbEl = document.getElementById("debugFogRgb");
+  const debugFogColorSwatchEl = document.getElementById("debugFogColorSwatch");
+  const debugFogPresetBtns = Array.from(document.querySelectorAll('.debugFogPresetBtn'));
+  const debugFogNearRatioEl = document.getElementById("debugFogNearRatio");
+  const debugFogMidRatioEl = document.getElementById("debugFogMidRatio");
+  const debugFogFarRatioEl = document.getElementById("debugFogFarRatio");
+  const debugFogNearStrengthEl = document.getElementById("debugFogNearStrength");
+  const debugFogMidStrengthEl = document.getElementById("debugFogMidStrength");
+  const debugFogNearRatioValEl = document.getElementById("debugFogNearRatioVal");
+  const debugFogMidRatioValEl = document.getElementById("debugFogMidRatioVal");
+  const debugFogFarRatioValEl = document.getElementById("debugFogFarRatioVal");
+  const debugFogNearStrengthValEl = document.getElementById("debugFogNearStrengthVal");
+  const debugFogMidStrengthValEl = document.getElementById("debugFogMidStrengthVal");
   const canvasWrapEl = document.getElementById("canvasWrap");
   const statusEl = document.getElementById("status");
   const sectionOverlay = document.getElementById("sectionOverlay");
@@ -5428,6 +5497,28 @@
     setLayerVisibilityPanelOpen(next);
   });
 
+  debugFogBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const next = !debugFogPanelEl?.classList.contains("open");
+    if (next){
+      setCanvasShowPanelOpen(false);
+      setLayerVisibilityPanelOpen(false);
+      syncDebugFogPresetFromMap();
+    }
+    setDebugFogPanelOpen(next);
+  });
+
+  debugFogPanelEl?.addEventListener("click", (event) => event.stopPropagation());
+  debugFogPresetBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setDebugFogSelectedPreset(btn.dataset.fogPreset);
+      applyDebugFogSlidersToPreset();
+    });
+  });
+  [debugFogNearRatioEl, debugFogMidRatioEl, debugFogFarRatioEl, debugFogNearStrengthEl, debugFogMidStrengthEl].forEach((el) => {
+    el?.addEventListener('input', applyDebugFogSlidersToPreset);
+  });
+
   hideAllLayersBtn?.addEventListener("click", (event) => {
     event.stopPropagation();
     setAllLayerVisibility(false);
@@ -5443,9 +5534,9 @@
   });
 
   document.addEventListener("mousedown", (event) => {
-    if (!canvasShowPanelEl?.classList.contains("open")) return;
-    if (canvasShowPanelEl.contains(event.target) || showPanelBtn?.contains(event.target)) return;
-    setCanvasShowPanelOpen(false);
+    if (canvasShowPanelEl?.classList.contains("open") && !(canvasShowPanelEl.contains(event.target) || showPanelBtn?.contains(event.target))) setCanvasShowPanelOpen(false);
+    if (layerVisibilityPanelEl?.classList.contains('open') && !(layerVisibilityPanelEl.contains(event.target) || showLayersBtn?.contains(event.target))) setLayerVisibilityPanelOpen(false);
+    if (debugFogPanelEl?.classList.contains('open') && !(debugFogPanelEl.contains(event.target) || debugFogBtn?.contains(event.target))) setDebugFogPanelOpen(false);
   });
 
   addEventListener("resize", () => {
@@ -5548,7 +5639,7 @@
   [giWaterEnabled, giFogDistEnabled, giFogColorEnabled, giNvgAvailable].forEach(el => {
     if (el) el.addEventListener("change", updateGeneralInfoEnables);
   });
-  giEnvironment.addEventListener("change", applyEnvironmentFogToInputs);
+  giEnvironment.addEventListener("change", () => { applyEnvironmentFogToInputs(); syncDebugFogPresetFromMap(); });
   giFogDistEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   giFogColorEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   giTerrain.addEventListener("change", applyTerrainWaterToInput);
@@ -5661,6 +5752,7 @@
     updateWaypointMarkerCount(0);
     fileMisEl.value = "";
     renderList();
+    syncDebugFogPresetFromMap();
     requestRender();
     refreshLiveMisWindow(true, { force: true });
   }
@@ -5996,6 +6088,7 @@
     statusEl.textContent = `${file.name} loaded. items: ${state.items.length}`;
     fitView();
     renderList();
+    syncDebugFogPresetFromMap();
     requestRender();
     refreshLiveMisWindow(true, { force: true });
   }
@@ -7481,10 +7574,10 @@
   function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; if(!isItemLayerVisible(it)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),getItemWorldZ(it)); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   const FOG_PRESETS = {
-    0: { nearRatio: 5 / 128, midRatio: 17 / 128, nearStrength: 0.24, midStrength: 0.62, label: 'fog' },
-    1: { nearRatio: 10 / 128, midRatio: 40 / 128, nearStrength: 0.12, midStrength: 0.58, label: 'haze' },
-    2: { nearRatio: 50 / 128, midRatio: 70 / 128, nearStrength: 0.24, midStrength: 0.62, label: 'haze wall' },
-    3: { nearRatio: 25 / 128, midRatio: 50 / 128, nearStrength: 0.24, midStrength: 0.62, label: 'mild haze wall' },
+    0: { nearRatio: 5 / 128, midRatio: 17 / 128, farRatio: 38 / 128, nearStrength: 0.24, midStrength: 0.62, label: 'fog' },
+    1: { nearRatio: 10 / 128, midRatio: 40 / 128, farRatio: 90 / 128, nearStrength: 0.12, midStrength: 0.58, label: 'haze' },
+    2: { nearRatio: 50 / 128, midRatio: 70 / 128, farRatio: 115 / 128, nearStrength: 0.24, midStrength: 0.62, label: 'haze wall' },
+    3: { nearRatio: 25 / 128, midRatio: 50 / 128, farRatio: 110 / 128, nearStrength: 0.24, midStrength: 0.62, label: 'mild haze wall' },
   };
 
   function fogPresetForType(rawType){
@@ -7493,13 +7586,79 @@
   }
 
   function buildThreePointFogProfile(fogDistance, preset){
-    const farDistance = Math.max(0, Number(fogDistance) || 0);
-    const nearDistance = Math.min(farDistance, Math.max(0, farDistance * preset.nearRatio));
-    const midDistance = Math.min(farDistance, Math.max(nearDistance, farDistance * preset.midRatio));
+    const maxDistance = Math.max(0, Number(fogDistance) || 0);
+    const farDistance = Math.min(maxDistance, Math.max(0, maxDistance * (Number(preset.farRatio) || 1)));
+    const nearDistance = Math.min(farDistance, Math.max(0, maxDistance * (Number(preset.nearRatio) || 0)));
+    const midDistance = Math.min(farDistance, Math.max(nearDistance, maxDistance * (Number(preset.midRatio) || 0)));
     const nearStrength = Math.max(0, Math.min(1, Number(preset.nearStrength) || 0));
     const midStrength = Math.max(nearStrength, Math.min(1, Number(preset.midStrength) || 0));
     return { nearDistance, midDistance, farDistance, nearStrength, midStrength };
   }
+
+  function setDebugFogSelectedPreset(rawPreset){
+    const preset = Math.max(0, Math.min(3, Math.trunc(Number(rawPreset) || 0)));
+    state.debugFogSelectedPreset = preset;
+    for (const btn of debugFogPresetBtns){
+      const p = Math.trunc(Number(btn.dataset.fogPreset) || 0);
+      btn.classList.toggle('active', p === preset);
+    }
+    const cfg = FOG_PRESETS[preset] || FOG_PRESETS[0];
+    if (debugFogNearRatioEl) debugFogNearRatioEl.value = String(cfg.nearRatio);
+    if (debugFogMidRatioEl) debugFogMidRatioEl.value = String(cfg.midRatio);
+    if (debugFogFarRatioEl) debugFogFarRatioEl.value = String(cfg.farRatio ?? 1);
+    if (debugFogNearStrengthEl) debugFogNearStrengthEl.value = String(cfg.nearStrength);
+    if (debugFogMidStrengthEl) debugFogMidStrengthEl.value = String(cfg.midStrength);
+    refreshDebugFogValueLabels();
+  }
+
+  function refreshDebugFogValueLabels(){
+    if (debugFogNearRatioValEl && debugFogNearRatioEl) debugFogNearRatioValEl.textContent = Number(debugFogNearRatioEl.value || 0).toFixed(3);
+    if (debugFogMidRatioValEl && debugFogMidRatioEl) debugFogMidRatioValEl.textContent = Number(debugFogMidRatioEl.value || 0).toFixed(3);
+    if (debugFogFarRatioValEl && debugFogFarRatioEl) debugFogFarRatioValEl.textContent = Number(debugFogFarRatioEl.value || 0).toFixed(3);
+    if (debugFogNearStrengthValEl && debugFogNearStrengthEl) debugFogNearStrengthValEl.textContent = Number(debugFogNearStrengthEl.value || 0).toFixed(2);
+    if (debugFogMidStrengthValEl && debugFogMidStrengthEl) debugFogMidStrengthValEl.textContent = Number(debugFogMidStrengthEl.value || 0).toFixed(2);
+  }
+
+  function applyDebugFogSlidersToPreset(){
+    const preset = Math.max(0, Math.min(3, Math.trunc(Number(state.debugFogSelectedPreset) || 0)));
+    const cfg = FOG_PRESETS[preset] || FOG_PRESETS[0];
+    cfg.nearRatio = Math.max(0, Math.min(1, Number(debugFogNearRatioEl?.value) || 0));
+    cfg.midRatio = Math.max(cfg.nearRatio, Math.min(1, Number(debugFogMidRatioEl?.value) || 0));
+    cfg.farRatio = Math.max(cfg.midRatio, Math.min(1, Number(debugFogFarRatioEl?.value) || 0));
+    cfg.nearStrength = Math.max(0, Math.min(1, Number(debugFogNearStrengthEl?.value) || 0));
+    cfg.midStrength = Math.max(cfg.nearStrength, Math.min(1, Number(debugFogMidStrengthEl?.value) || 0));
+    refreshDebugFogValueLabels();
+    requestRender();
+  }
+
+  function refreshDebugFogReadOnlyInfo(){
+    const fog = getRenderFogSettings();
+    if (debugFogRgbEl){
+      const r = Math.max(0, Math.min(255, Math.round((fog.color?.r || 0) * 255)));
+      const g = Math.max(0, Math.min(255, Math.round((fog.color?.g || 0) * 255)));
+      const b = Math.max(0, Math.min(255, Math.round((fog.color?.b || 0) * 255)));
+      debugFogRgbEl.textContent = `${r}, ${g}, ${b}`;
+      if (debugFogColorSwatchEl) debugFogColorSwatchEl.style.background = `rgb(${r}, ${g}, ${b})`;
+    }
+  }
+
+  function setDebugFogPanelOpen(open){
+    const visible = !!open;
+    debugFogPanelEl?.classList.toggle('open', visible);
+    debugFogPanelEl?.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    debugFogBtn?.classList.toggle('active', visible);
+    if (visible) refreshDebugFogReadOnlyInfo();
+  }
+
+  function syncDebugFogPresetFromMap(){
+    const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
+    const envName = String(gi?.kv?.sunset || giEnvironment?.value || '').trim().toLowerCase();
+    const envData = envName ? GENERAL_ENV_DATA.get(envName) : null;
+    setDebugFogSelectedPreset(envData?.fogType || 0);
+    refreshDebugFogReadOnlyInfo();
+  }
+
+  setDebugFogSelectedPreset(0);
 
   function getRenderFogSettings(){
     const fallback = { enabled: false, distance: 0, nearDistance: 0, midDistance: 0, farDistance: 0, nearStrength: 0, midStrength: 0, color: { r: 0.65, g: 0.7, b: 0.75 }, source: 'disabled', fogType: 0, fogPreset: 'fog' };
