@@ -7254,6 +7254,25 @@ uniform vec3 uDbgFogColor;`);
     state.glb.transformDirtyIds.clear();
   }
 
+  function applyGlbFogDistanceVisibility(fogRender){
+    if (!state.glb.ready) return;
+    const fogEnabled = !!fogRender?.enabled;
+    const fogFar = Number(fogRender?.stops?.far || fogRender?.far || 0);
+    const maxVisibleDistance = Math.max(0, fogFar) * 1.02;
+    for (const instance of state.glb.itemInstances.values()){
+      if (!instance) continue;
+      if (!fogEnabled || !(maxVisibleDistance > 0)){
+        instance.visible = true;
+        continue;
+      }
+      const dx = instance.position.x - cam.pos.x;
+      const dy = instance.position.y - cam.pos.y;
+      const dz = instance.position.z - cam.pos.z;
+      const dist = Math.hypot(dx, dy, dz);
+      instance.visible = dist <= maxVisibleDistance;
+    }
+  }
+
   function drawGlbItems(P, V){
     if (!state.glb.ready){
       ensureGlbRendererReady().then((ready) => {
@@ -7280,6 +7299,7 @@ uniform vec3 uDbgFogColor;`);
       state.glb.customFogUniforms.strengths.value.set(fogRender.strengths.near, fogRender.strengths.mid, fogRender.strengths.far);
       state.glb.customFogUniforms.color.value.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
     }
+    applyGlbFogDistanceVisibility(fogRender);
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
 
