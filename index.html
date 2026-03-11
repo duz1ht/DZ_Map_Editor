@@ -6840,8 +6840,7 @@ void main() {`
               fogAmount = 1.0;
             }
           }
-          float objectFogAmount = clamp(fogAmount * 0.5, 0.0, 1.0);
-          gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, objectFogAmount);
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, clamp(fogAmount, 0.0, 1.0));
         #endif`
       );
     };
