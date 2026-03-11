@@ -6789,8 +6789,8 @@
     material.userData._editorFogPatched = true;
     material.fog = false;
     const prevOnBeforeCompile = material.onBeforeCompile;
-    material.onBeforeCompile = (shader, renderer) => {
-      if (typeof prevOnBeforeCompile === 'function') prevOnBeforeCompile(shader, renderer);
+    material.onBeforeCompile = function(shader, renderer){
+      if (typeof prevOnBeforeCompile === 'function') prevOnBeforeCompile.call(this, shader, renderer);
       shader.uniforms.uEditorFogEnabled = { value: 0 };
       shader.uniforms.uEditorFogNear = { value: 0 };
       shader.uniforms.uEditorFogMid = { value: 0 };
@@ -6820,8 +6820,8 @@
       } else {
         shader.fragmentShader += '\n' + fogBlendCode;
       }
-      material.userData._editorFogShader = shader;
-      updateThreePointFogUniformsForMaterial(material);
+      this.userData._editorFogShader = shader;
+      updateThreePointFogUniformsForMaterial(this);
     };
     material.needsUpdate = true;
   }
