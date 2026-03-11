@@ -1873,6 +1873,7 @@
       scratchViewMatrix: null,
       raycaster: null,
       pointerNdc: null,
+      fogUniforms: null,
       ready: false,
     },
     debugFog: {
@@ -6726,6 +6727,15 @@
         state.glb.scene = scene3d;
         state.glb.camera = camera3d;
         state.glb.loader = new GLTFLoader();
+        state.glb.fogUniforms = {
+          uFogEnabled: { value: 0.0 },
+          uFogColor: { value: new THREE.Color(0.65, 0.7, 0.75).convertSRGBToLinear() },
+          uFogNearDist: { value: 0.0 },
+          uFogMidDist: { value: 0.0 },
+          uFogFarDist: { value: 0.0 },
+          uFogNearStrength: { value: 0.0 },
+          uFogMidStrength: { value: 0.0 },
+        };
         if (!state.glb.lodConfigLogged){
           const activeLevels = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
             ? state.glb.activeLodLevels
@@ -6796,6 +6806,59 @@
     return { entries: out, stats };
   }
 
+  function applyCustomFogToGlbMaterial(material){
+    if (!material || material.userData?._customFogRampPatched || !state.glb.fogUniforms) return;
+    material.fog = true;
+    material.userData = material.userData || {};
+    material.userData._customFogRampPatched = true;
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, state.glb.fogUniforms);
+      shader.fragmentShader = shader.fragmentShader.replace(
+        'void main() {',
+        `uniform float uFogEnabled;
+uniform vec3 uFogColor;
+uniform float uFogNearDist;
+uniform float uFogMidDist;
+uniform float uFogFarDist;
+uniform float uFogNearStrength;
+uniform float uFogMidStrength;
+void main() {`
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <fog_fragment>',
+        `#ifdef USE_FOG
+          float fogAmount = 0.0;
+          if (uFogEnabled > 0.5 && uFogFarDist > 0.0) {
+            float distToCam = vFogDepth;
+            if (distToCam <= uFogNearDist) {
+              fogAmount = 0.0;
+            } else if (distToCam <= uFogMidDist) {
+              float tNearMid = clamp((distToCam - uFogNearDist) / max(0.0001, uFogMidDist - uFogNearDist), 0.0, 1.0);
+              fogAmount = mix(uFogNearStrength, uFogMidStrength, tNearMid);
+            } else if (distToCam <= uFogFarDist) {
+              float tMidFar = clamp((distToCam - uFogMidDist) / max(0.0001, uFogFarDist - uFogMidDist), 0.0, 1.0);
+              fogAmount = mix(uFogMidStrength, 1.0, tMidFar);
+            } else {
+              fogAmount = 1.0;
+            }
+          }
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, uFogColor, clamp(fogAmount, 0.0, 1.0));
+        #endif`
+      );
+    };
+    material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v1`;
+    material.needsUpdate = true;
+  }
+
+  function applyCustomFogToGlbObject(root){
+    if (!root?.traverse) return;
+    root.traverse((obj) => {
+      if (!obj?.isMesh || !obj.material) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const mat of mats) applyCustomFogToGlbMaterial(mat);
+    });
+  }
+
   async function loadGraphicTemplate(graphic){
     const key = String(graphic || "").trim();
     if (!key) return null;
@@ -6857,6 +6920,7 @@
         obj.material = Array.isArray(obj.material) ? converted : converted[0];
       });
 
+      applyCustomFogToGlbObject(root);
       convertNamedTopLevelObjectsToLodGroups(root);
 
       state.glb.templateByGraphic.set(key, root);
@@ -7026,6 +7090,7 @@
             if (Array.isArray(obj.material)) obj.material = obj.material.map(m => m ? m.clone() : m);
             else if (obj.material) obj.material = obj.material.clone();
           });
+          applyCustomFogToGlbObject(instance);
           applyWireframeToGlbObject(instance);
           instance.userData.itemId = it.id;
           instance.userData.graphic = graphic;
@@ -7115,15 +7180,22 @@
 
     const { renderer, scene } = state.glb;
     const fogRender = getRenderFogSettings();
-    if (state.glb.THREE){
-      if (fogRender.enabled && fogRender.ramp.far > 0){
+    if (state.glb.THREE && state.glb.fogUniforms){
+      const fogEnabled = fogRender.enabled && fogRender.ramp.far > 0;
+      state.glb.fogUniforms.uFogEnabled.value = fogEnabled ? 1.0 : 0.0;
+      state.glb.fogUniforms.uFogNearDist.value = fogRender.ramp.near;
+      state.glb.fogUniforms.uFogMidDist.value = fogRender.ramp.mid;
+      state.glb.fogUniforms.uFogFarDist.value = fogRender.ramp.far;
+      state.glb.fogUniforms.uFogNearStrength.value = fogRender.ramp.nearStrength;
+      state.glb.fogUniforms.uFogMidStrength.value = fogRender.ramp.midStrength;
+      state.glb.fogUniforms.uFogColor.value.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b).convertSRGBToLinear();
+
+      if (fogEnabled){
         if (!scene.fog || !scene.fog.isFog){
           scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
         }
-        const fogColorLinear = new state.glb.THREE.Color(fogRender.color.r, fogRender.color.g, fogRender.color.b).convertSRGBToLinear();
-        scene.fog.color.copy(fogColorLinear);
-        scene.fog.near = fogRender.ramp.near;
-        scene.fog.far = fogRender.ramp.far;
+        scene.fog.near = 1;
+        scene.fog.far = Math.max(1, fogRender.ramp.far);
       } else {
         scene.fog = null;
       }
