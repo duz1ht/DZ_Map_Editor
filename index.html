@@ -1853,6 +1853,7 @@
       scratchViewMatrix: null,
       raycaster: null,
       pointerNdc: null,
+      customFogUniforms: null,
       ready: false,
     },
   };
@@ -6798,6 +6799,12 @@
         state.glb.scene = scene3d;
         state.glb.camera = camera3d;
         state.glb.loader = new GLTFLoader();
+        state.glb.customFogUniforms = {
+          enabled: { value: 0.0 },
+          stops: { value: new THREE.Vector3(0, 0, 0) },
+          strengths: { value: new THREE.Vector3(0, 0, 0) },
+          color: { value: new THREE.Color(0.65, 0.7, 0.75) },
+        };
         if (!state.glb.lodConfigLogged){
           const activeLevels = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
             ? state.glb.activeLodLevels
@@ -6901,7 +6908,7 @@
           if (emissiveBase.r < 0.02 && emissiveBase.g < 0.02 && emissiveBase.b < 0.02){
             emissiveBase.setRGB(0.02, 0.02, 0.02);
           }
-          return new state.glb.THREE.MeshPhongMaterial({
+          return applyCustomFogToThreeMaterial(new state.glb.THREE.MeshPhongMaterial({
             map: m.map || null,
             color: m.color ? m.color.clone() : new state.glb.THREE.Color(0xffffff),
             emissive: emissiveBase,
@@ -6922,7 +6929,7 @@
             alphaTest: m.alphaTest || 0,
             vertexColors: !!m.vertexColors,
             flatShading: !!m.flatShading,
-          });
+          }));
         });
 
         obj.material = Array.isArray(obj.material) ? converted : converted[0];
@@ -6984,6 +6991,51 @@
         return parts.join("|");
       })
       .join(", ");
+  }
+
+
+  function applyCustomFogToThreeMaterial(mat){
+    if (!mat || mat.userData?._customFogHooked || !state.glb.customFogUniforms) return mat;
+    mat.userData = mat.userData || {};
+    mat.userData._customFogHooked = true;
+    mat.fog = true;
+    const baseKeyFn = typeof mat.customProgramCacheKey === 'function'
+      ? mat.customProgramCacheKey.bind(mat)
+      : null;
+    mat.customProgramCacheKey = () => `${baseKeyFn ? baseKeyFn() : ''}__dz_custom_fog_v1`;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uDbgFogEnabled = state.glb.customFogUniforms.enabled;
+      shader.uniforms.uDbgFogStops = state.glb.customFogUniforms.stops;
+      shader.uniforms.uDbgFogStrengths = state.glb.customFogUniforms.strengths;
+      shader.uniforms.uDbgFogColor = state.glb.customFogUniforms.color;
+      const customFogChunk = `
+        float dzFogFactor(float d){
+          if(uDbgFogEnabled < 0.5) return 0.0;
+          float n = uDbgFogStops.x;
+          float m = max(uDbgFogStops.y, n + 0.001);
+          float f = max(uDbgFogStops.z, m + 0.001);
+          float sn = clamp(uDbgFogStrengths.x, 0.0, 1.0);
+          float sm = clamp(uDbgFogStrengths.y, 0.0, 1.0);
+          float sf = clamp(uDbgFogStrengths.z, 0.0, 1.0);
+          if(d < n) return 0.0;
+          if(d < m) return mix(sn, sm, clamp((d - n) / (m - n), 0.0, 1.0));
+          if(d < f) return mix(sm, sf, clamp((d - m) / (f - m), 0.0, 1.0));
+          return sf;
+        }
+        float dzFogDepth = gl_FragCoord.z / gl_FragCoord.w;
+        float dzFogAmount = dzFogFactor(dzFogDepth);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, uDbgFogColor, dzFogAmount);
+      `;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('uniform vec3 fogColor;', `uniform vec3 fogColor;
+uniform float uDbgFogEnabled;
+uniform vec3 uDbgFogStops;
+uniform vec3 uDbgFogStrengths;
+uniform vec3 uDbgFogColor;`)
+        .replace('#include <fog_fragment>', customFogChunk);
+    };
+    mat.needsUpdate = true;
+    return mat;
   }
 
   function createWhiteWireframeMaterialFrom(baseMat, colorHex = 0xffffff){
@@ -7184,13 +7236,14 @@
     }
     updateGlbTransformsFromState();
 
-    const { renderer, scene, THREE } = state.glb;
+    const { renderer, scene } = state.glb;
     const fogRender = getRenderFogSettings();
-    if (fogRender.enabled){
-      const fogColor = new THREE.Color(fogRender.color.r, fogRender.color.g, fogRender.color.b);
-      scene.fog = new THREE.Fog(fogColor, fogRender.near, fogRender.far);
-    } else {
-      scene.fog = null;
+    scene.fog = null;
+    if (state.glb.customFogUniforms){
+      state.glb.customFogUniforms.enabled.value = fogRender.enabled ? 1.0 : 0.0;
+      state.glb.customFogUniforms.stops.value.set(fogRender.stops.near, fogRender.stops.mid, fogRender.stops.far);
+      state.glb.customFogUniforms.strengths.value.set(fogRender.strengths.near, fogRender.strengths.mid, fogRender.strengths.far);
+      state.glb.customFogUniforms.color.value.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
     }
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
@@ -7235,14 +7288,14 @@
       if (obj.userData._selectionOutlineLines) return;
 
       const edgesGeo = new THREE.EdgesGeometry(obj.geometry, 35);
-      const outlineMat = new THREE.LineBasicMaterial({
+      const outlineMat = applyCustomFogToThreeMaterial(new THREE.LineBasicMaterial({
         color: 0xffad00,
         transparent: true,
         opacity: 1,
         depthTest: true,
         depthWrite: false,
         toneMapped: false,
-      });
+      }));
       const outline = new THREE.LineSegments(edgesGeo, outlineMat);
       outline.renderOrder = 20;
       outline.raycast = () => null;
