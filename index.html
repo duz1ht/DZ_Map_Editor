@@ -7094,8 +7094,26 @@
           instance = template.clone(true);
           instance.traverse((obj) => {
             if (!obj.isMesh) return;
-            if (Array.isArray(obj.material)) obj.material = obj.material.map(m => m ? m.clone() : m);
-            else if (obj.material) obj.material = obj.material.clone();
+            if (Array.isArray(obj.material)) obj.material = obj.material.map((m) => {
+              if (!m) return m;
+              const cloned = m.clone();
+              if (cloned.userData){
+                delete cloned.userData._editorFogPatched;
+                delete cloned.userData._editorFogShader;
+                delete cloned.userData._editorFogState;
+              }
+              attachThreePointFogToMaterial(cloned);
+              return cloned;
+            });
+            else if (obj.material){
+              obj.material = obj.material.clone();
+              if (obj.material.userData){
+                delete obj.material.userData._editorFogPatched;
+                delete obj.material.userData._editorFogShader;
+                delete obj.material.userData._editorFogState;
+              }
+              attachThreePointFogToMaterial(obj.material);
+            }
           });
           applyWireframeToGlbObject(instance);
           instance.userData.itemId = it.id;
