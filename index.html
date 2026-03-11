@@ -6787,7 +6787,7 @@
     if (!material || material.userData?._editorFogPatched || !state.glb.THREE) return;
     ensureGlbFogUniformState(material);
     material.userData._editorFogPatched = true;
-    material.fog = false;
+    material.fog = true;
     const prevOnBeforeCompile = material.onBeforeCompile;
     material.onBeforeCompile = (shader, renderer) => {
       if (typeof prevOnBeforeCompile === 'function') prevOnBeforeCompile(shader, renderer);
@@ -6798,7 +6798,9 @@
       shader.uniforms.uEditorFogNearStrength = { value: 0 };
       shader.uniforms.uEditorFogMidStrength = { value: 0 };
       shader.uniforms.uEditorFogColorLinear = { value: new state.glb.THREE.Color(0.65, 0.7, 0.75) };
-      const fogBlendCode = `float viewDist = length(vViewPosition);
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <fog_fragment>',
+        `float viewDist = length(vViewPosition);
          float fogAmount = 0.0;
          if (uEditorFogEnabled > 0.5 && uEditorFogFar > 0.0) {
            float nearDist = max(0.0, uEditorFogNear);
@@ -6814,12 +6816,8 @@
              fogAmount = 1.0;
            }
          }
-         gl_FragColor.rgb = mix(gl_FragColor.rgb, uEditorFogColorLinear, clamp(fogAmount, 0.0, 1.0));`;
-      if (shader.fragmentShader.includes('#include <output_fragment>')){
-        shader.fragmentShader = shader.fragmentShader.replace('#include <output_fragment>', '#include <output_fragment>\n' + fogBlendCode);
-      } else {
-        shader.fragmentShader += '\n' + fogBlendCode;
-      }
+         gl_FragColor.rgb = mix(gl_FragColor.rgb, uEditorFogColorLinear, clamp(fogAmount, 0.0, 1.0));`
+      );
       material.userData._editorFogShader = shader;
       updateThreePointFogUniformsForMaterial(material);
     };
@@ -7191,7 +7189,7 @@
     applyThreePointFogToGlbMeshes(fogRender);
     if (state.glb.THREE){
       const fogLinear = new state.glb.THREE.Color(fogRender.color.r, fogRender.color.g, fogRender.color.b).convertSRGBToLinear();
-      scene.fog = null;
+      scene.fog = fogRender.enabled ? new state.glb.THREE.Fog(fogLinear, 0.0, Math.max(1.0, fogRender.farDistance)) : null; // usado para manter chunk fog ativo; blend final vem do patch custom em <fog_fragment>.
       scene.background = null;
     }
 
