@@ -1808,6 +1808,7 @@
       scratchViewMatrix: null,
       raycaster: null,
       pointerNdc: null,
+      fogUniforms: null,
       ready: false,
     },
   };
@@ -6021,11 +6022,11 @@
   }
 
   const vsSrc=`attribute vec3 aPos; attribute vec2 aUV; uniform mat4 uMVP; uniform vec2 uModelOffset; varying vec2 vUV; varying vec3 vWorldPos; void main(){ vec3 worldPos=vec3(aPos.x+uModelOffset.x,aPos.y+uModelOffset.y,aPos.z); gl_Position=uMVP*vec4(aPos,1.0); vUV=aUV; vWorldPos=worldPos; }`;
-  const fsSrc=`precision mediump float; varying vec2 vUV; varying vec3 vWorldPos; uniform sampler2D uTex; uniform float uFlipV; uniform float uFogEnabled; uniform float uFogDistance; uniform vec3 uFogColor; uniform vec3 uCamPos; void main(){ vec2 uv=vec2(vUV.x, mix(vUV.y,1.0-vUV.y,uFlipV)); vec4 texel=texture2D(uTex,uv); vec3 color=texel.rgb; if(uFogEnabled>0.5&&uFogDistance>0.0){ float distToCam=distance(vWorldPos,uCamPos); float fogAmount=smoothstep(uFogDistance*0.35,uFogDistance,distToCam); color=mix(color,uFogColor,clamp(fogAmount,0.0,1.0)); } gl_FragColor=vec4(color,texel.a); }`;
+  const fsSrc=`precision mediump float; varying vec2 vUV; varying vec3 vWorldPos; uniform sampler2D uTex; uniform float uFlipV; uniform float uFogEnabled; uniform vec3 uFogDistances; uniform vec3 uFogStrengths; uniform vec3 uFogColor; uniform vec3 uCamPos; float fogCurve3(float distToCam){ float nearD=max(uFogDistances.x,0.0); float midD=max(uFogDistances.y,nearD+0.0001); float farD=max(uFogDistances.z,midD+0.0001); float nearS=clamp(uFogStrengths.x,0.0,1.0); float midS=clamp(uFogStrengths.y,nearS,1.0); if(distToCam<=nearD) return 0.0; if(distToCam<=midD){ float t=(distToCam-nearD)/max(midD-nearD,0.0001); return mix(nearS,midS,t); } if(distToCam<=farD){ float t=(distToCam-midD)/max(farD-midD,0.0001); return mix(midS,1.0,t); } return 1.0; } void main(){ vec2 uv=vec2(vUV.x, mix(vUV.y,1.0-vUV.y,uFlipV)); vec4 texel=texture2D(uTex,uv); vec3 color=texel.rgb; if(uFogEnabled>0.5&&uFogDistances.z>0.0){ float distToCam=distance(vWorldPos,uCamPos); float fogAmount=fogCurve3(distToCam); color=mix(color,uFogColor,clamp(fogAmount,0.0,1.0)); } gl_FragColor=vec4(color,texel.a); }`;
   const prog=gl.createProgram(); gl.attachShader(prog,compile(gl.VERTEX_SHADER,vsSrc)); gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fsSrc)); gl.linkProgram(prog);
   if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog)||'link failed');
   const aPos=gl.getAttribLocation(prog,'aPos'), aUV=gl.getAttribLocation(prog,'aUV');
-  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex'), uModelOffset=gl.getUniformLocation(prog,'uModelOffset'), uFogEnabled=gl.getUniformLocation(prog,'uFogEnabled'), uFogDistance=gl.getUniformLocation(prog,'uFogDistance'), uFogColor=gl.getUniformLocation(prog,'uFogColor'), uCamPos=gl.getUniformLocation(prog,'uCamPos');
+  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex'), uModelOffset=gl.getUniformLocation(prog,'uModelOffset'), uFogEnabled=gl.getUniformLocation(prog,'uFogEnabled'), uFogDistances=gl.getUniformLocation(prog,'uFogDistances'), uFogStrengths=gl.getUniformLocation(prog,'uFogStrengths'), uFogColor=gl.getUniformLocation(prog,'uFogColor'), uCamPos=gl.getUniformLocation(prog,'uCamPos');
 
   const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; }`;
   const itemFs=`precision mediump float; uniform vec4 uColor; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; gl_FragColor=uColor; }`;
@@ -6044,10 +6045,10 @@
   const gaPos=gl.getAttribLocation(gridProg,'aPos'), guMVP=gl.getUniformLocation(gridProg,'uMVP');
   const gridVB=gl.createBuffer();
 
-  const waterVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
-  const waterFs=`precision mediump float; uniform vec3 uColor; uniform float uAlpha; void main(){ gl_FragColor=vec4(uColor,uAlpha); }`;
+  const waterVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; varying vec3 vWorldPos; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z=uZ; vWorldPos=p; gl_Position=uMVP*vec4(p,1.0); }`;
+  const waterFs=`precision mediump float; varying vec3 vWorldPos; uniform vec3 uColor; uniform float uAlpha; uniform float uFogEnabled; uniform vec3 uFogDistances; uniform vec3 uFogStrengths; uniform vec3 uFogColor; uniform vec3 uCamPos; float fogCurve3(float distToCam){ float nearD=max(uFogDistances.x,0.0); float midD=max(uFogDistances.y,nearD+0.0001); float farD=max(uFogDistances.z,midD+0.0001); float nearS=clamp(uFogStrengths.x,0.0,1.0); float midS=clamp(uFogStrengths.y,nearS,1.0); if(distToCam<=nearD) return 0.0; if(distToCam<=midD){ float t=(distToCam-nearD)/max(midD-nearD,0.0001); return mix(nearS,midS,t); } if(distToCam<=farD){ float t=(distToCam-midD)/max(farD-midD,0.0001); return mix(midS,1.0,t); } return 1.0; } void main(){ vec3 color=uColor; if(uFogEnabled>0.5&&uFogDistances.z>0.0){ float distToCam=distance(vWorldPos,uCamPos); float fogAmount=fogCurve3(distToCam); color=mix(color,uFogColor,clamp(fogAmount,0.0,1.0)); } gl_FragColor=vec4(color,uAlpha); }`;
   const waterProg=gl.createProgram(); gl.attachShader(waterProg,compile(gl.VERTEX_SHADER,waterVs)); gl.attachShader(waterProg,compile(gl.FRAGMENT_SHADER,waterFs)); gl.linkProgram(waterProg);
-  const waPos=gl.getAttribLocation(waterProg,'aPos'), wuMVP=gl.getUniformLocation(waterProg,'uMVP'), wuOffsetXY=gl.getUniformLocation(waterProg,'uOffsetXY'), wuScaleXY=gl.getUniformLocation(waterProg,'uScaleXY'), wuZ=gl.getUniformLocation(waterProg,'uZ'), wuColor=gl.getUniformLocation(waterProg,'uColor'), wuAlpha=gl.getUniformLocation(waterProg,'uAlpha');
+  const waPos=gl.getAttribLocation(waterProg,'aPos'), wuMVP=gl.getUniformLocation(waterProg,'uMVP'), wuOffsetXY=gl.getUniformLocation(waterProg,'uOffsetXY'), wuScaleXY=gl.getUniformLocation(waterProg,'uScaleXY'), wuZ=gl.getUniformLocation(waterProg,'uZ'), wuColor=gl.getUniformLocation(waterProg,'uColor'), wuAlpha=gl.getUniformLocation(waterProg,'uAlpha'), wuFogEnabled=gl.getUniformLocation(waterProg,'uFogEnabled'), wuFogDistances=gl.getUniformLocation(waterProg,'uFogDistances'), wuFogStrengths=gl.getUniformLocation(waterProg,'uFogStrengths'), wuFogColor=gl.getUniformLocation(waterProg,'uFogColor'), wuCamPos=gl.getUniformLocation(waterProg,'uCamPos');
 
   const waterVB=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,0,1,0,0,1,1,0,0,1,0]),gl.STATIC_DRAW);
   const waterIB=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array([0,1,2,0,2,3]),gl.STATIC_DRAW);
@@ -6295,7 +6296,8 @@
     gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0);
     const fogRender = getRenderFogSettings();
     gl.uniform1f(uFogEnabled, fogRender.enabled ? 1.0 : 0.0);
-    gl.uniform1f(uFogDistance, fogRender.distance);
+    gl.uniform3f(uFogDistances, fogRender.distances.near, fogRender.distances.mid, fogRender.distances.far);
+    gl.uniform3f(uFogStrengths, fogRender.strengths.near, fogRender.strengths.mid, fogRender.strengths.far);
     gl.uniform3f(uFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
     gl.uniform3f(uCamPos, cam.pos.x, cam.pos.y, cam.pos.z);
     gl.bindTexture(gl.TEXTURE_2D,tex);
@@ -6355,6 +6357,11 @@
       gl.uniform3f(wuColor,0.55,0.85,1.0);
       gl.uniform1f(wuAlpha,0.28);
       gl.uniform1f(wuZ,waterRender.raw*0.5);
+      gl.uniform1f(wuFogEnabled, fogRender.enabled ? 1.0 : 0.0);
+      gl.uniform3f(wuFogDistances, fogRender.distances.near, fogRender.distances.mid, fogRender.distances.far);
+      gl.uniform3f(wuFogStrengths, fogRender.strengths.near, fogRender.strengths.mid, fogRender.strengths.far);
+      gl.uniform3f(wuFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
+      gl.uniform3f(wuCamPos, cam.pos.x, cam.pos.y, cam.pos.z);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
       gl.depthMask(false);
@@ -6720,10 +6727,12 @@
             alphaTest: m.alphaTest || 0,
             vertexColors: !!m.vertexColors,
             flatShading: !!m.flatShading,
+            fog: false,
           });
         });
 
         obj.material = Array.isArray(obj.material) ? converted : converted[0];
+        for (const cm of converted) patchGlbMaterialForThreePointFog(cm);
       });
 
       convertNamedTopLevelObjectsToLodGroups(root);
@@ -6973,6 +6982,80 @@
     state.glb.transformDirtyIds.clear();
   }
 
+  function ensureGlbFogUniforms(){
+    if (!state.glb.ready || !state.glb.THREE) return null;
+    if (state.glb.fogUniforms) return state.glb.fogUniforms;
+    const { THREE } = state.glb;
+    state.glb.fogUniforms = {
+      enabled: { value: 0 },
+      distances: { value: new THREE.Vector3(0, 0, 0) },
+      strengths: { value: new THREE.Vector3(0, 0, 1) },
+      color: { value: new THREE.Color(0.65, 0.7, 0.75) },
+    };
+    return state.glb.fogUniforms;
+  }
+
+  function updateGlbFogUniformValues(fogRender){
+    const uniforms = ensureGlbFogUniforms();
+    if (!uniforms) return;
+    uniforms.enabled.value = fogRender.enabled ? 1 : 0;
+    uniforms.distances.value.set(fogRender.distances.near, fogRender.distances.mid, fogRender.distances.far);
+    uniforms.strengths.value.set(fogRender.strengths.near, fogRender.strengths.mid, fogRender.strengths.far);
+    uniforms.color.value.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
+  }
+
+  function patchGlbMaterialForThreePointFog(mat){
+    if (!mat || mat.userData._threePointFogPatched) return;
+    mat.onBeforeCompile = (shader) => {
+      const uniforms = ensureGlbFogUniforms();
+      if (!uniforms) return;
+      shader.uniforms.uThreePointFogEnabled = uniforms.enabled;
+      shader.uniforms.uThreePointFogDistances = uniforms.distances;
+      shader.uniforms.uThreePointFogStrengths = uniforms.strengths;
+      shader.uniforms.uThreePointFogColor = uniforms.color;
+
+      const fogChunk = `
+        uniform float uThreePointFogEnabled;
+        uniform vec3 uThreePointFogDistances;
+        uniform vec3 uThreePointFogStrengths;
+        uniform vec3 uThreePointFogColor;
+
+        float computeThreePointFogFactor(float distToCam){
+          float nearD=max(uThreePointFogDistances.x,0.0);
+          float midD=max(uThreePointFogDistances.y,nearD+0.0001);
+          float farD=max(uThreePointFogDistances.z,midD+0.0001);
+          float nearS=clamp(uThreePointFogStrengths.x,0.0,1.0);
+          float midS=clamp(uThreePointFogStrengths.y,nearS,1.0);
+          if(distToCam<=nearD) return 0.0;
+          if(distToCam<=midD){
+            float t=(distToCam-nearD)/max(midD-nearD,0.0001);
+            return mix(nearS,midS,t);
+          }
+          if(distToCam<=farD){
+            float t=(distToCam-midD)/max(farD-midD,0.0001);
+            return mix(midS,1.0,t);
+          }
+          return 1.0;
+        }
+      `;
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+${fogChunk}`);
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        `
+        if (uThreePointFogEnabled > 0.5 && uThreePointFogDistances.z > 0.0) {
+          float fogAmount = computeThreePointFogFactor(length(vViewPosition));
+          fogAmount = pow(clamp(fogAmount, 0.0, 1.0), 0.9);
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, uThreePointFogColor, fogAmount);
+        }
+        #include <dithering_fragment>
+        `
+      );
+    };
+    mat.userData._threePointFogPatched = true;
+    mat.needsUpdate = true;
+  }
+
   function drawGlbItems(P, V){
     if (!state.glb.ready){
       ensureGlbRendererReady().then((ready) => {
@@ -6983,6 +7066,8 @@
     updateGlbTransformsFromState();
 
     const { renderer, scene } = state.glb;
+    const fogRender = getRenderFogSettings();
+    updateGlbFogUniformValues(fogRender);
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
 
@@ -7364,8 +7449,28 @@
 
   function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; if(!isItemLayerVisible(it)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),getItemWorldZ(it)); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
+  const FOG_PRESETS = {
+    0: { nearDistRatio: 5 / 128, midDistRatio: 17 / 128, nearStrength: 0.2, midStrength: 0.62 },
+    1: { nearDistRatio: 10 / 128, midDistRatio: 40 / 128, nearStrength: 0.06, midStrength: 0.55 },
+    2: { nearDistRatio: 50 / 128, midDistRatio: 70 / 128, nearStrength: 0.22, midStrength: 0.65 },
+    3: { nearDistRatio: 25 / 128, midDistRatio: 50 / 128, nearStrength: 0.2, midStrength: 0.62 },
+  };
+
+  function getFogPresetShape(preset){
+    const normalizedPreset = Number.isFinite(preset) ? Math.max(0, Math.min(3, Math.trunc(preset))) : 0;
+    return FOG_PRESETS[normalizedPreset] || FOG_PRESETS[0];
+  }
+
   function getRenderFogSettings(){
-    const fallback = { enabled: false, distance: 0, color: { r: 0.65, g: 0.7, b: 0.75 }, source: 'disabled' };
+    const fallback = {
+      enabled: false,
+      distance: 0,
+      distances: { near: 0, mid: 0, far: 0 },
+      strengths: { near: 0, mid: 0, far: 1 },
+      color: { r: 0.65, g: 0.7, b: 0.75 },
+      source: 'disabled',
+      type: 0,
+    };
     const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
     if (!(gi && gi.kv)) return fallback;
 
@@ -7382,6 +7487,13 @@
       : Math.max(0, Math.trunc(Number(envData?.fogLevel) || 0));
     if (!(Number.isFinite(fogDistance) && fogDistance > 0)) return fallback;
 
+    const fogTypeRaw = Number(envData?.fogType);
+    const fogType = Number.isFinite(fogTypeRaw) ? Math.max(0, Math.min(3, Math.trunc(fogTypeRaw))) : 0;
+    const preset = getFogPresetShape(fogType);
+    const farDistance = Math.max(0.0001, fogDistance);
+    const nearDistance = Math.max(0, Math.min(farDistance, farDistance * preset.nearDistRatio));
+    const midDistance = Math.max(nearDistance + 0.0001, Math.min(farDistance, farDistance * preset.midDistRatio));
+
     let fogColorRgb = null;
     if (fogColorEnabled) fogColorRgb = decodeFogColor(gi.kv.fog_color || 0);
     if (!fogColorRgb && envData?.fogRgb) fogColorRgb = envData.fogRgb;
@@ -7389,13 +7501,24 @@
     const rgb = fogColorRgb || { r: 166, g: 179, b: 191 };
     return {
       enabled: true,
-      distance: fogDistance,
+      distance: farDistance,
+      distances: {
+        near: nearDistance,
+        mid: midDistance,
+        far: farDistance,
+      },
+      strengths: {
+        near: preset.nearStrength,
+        mid: preset.midStrength,
+        far: 1,
+      },
       color: {
         r: Math.max(0, Math.min(255, Number(rgb.r) || 0)) / 255,
         g: Math.max(0, Math.min(255, Number(rgb.g) || 0)) / 255,
         b: Math.max(0, Math.min(255, Number(rgb.b) || 0)) / 255,
       },
-      source: `${fogDistanceEnabled ? 'MIS fog distance' : 'ENV fog level'} + ${fogColorEnabled ? 'MIS fog color' : 'ENV fog rgb'}`,
+      source: `${fogDistanceEnabled ? 'MIS fog distance' : 'ENV fog level'} + ${fogColorEnabled ? 'MIS fog color' : 'ENV fog rgb'} + preset ${fogType}`,
+      type: fogType,
     };
   }
 
