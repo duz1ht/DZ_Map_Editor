@@ -6729,7 +6729,6 @@
         state.glb.loader = new GLTFLoader();
         state.glb.fogUniforms = {
           uFogEnabled: { value: 0.0 },
-          uFogColor: { value: new THREE.Color(0.65, 0.7, 0.75).convertSRGBToLinear() },
           uFogNearDist: { value: 0.0 },
           uFogMidDist: { value: 0.0 },
           uFogFarDist: { value: 0.0 },
@@ -6816,7 +6815,6 @@
       shader.fragmentShader = shader.fragmentShader.replace(
         'void main() {',
         `uniform float uFogEnabled;
-uniform vec3 uFogColor;
 uniform float uFogNearDist;
 uniform float uFogMidDist;
 uniform float uFogFarDist;
@@ -6842,7 +6840,7 @@ void main() {`
               fogAmount = 1.0;
             }
           }
-          gl_FragColor.rgb = mix(gl_FragColor.rgb, uFogColor, clamp(fogAmount, 0.0, 1.0));
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, clamp(fogAmount, 0.0, 1.0));
         #endif`
       );
     };
@@ -7188,13 +7186,12 @@ void main() {`
       state.glb.fogUniforms.uFogFarDist.value = fogRender.ramp.far;
       state.glb.fogUniforms.uFogNearStrength.value = fogRender.ramp.nearStrength;
       state.glb.fogUniforms.uFogMidStrength.value = fogRender.ramp.midStrength;
-      const fogColorLinear = new state.glb.THREE.Color(fogRender.color.r, fogRender.color.g, fogRender.color.b).convertSRGBToLinear();
-      state.glb.fogUniforms.uFogColor.value.copy(fogColorLinear);
 
       if (fogEnabled){
         if (!scene.fog || !scene.fog.isFog){
           scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
         }
+        scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
         scene.fog.near = 1;
         scene.fog.far = Math.max(1, fogRender.ramp.far);
       } else {
