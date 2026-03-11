@@ -427,6 +427,8 @@
     #debugFogPanel .fogRow{ display:grid; grid-template-columns:74px 1fr 56px; gap:8px; align-items:center; margin-bottom:6px; }
     #debugFogPanel .fogRow input[type="range"]{ width:100%; }
     #debugFogPanel .fogHint{ color:var(--text-muted); margin-top:6px; }
+    #debugFogPanel .fogColorInfo{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin:4px 0 10px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--surface-subtle); }
+    #debugFogPanel .fogColorSwatch{ width:26px; height:18px; border:1px solid var(--line-strong); border-radius:4px; flex:0 0 auto; }
     #misRealtimePanel{
       margin-top:12px;
       border:1px solid var(--line);
@@ -1235,6 +1237,7 @@
 
       <div id="debugFogPanel" aria-hidden="true">
         <div class="presetTabs" id="debugFogPresetTabs"></div>
+        <div class="fogColorInfo"><span id="dbgFogRgbReadout">RGB: 0, 0, 0</span><span id="dbgFogColorSwatch" class="fogColorSwatch" aria-hidden="true"></span></div>
         <div class="fogRow"><label for="dbgFogNearRatio">Near ratio</label><input id="dbgFogNearRatio" type="range" min="0.01" max="1.5" step="0.005" /><span id="dbgFogNearRatioVal"></span></div>
         <div class="fogRow"><label for="dbgFogMidRatio">Mid ratio</label><input id="dbgFogMidRatio" type="range" min="0.01" max="2.0" step="0.005" /><span id="dbgFogMidRatioVal"></span></div>
         <div class="fogRow"><label for="dbgFogFarRatio">Far ratio</label><input id="dbgFogFarRatio" type="range" min="0.05" max="3.0" step="0.005" /><span id="dbgFogFarRatioVal"></span></div>
@@ -1893,6 +1896,8 @@
   const dbgFogNearStrengthVal = document.getElementById("dbgFogNearStrengthVal");
   const dbgFogMidStrengthVal = document.getElementById("dbgFogMidStrengthVal");
   const dbgFogFarStrengthVal = document.getElementById("dbgFogFarStrengthVal");
+  const dbgFogRgbReadout = document.getElementById("dbgFogRgbReadout");
+  const dbgFogColorSwatch = document.getElementById("dbgFogColorSwatch");
   const layerVisibilityListEl = document.getElementById("layerVisibilityList");
   const canvasWrapEl = document.getElementById("canvasWrap");
   const statusEl = document.getElementById("status");
@@ -5535,6 +5540,13 @@
     if (dbgFogNearStrengthVal) dbgFogNearStrengthVal.textContent = values.nearStrength.toFixed(2);
     if (dbgFogMidStrengthVal) dbgFogMidStrengthVal.textContent = values.midStrength.toFixed(2);
     if (dbgFogFarStrengthVal) dbgFogFarStrengthVal.textContent = values.farStrength.toFixed(2);
+
+    const fogRender = getRenderFogSettings();
+    const rr = Math.max(0, Math.min(255, Math.round((fogRender.color?.r || 0) * 255)));
+    const gg = Math.max(0, Math.min(255, Math.round((fogRender.color?.g || 0) * 255)));
+    const bb = Math.max(0, Math.min(255, Math.round((fogRender.color?.b || 0) * 255)));
+    if (dbgFogRgbReadout) dbgFogRgbReadout.textContent = `RGB: ${rr}, ${gg}, ${bb}`;
+    if (dbgFogColorSwatch) dbgFogColorSwatch.style.backgroundColor = `rgb(${rr}, ${gg}, ${bb})`;
   }
 
   function updateDebugFogFromControls(){
