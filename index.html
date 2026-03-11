@@ -7263,9 +7263,17 @@ uniform vec3 uDbgFogColor;`);
     }
     updateGlbTransformsFromState();
 
-    const { renderer, scene } = state.glb;
+    const { renderer, scene, THREE } = state.glb;
     const fogRender = getRenderFogSettings();
-    scene.fog = null;
+    if (fogRender.enabled){
+      scene.fog = new THREE.Fog(
+        new THREE.Color(fogRender.color.r, fogRender.color.g, fogRender.color.b),
+        fogRender.stops.near,
+        fogRender.stops.far
+      );
+    } else {
+      scene.fog = null;
+    }
     if (state.glb.customFogUniforms){
       state.glb.customFogUniforms.enabled.value = fogRender.enabled ? 1.0 : 0.0;
       state.glb.customFogUniforms.stops.value.set(fogRender.stops.near, fogRender.stops.mid, fogRender.stops.far);
