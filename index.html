@@ -7043,8 +7043,16 @@
 uniform float uDbgFogEnabled;
 uniform vec3 uDbgFogStops;
 uniform vec3 uDbgFogStrengths;
-uniform vec3 uDbgFogColor;`)
-        .replace('#include <fog_fragment>', customFogChunk);
+uniform vec3 uDbgFogColor;`);
+      if (shader.fragmentShader.includes('#include <dithering_fragment>')){
+        shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `${customFogChunk}
+#include <dithering_fragment>`);
+      } else if (shader.fragmentShader.includes('#include <fog_fragment>')){
+        shader.fragmentShader = shader.fragmentShader.replace('#include <fog_fragment>', customFogChunk);
+      } else {
+        shader.fragmentShader = shader.fragmentShader.replace(/}\s*$/, `${customFogChunk}
+}`);
+      }
     };
     mat.needsUpdate = true;
     return mat;
