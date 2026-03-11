@@ -267,6 +267,15 @@
       height:24px;
       padding:0 10px;
     }
+    #debugFogBtn{
+      position:absolute;
+      top:10px;
+      left:146px;
+      z-index:10;
+      min-width:82px;
+      height:24px;
+      padding:0 10px;
+    }
     #fpsCounter{
       position:absolute;
       top:10px;
@@ -394,6 +403,34 @@
     #layerVisibilityControls button{ min-height:22px; padding:2px 8px; font-size:11px; }
     #layerVisibilityList{ display:grid; grid-template-columns:1fr; gap:4px; font-size:12px; overflow:auto; min-height:0; }
     #layerVisibilityList label{ display:flex; align-items:center; gap:6px; }
+    #debugFogPanel{
+      position:absolute;
+      top:42px;
+      left:146px;
+      z-index:11;
+      min-width:330px;
+      max-width:min(56vw, 520px);
+      max-height:min(72vh, 640px);
+      display:none;
+      background:var(--panel);
+      border:1px solid var(--line-strong);
+      border-radius:var(--radius-md);
+      box-shadow:var(--shadow-md);
+      padding:10px;
+      overflow:auto;
+      font-size:12px;
+    }
+    #debugFogPanel.open{ display:block; }
+    #debugFogPresetBtns{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin-bottom:8px; }
+    #debugFogPresetBtns button{ min-height:24px; padding:2px 6px; font-size:11px; }
+    #debugFogPresetBtns button.active{ border-color:var(--accent); box-shadow:var(--focus-ring); }
+    .debugFogGroup{ border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:8px; }
+    .debugFogGroup h4{ margin:0 0 8px; font-size:12px; }
+    .debugFogRow{ display:grid; grid-template-columns:92px 1fr auto; gap:8px; align-items:center; margin-bottom:6px; }
+    .debugFogRow:last-child{ margin-bottom:0; }
+    .debugFogRow input[type="range"]{ width:100%; }
+    .fogSwatch{ width:22px; height:14px; border:1px solid var(--line-strong); border-radius:3px; display:inline-block; vertical-align:middle; }
+    .fogRgbReadout{ display:flex; align-items:center; gap:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     #misRealtimePanel{
       margin-top:12px;
       border:1px solid var(--line);
@@ -1164,6 +1201,7 @@
     <div id="canvasWrap">
       <button id="showPanelBtn" type="button" class="modeBtn">Show</button>
       <button id="showLayersBtn" type="button" class="modeBtn">Layers</button>
+      <button id="debugFogBtn" type="button" class="modeBtn">Debug Fog</button>
       <canvas id="cv"></canvas>
       <div id="camDebug"></div>
       <div id="fpsCounter">0 FPS</div>
@@ -1197,6 +1235,33 @@
           <button id="showAllLayersBtn" type="button">Show All</button>
         </div>
         <div id="layerVisibilityList"></div>
+      </div>
+
+      <div id="debugFogPanel" aria-hidden="true">
+        <div id="debugFogPresetBtns">
+          <button type="button" data-fog-preset="0">0 Fog</button>
+          <button type="button" data-fog-preset="1">1 Haze</button>
+          <button type="button" data-fog-preset="2">2 Haze wall</button>
+          <button type="button" data-fog-preset="3">3 Mild haze wall</button>
+        </div>
+        <div class="debugFogGroup">
+          <h4>Preset tuning (proporção)</h4>
+          <div class="debugFogRow"><label for="fogDbgNearDist">Near start</label><input id="fogDbgNearDist" type="range" min="0" max="1" step="0.001" /><span id="fogDbgNearDistVal">-</span></div>
+          <div class="debugFogRow"><label for="fogDbgMidDist">Mid start</label><input id="fogDbgMidDist" type="range" min="0" max="1" step="0.001" /><span id="fogDbgMidDistVal">-</span></div>
+          <div class="debugFogRow"><label for="fogDbgFarDist">Far ref</label><input id="fogDbgFarDist" type="range" min="0.05" max="1" step="0.001" /><span id="fogDbgFarDistVal">-</span></div>
+        </div>
+        <div class="debugFogGroup">
+          <h4>Força do fog</h4>
+          <div class="debugFogRow"><label for="fogDbgNearStrength">Near strength</label><input id="fogDbgNearStrength" type="range" min="0" max="1" step="0.01" /><span id="fogDbgNearStrengthVal">-</span></div>
+          <div class="debugFogRow"><label for="fogDbgMidStrength">Mid strength</label><input id="fogDbgMidStrength" type="range" min="0" max="1" step="0.01" /><span id="fogDbgMidStrengthVal">-</span></div>
+        </div>
+        <div class="debugFogGroup">
+          <h4>Fog color (read-only)</h4>
+          <div class="fogRgbReadout">
+            <span id="fogDbgRgbText">RGB(0,0,0)</span>
+            <span id="fogDbgColorSwatch" class="fogSwatch" aria-hidden="true"></span>
+          </div>
+        </div>
       </div>
 
       <div id="sectionOverlay" aria-hidden="true">
@@ -1810,6 +1875,12 @@
       pointerNdc: null,
       ready: false,
     },
+    debugFog: {
+      selectedPreset: 0,
+      presetValues: new Map(),
+      suppressUiHandlers: false,
+      lastEnvFogType: null,
+    },
   };
 
   // UI refs
@@ -1828,10 +1899,25 @@
   const exportBtn = document.getElementById("exportBtn");
   const showPanelBtn = document.getElementById("showPanelBtn");
   const showLayersBtn = document.getElementById("showLayersBtn");
+  const debugFogBtn = document.getElementById("debugFogBtn");
   const hideAllLayersBtn = document.getElementById("hideAllLayersBtn");
   const showAllLayersBtn = document.getElementById("showAllLayersBtn");
   const canvasShowPanelEl = document.getElementById("canvasShowPanel");
   const layerVisibilityPanelEl = document.getElementById("layerVisibilityPanel");
+  const debugFogPanelEl = document.getElementById("debugFogPanel");
+  const debugFogPresetBtnsEl = document.getElementById("debugFogPresetBtns");
+  const fogDbgNearDistEl = document.getElementById("fogDbgNearDist");
+  const fogDbgMidDistEl = document.getElementById("fogDbgMidDist");
+  const fogDbgFarDistEl = document.getElementById("fogDbgFarDist");
+  const fogDbgNearStrengthEl = document.getElementById("fogDbgNearStrength");
+  const fogDbgMidStrengthEl = document.getElementById("fogDbgMidStrength");
+  const fogDbgNearDistValEl = document.getElementById("fogDbgNearDistVal");
+  const fogDbgMidDistValEl = document.getElementById("fogDbgMidDistVal");
+  const fogDbgFarDistValEl = document.getElementById("fogDbgFarDistVal");
+  const fogDbgNearStrengthValEl = document.getElementById("fogDbgNearStrengthVal");
+  const fogDbgMidStrengthValEl = document.getElementById("fogDbgMidStrengthVal");
+  const fogDbgRgbTextEl = document.getElementById("fogDbgRgbText");
+  const fogDbgColorSwatchEl = document.getElementById("fogDbgColorSwatch");
   const layerVisibilityListEl = document.getElementById("layerVisibilityList");
   const canvasWrapEl = document.getElementById("canvasWrap");
   const statusEl = document.getElementById("status");
@@ -5211,7 +5297,7 @@
     if (e.key === "Escape" && state.modalOpen) closeModalCancel();
     if (e.key === "Escape" && state.sectionEditorOpen) closeSectionEditor();
     if (e.key === "Escape" && state.liveMisOpen) closeLiveMisWindow();
-    if (e.key === "Escape") { setCanvasShowPanelOpen(false); setLayerVisibilityPanelOpen(false); }
+    if (e.key === "Escape") { setCanvasShowPanelOpen(false); setLayerVisibilityPanelOpen(false); setDebugFogPanelOpen(false); }
     if (e.key === "Escape" && state.pastePlacementActive){
       state.pastePlacementActive = false;
       state.pastePreviewWorld = null;
@@ -5393,6 +5479,24 @@
     showPanelBtn?.classList.toggle("active", visible);
   }
 
+  function positionDebugFogPanel(){
+    if (!debugFogPanelEl || !debugFogBtn || !canvasWrapEl) return;
+    const wrapRect = canvasWrapEl.getBoundingClientRect();
+    const btnRect = debugFogBtn.getBoundingClientRect();
+    const top = Math.max(8, (btnRect.bottom - wrapRect.top) + 6);
+    const left = Math.max(8, btnRect.left - wrapRect.left);
+    debugFogPanelEl.style.top = `${Math.round(top)}px`;
+    debugFogPanelEl.style.left = `${Math.round(left)}px`;
+  }
+
+  function setDebugFogPanelOpen(open){
+    const visible = !!open;
+    if (visible) positionDebugFogPanel();
+    debugFogPanelEl?.classList.toggle("open", visible);
+    debugFogPanelEl?.setAttribute("aria-hidden", visible ? "false" : "true");
+    debugFogBtn?.classList.toggle("active", visible);
+  }
+
   function focusCameraNearItem(it){
     if (!it) return;
     const x = rawToWorld(it.x, 'x');
@@ -5417,15 +5521,31 @@
   showPanelBtn?.addEventListener("click", (event) => {
     event.stopPropagation();
     const next = !canvasShowPanelEl?.classList.contains("open");
-    if (next) setLayerVisibilityPanelOpen(false);
+    if (next){
+      setLayerVisibilityPanelOpen(false);
+      setDebugFogPanelOpen(false);
+    }
     setCanvasShowPanelOpen(next);
   });
 
   showLayersBtn?.addEventListener("click", (event) => {
     event.stopPropagation();
     const next = !layerVisibilityPanelEl?.classList.contains("open");
-    if (next) setCanvasShowPanelOpen(false);
+    if (next){
+      setCanvasShowPanelOpen(false);
+      setDebugFogPanelOpen(false);
+    }
     setLayerVisibilityPanelOpen(next);
+  });
+
+  debugFogBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const next = !debugFogPanelEl?.classList.contains("open");
+    if (next){
+      setCanvasShowPanelOpen(false);
+      setLayerVisibilityPanelOpen(false);
+    }
+    setDebugFogPanelOpen(next);
   });
 
   hideAllLayersBtn?.addEventListener("click", (event) => {
@@ -5441,16 +5561,22 @@
   canvasShowPanelEl?.addEventListener("click", (event) => {
     event.stopPropagation();
   });
+  debugFogPanelEl?.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
 
   document.addEventListener("mousedown", (event) => {
-    if (!canvasShowPanelEl?.classList.contains("open")) return;
-    if (canvasShowPanelEl.contains(event.target) || showPanelBtn?.contains(event.target)) return;
-    setCanvasShowPanelOpen(false);
+    if (canvasShowPanelEl?.classList.contains("open")){
+      if (!(canvasShowPanelEl.contains(event.target) || showPanelBtn?.contains(event.target))) setCanvasShowPanelOpen(false);
+    }
+    if (debugFogPanelEl?.classList.contains("open")){
+      if (!(debugFogPanelEl.contains(event.target) || debugFogBtn?.contains(event.target))) setDebugFogPanelOpen(false);
+    }
   });
 
   addEventListener("resize", () => {
-    if (!canvasShowPanelEl?.classList.contains("open")) return;
-    positionCanvasShowPanel();
+    if (canvasShowPanelEl?.classList.contains("open")) positionCanvasShowPanel();
+    if (debugFogPanelEl?.classList.contains("open")) positionDebugFogPanel();
   });
 
   exportBtn.addEventListener("click", () => {
@@ -7384,15 +7510,34 @@
   function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; if(!isItemLayerVisible(it)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),getItemWorldZ(it)); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
   const FOG_PRESET_BASE_DISTANCE = 128;
-  const FOG_PRESET_CONFIG = {
+  const FOG_PRESET_DEFAULTS = {
     0: { nearDistance: 5, midDistance: 17, farDistance: 38, nearStrength: 0.2, midStrength: 0.6 },
     1: { nearDistance: 10, midDistance: 40, farDistance: 90, nearStrength: 0.08, midStrength: 0.5 },
     2: { nearDistance: 50, midDistance: 70, farDistance: 115, nearStrength: 0.2, midStrength: 0.6 },
     3: { nearDistance: 25, midDistance: 50, farDistance: 110, nearStrength: 0.2, midStrength: 0.55 },
   };
 
+  function makeFogPresetRatios(preset){
+    return {
+      nearStartRatio: Math.max(0, Math.min(1, (Number(preset?.nearDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
+      midStartRatio: Math.max(0, Math.min(1, (Number(preset?.midDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
+      farRefRatio: Math.max(0.05, Math.min(1, (Number(preset?.farDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
+      nearStrength: Math.max(0, Math.min(1, Number(preset?.nearStrength) || 0)),
+      midStrength: Math.max(0, Math.min(1, Number(preset?.midStrength) || 0)),
+    };
+  }
+
+  function ensureDebugFogPresetValues(){
+    for (const key of [0,1,2,3]){
+      if (!state.debugFog.presetValues.has(key)){
+        state.debugFog.presetValues.set(key, makeFogPresetRatios(FOG_PRESET_DEFAULTS[key]));
+      }
+    }
+  }
+
   function getFogPresetConfig(fogType){
-    return FOG_PRESET_CONFIG[fogType] || FOG_PRESET_CONFIG[0];
+    ensureDebugFogPresetValues();
+    return state.debugFog.presetValues.get(fogType) || state.debugFog.presetValues.get(0);
   }
 
   function normalizeFogRamp(fogDistance, fogType){
@@ -7400,27 +7545,130 @@
     if (!(safeFar > 0)) return { near: 0, mid: 0, far: 0, nearStrength: 0, midStrength: 0 };
 
     const preset = getFogPresetConfig(fogType);
-    const nearRatio = preset.nearDistance / FOG_PRESET_BASE_DISTANCE;
-    const midRatio = preset.midDistance / FOG_PRESET_BASE_DISTANCE;
-    const farRatio = preset.farDistance / FOG_PRESET_BASE_DISTANCE;
-    const ratioScale = 1 / Math.max(0.0001, farRatio);
+    const farRefRatio = Math.max(0.05, Number(preset.farRefRatio) || 0.05);
+    const nearStartRatio = Math.max(0, Math.min(1, Number(preset.nearStartRatio) || 0));
+    const midStartRatio = Math.max(0, Math.min(1, Number(preset.midStartRatio) || 0));
 
-    const near = safeFar * nearRatio * ratioScale;
-    const mid = safeFar * midRatio * ratioScale;
+    const near = safeFar * (nearStartRatio / farRefRatio);
+    const mid = safeFar * (midStartRatio / farRefRatio);
 
     return {
       near: Math.max(0, Math.min(safeFar, near)),
-      mid: Math.max(0, Math.min(safeFar, Math.max(mid, near + 0.0001))),
+      mid: Math.max(0, Math.min(safeFar, mid)),
       far: safeFar,
       nearStrength: Math.max(0, Math.min(1, Number(preset.nearStrength) || 0)),
       midStrength: Math.max(0, Math.min(1, Number(preset.midStrength) || 0)),
+      farRefRatio,
     };
   }
+
+  function getActiveFogDistanceValue(){
+    const gi = state.sectionBlocks.find(sec => sec.kind === 'general_information');
+    if (!(gi && gi.kv)) return 0;
+    const attrib = Number(gi.kv.attrib || 0);
+    const attribInt = Number.isFinite(attrib) ? Math.trunc(attrib) : 0;
+    const fogDistanceEnabled = (attribInt & GENERAL_ATTRIB_BITS.fogDistanceOverride) !== 0;
+    const envName = String(gi.kv.sunset || giEnvironment?.value || '').trim().toLowerCase();
+    const envData = envName ? GENERAL_ENV_DATA.get(envName) : null;
+    const fogDistance = fogDistanceEnabled
+      ? fixed16ToNumber(gi.kv.fog_level || 0)
+      : Math.max(0, Math.trunc(Number(envData?.fogLevel) || 0));
+    return Number.isFinite(fogDistance) ? Math.max(0, fogDistance) : 0;
+  }
+
+  function syncDebugFogPresetSelection(fogType){
+    const next = [0,1,2,3].includes(fogType) ? fogType : 0;
+    state.debugFog.selectedPreset = next;
+    if (debugFogPresetBtnsEl){
+      debugFogPresetBtnsEl.querySelectorAll('button[data-fog-preset]').forEach((btn) => {
+        const value = Math.trunc(Number(btn.dataset.fogPreset) || 0);
+        btn.classList.toggle('active', value === next);
+      });
+    }
+    updateDebugFogPanelUi();
+  }
+
+  function updateDebugFogColorReadout(color){
+    if (!fogDbgRgbTextEl || !fogDbgColorSwatchEl || !color) return;
+    const rr = Math.max(0, Math.min(255, Math.round((Number(color.r) || 0) * 255)));
+    const gg = Math.max(0, Math.min(255, Math.round((Number(color.g) || 0) * 255)));
+    const bb = Math.max(0, Math.min(255, Math.round((Number(color.b) || 0) * 255)));
+    fogDbgRgbTextEl.textContent = `RGB(${rr}, ${gg}, ${bb})`;
+    fogDbgColorSwatchEl.style.background = `rgb(${rr}, ${gg}, ${bb})`;
+  }
+
+  function updateDebugFogPanelUi(){
+    ensureDebugFogPresetValues();
+    const preset = getFogPresetConfig(state.debugFog.selectedPreset);
+    const farDistance = getActiveFogDistanceValue();
+    state.debugFog.suppressUiHandlers = true;
+    if (fogDbgNearDistEl) fogDbgNearDistEl.value = String(preset.nearStartRatio);
+    if (fogDbgMidDistEl) fogDbgMidDistEl.value = String(preset.midStartRatio);
+    if (fogDbgFarDistEl) fogDbgFarDistEl.value = String(preset.farRefRatio);
+    if (fogDbgNearStrengthEl) fogDbgNearStrengthEl.value = String(preset.nearStrength);
+    if (fogDbgMidStrengthEl) fogDbgMidStrengthEl.value = String(preset.midStrength);
+    state.debugFog.suppressUiHandlers = false;
+
+    const farRefRatio = Math.max(0.05, Number(preset.farRefRatio) || 0.05);
+    const nearScaledRatio = (Number(preset.nearStartRatio) || 0) / farRefRatio;
+    const midScaledRatio = (Number(preset.midStartRatio) || 0) / farRefRatio;
+    const nearM = farDistance * nearScaledRatio;
+    const midM = farDistance * midScaledRatio;
+    if (fogDbgNearDistValEl) fogDbgNearDistValEl.textContent = `${(nearScaledRatio*100).toFixed(1)}% do far (${nearM.toFixed(1)}m)`;
+    if (fogDbgMidDistValEl) fogDbgMidDistValEl.textContent = `${(midScaledRatio*100).toFixed(1)}% do far (${midM.toFixed(1)}m)`;
+    if (fogDbgFarDistValEl) fogDbgFarDistValEl.textContent = `${((Number(preset.farRefRatio) || 0)*100).toFixed(1)}% de 128m (referência preset)`;
+    if (fogDbgNearStrengthValEl) fogDbgNearStrengthValEl.textContent = `${((Number(preset.nearStrength) || 0)*100).toFixed(0)}%`;
+    if (fogDbgMidStrengthValEl) fogDbgMidStrengthValEl.textContent = `${((Number(preset.midStrength) || 0)*100).toFixed(0)}%`;
+  }
+
+  function updateSelectedFogPresetFromUi(nextPreset){
+    const presetId = [0,1,2,3].includes(nextPreset) ? nextPreset : 0;
+    state.debugFog.selectedPreset = presetId;
+    syncDebugFogPresetSelection(presetId);
+    requestRender();
+  }
+
+  function bindDebugFogSlider(inputEl, applyValue){
+    if (!inputEl) return;
+    inputEl.addEventListener('input', () => {
+      if (state.debugFog.suppressUiHandlers) return;
+      ensureDebugFogPresetValues();
+      const preset = getFogPresetConfig(state.debugFog.selectedPreset);
+      applyValue(preset, Number(inputEl.value));
+      updateDebugFogPanelUi();
+      requestRender();
+    });
+  }
+
+  function initDebugFogPanel(){
+    ensureDebugFogPresetValues();
+    if (debugFogPresetBtnsEl){
+      debugFogPresetBtnsEl.querySelectorAll('button[data-fog-preset]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          updateSelectedFogPresetFromUi(Math.trunc(Number(btn.dataset.fogPreset) || 0));
+        });
+      });
+    }
+
+    bindDebugFogSlider(fogDbgNearDistEl, (preset, value) => { preset.nearStartRatio = Math.max(0, Math.min(1, value || 0)); });
+    bindDebugFogSlider(fogDbgMidDistEl, (preset, value) => { preset.midStartRatio = Math.max(0, Math.min(1, value || 0)); });
+    bindDebugFogSlider(fogDbgFarDistEl, (preset, value) => { preset.farRefRatio = Math.max(0.05, Math.min(1, value || 0.05)); });
+    bindDebugFogSlider(fogDbgNearStrengthEl, (preset, value) => { preset.nearStrength = Math.max(0, Math.min(1, value || 0)); });
+    bindDebugFogSlider(fogDbgMidStrengthEl, (preset, value) => { preset.midStrength = Math.max(0, Math.min(1, value || 0)); });
+
+    syncDebugFogPresetSelection(0);
+    updateDebugFogColorReadout({ r: 0.65, g: 0.7, b: 0.75 });
+  }
+
+  initDebugFogPanel();
 
   function getRenderFogSettings(){
     const fallback = { enabled: false, distance: 0, color: { r: 0.65, g: 0.7, b: 0.75 }, source: 'disabled', fogType: 0, ramp: { near: 0, mid: 0, far: 0, nearStrength: 0, midStrength: 0 } };
     const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
-    if (!(gi && gi.kv)) return fallback;
+    if (!(gi && gi.kv)){
+      updateDebugFogColorReadout(fallback.color);
+      return fallback;
+    }
 
     const attrib = Number(gi.kv.attrib || 0);
     const attribInt = Number.isFinite(attrib) ? Math.trunc(attrib) : 0;
@@ -7433,7 +7681,10 @@
     const fogDistance = fogDistanceEnabled
       ? fixed16ToNumber(gi.kv.fog_level || 0)
       : Math.max(0, Math.trunc(Number(envData?.fogLevel) || 0));
-    if (!(Number.isFinite(fogDistance) && fogDistance > 0)) return fallback;
+    if (!(Number.isFinite(fogDistance) && fogDistance > 0)){
+      updateDebugFogColorReadout(fallback.color);
+      return fallback;
+    }
 
     let fogColorRgb = null;
     if (fogColorEnabled) fogColorRgb = decodeFogColor(gi.kv.fog_color || 0);
@@ -7441,14 +7692,20 @@
 
     const rgb = fogColorRgb || { r: 166, g: 179, b: 191 };
     const fogType = Math.max(0, Math.trunc(Number(envData?.fogType) || 0));
+    const colorNormalized = {
+      r: Math.max(0, Math.min(255, Number(rgb.r) || 0)) / 255,
+      g: Math.max(0, Math.min(255, Number(rgb.g) || 0)) / 255,
+      b: Math.max(0, Math.min(255, Number(rgb.b) || 0)) / 255,
+    };
+    if (state.debugFog.lastEnvFogType !== fogType){
+      state.debugFog.lastEnvFogType = fogType;
+      syncDebugFogPresetSelection(fogType);
+    }
+    updateDebugFogColorReadout(colorNormalized);
     return {
       enabled: true,
       distance: fogDistance,
-      color: {
-        r: Math.max(0, Math.min(255, Number(rgb.r) || 0)) / 255,
-        g: Math.max(0, Math.min(255, Number(rgb.g) || 0)) / 255,
-        b: Math.max(0, Math.min(255, Number(rgb.b) || 0)) / 255,
-      },
+      color: colorNormalized,
       fogType,
       ramp: normalizeFogRamp(fogDistance, fogType),
       source: `${fogDistanceEnabled ? 'MIS fog distance' : 'ENV fog level'} + ${fogColorEnabled ? 'MIS fog color' : 'ENV fog rgb'} + fog_type=${fogType}`,
