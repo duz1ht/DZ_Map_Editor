@@ -7188,7 +7188,8 @@ void main() {`
       state.glb.fogUniforms.uFogFarDist.value = fogRender.ramp.far;
       state.glb.fogUniforms.uFogNearStrength.value = fogRender.ramp.nearStrength;
       state.glb.fogUniforms.uFogMidStrength.value = fogRender.ramp.midStrength;
-      state.glb.fogUniforms.uFogColor.value.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b).convertSRGBToLinear();
+      const fogColorLinear = new state.glb.THREE.Color(fogRender.color.r, fogRender.color.g, fogRender.color.b).convertSRGBToLinear();
+      state.glb.fogUniforms.uFogColor.value.copy(fogColorLinear);
 
       if (fogEnabled){
         if (!scene.fog || !scene.fog.isFog){
