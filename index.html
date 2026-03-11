@@ -421,6 +421,7 @@
     #debugFogPanel.open{ display:block; }
     .debugFogPresetRow{ display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
     .debugFogPresetBtn.active{ background:#2c7be5; border-color:#67a2ff; color:#fff; }
+.debugFogActions{ display:flex; justify-content:flex-end; margin:8px 0 4px; }
     .debugFogGrid{ display:grid; grid-template-columns:130px 1fr 62px; gap:6px; align-items:center; font-size:12px; }
     .debugFogGrid input[type="range"]{ width:100%; }
     .debugFogValue{ text-align:right; color:var(--text-subtle); font-variant-numeric:tabular-nums; }
@@ -1239,6 +1240,9 @@
           <button type="button" class="debugFogPresetBtn" data-fog-preset="2">Haze Wall</button>
           <button type="button" class="debugFogPresetBtn" data-fog-preset="3">Mild Haze Wall</button>
         </div>
+        <div class="debugFogActions">
+          <button id="debugFogUpdateBtn" type="button">Update</button>
+        </div>
         <div class="debugFogGrid">
           <label for="debugFogNearRatio">Near ratio</label><input id="debugFogNearRatio" type="range" min="0" max="1" step="0.001" /><span id="debugFogNearRatioVal" class="debugFogValue">0.000</span>
           <label for="debugFogMidRatio">Mid ratio</label><input id="debugFogMidRatio" type="range" min="0" max="1" step="0.001" /><span id="debugFogMidRatioVal" class="debugFogValue">0.000</span>
@@ -1892,6 +1896,7 @@
   const debugFogRgbEl = document.getElementById("debugFogRgb");
   const debugFogColorSwatchEl = document.getElementById("debugFogColorSwatch");
   const debugFogPresetBtns = Array.from(document.querySelectorAll('.debugFogPresetBtn'));
+  const debugFogUpdateBtn = document.getElementById("debugFogUpdateBtn");
   const debugFogNearRatioEl = document.getElementById("debugFogNearRatio");
   const debugFogMidRatioEl = document.getElementById("debugFogMidRatio");
   const debugFogNearStrengthEl = document.getElementById("debugFogNearStrength");
@@ -5515,6 +5520,11 @@
   });
   [debugFogNearRatioEl, debugFogMidRatioEl, debugFogNearStrengthEl, debugFogMidStrengthEl].forEach((el) => {
     el?.addEventListener('input', applyDebugFogSlidersToPreset);
+  });
+
+  debugFogUpdateBtn?.addEventListener('click', () => {
+    applyDebugFogSlidersToPreset();
+    statusEl.textContent = `Debug Fog preset ${state.debugFogSelectedPreset} updated.`;
   });
 
   hideAllLayersBtn?.addEventListener("click", (event) => {
