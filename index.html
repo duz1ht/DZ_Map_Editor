@@ -7189,7 +7189,7 @@
     applyThreePointFogToGlbMeshes(fogRender);
     if (state.glb.THREE){
       const fogLinear = new state.glb.THREE.Color(fogRender.color.r, fogRender.color.g, fogRender.color.b).convertSRGBToLinear();
-      scene.fog = null; // Fog de GLB é aplicado apenas no shader custom (uEditorFog*), respeitando near/mid strength.
+      scene.fog = fogRender.enabled ? new state.glb.THREE.Fog(fogLinear, 0.0, Math.max(1.0, fogRender.farDistance)) : null; // usado para manter chunk fog ativo; blend final vem do patch custom em <fog_fragment>.
       scene.background = null;
     }
 
