@@ -6442,6 +6442,9 @@
 
   function drawItems(PV){
     if (!renderUiState.showAnchorPoints) return;
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.depthFunc(gl.LEQUAL);
     const items = getFilteredItems().filter((it) => isItemLayerVisible(it));
     if (!items.length && !(state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length)) return;
 
@@ -6497,6 +6500,7 @@
       }
       drawGroup(p, ptr, [0.34,0.83,0.55,0.9], 13);
     }
+    gl.depthMask(true);
   }
 
   function applyItemTransformToObject(obj, it){
@@ -6581,6 +6585,9 @@
         const { GLTFLoader } = await import(GLTF_LOADER_URL);
         const renderer = new THREE.WebGLRenderer({ canvas: cv, context: gl, antialias: true, alpha: false });
         renderer.autoClear = false;
+        renderer.autoClearColor = false;
+        renderer.autoClearDepth = false;
+        renderer.autoClearStencil = false;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.2;
@@ -7814,7 +7821,11 @@
     gl.clearColor(clearColor.r, clearColor.g, clearColor.b,1);
     gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawGlbItems(P, V); drawItems(PV);
+    const {P,V,PV}=currentPV();
+    const drawCalls=drawTerrain(P,V,forward);
+    drawGlbItems(P, V);
+    resetFixedGlState();
+    drawItems(PV);
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
