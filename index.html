@@ -1277,8 +1277,6 @@
                     <div class="giBox">
                       <div><b>Mission Overrides</b></div>
                       <div class="giInline"><label><input type="checkbox" id="giWaterEnabled" /> Water Level (x0.5 m)</label><input id="giWaterLevel" type="number" step="0.5" /></div>
-                      <div class="giInline"><label><input type="checkbox" id="giFogDistEnabled" /> Fog Distance (m)</label><input id="giFogLevel" type="number" /></div>
-                      <div class="giInline3"><label><input type="checkbox" id="giFogColorEnabled" /> Fog Color</label><input id="giFogR" type="number" min="0" max="255" /><input id="giFogG" type="number" min="0" max="255" /><input id="giFogB" type="number" min="0" max="255" /></div>
                       <div class="giInline"><label>Wind Speed (kph)</label><input id="giWindSpeed" type="number" /></div>
                       <div class="giInline"><label>Wind Direction</label><input id="giWindDirection" type="number" /></div>
                       <div class="giRow"><label>Enviroment File:</label><select id="giEnvironment"></select></div>
@@ -1394,7 +1392,6 @@
           <div class="btnRow" style="justify-content:flex-end;"><button id="logsClearBtn">Clear Logs</button></div>
         </div>
       </div>
-
 
       <div id="globalReplaceOverlay" aria-hidden="true">
         <div id="globalReplaceWindow" role="dialog" aria-modal="true" aria-label="Global Replace">
@@ -1786,8 +1783,6 @@
     renderDiagnostics: {
       lastBackendLogged: null,
       lastTickMs: 0,
-      fogByLayer: new Map(),
-      fogLastTickMs: 0,
     },
     threeTerrain: {
       scene: null,
@@ -1848,14 +1843,7 @@
       scratchViewMatrix: null,
       raycaster: null,
       pointerNdc: null,
-      fogUniforms: null,
       ready: false,
-    },
-    debugFog: {
-      selectedPreset: 0,
-      presetValues: new Map(),
-      suppressUiHandlers: false,
-      lastEnvFogType: null,
     },
   };
 
@@ -1899,32 +1887,13 @@
     addLog(`[render_diag] backend=${state.renderBackend} terrain_draw_calls=${drawCalls} glb_ready=${state.glb.ready ? 'yes' : 'no'} glb_instances=${state.glb.itemInstances.size}`);
   }
 
-  function applyFogToThreeScene(scene){ if (scene) scene.fog = null; }
-
-  function logFogLayerDiagnostics(layerName, fogRender, extra = ''){
-    const now = performance.now();
-    const diag = state.renderDiagnostics;
-    const fogActive = fogRender?.enabled && fogRender?.ramp?.far > 0;
-    const signature = fogActive
-      ? `on:${fogRender.ramp.near.toFixed(2)}:${fogRender.ramp.mid.toFixed(2)}:${fogRender.ramp.far.toFixed(2)}:${fogRender.ramp.nearStrength.toFixed(2)}:${fogRender.ramp.midStrength.toFixed(2)}`
-      : 'off';
-    const prevSig = diag.fogByLayer.get(layerName);
-    const changed = prevSig !== signature;
-    if (!changed && (now - diag.fogLastTickMs) < 5000) return;
-    diag.fogByLayer.set(layerName, signature);
-    diag.fogLastTickMs = now;
-    const suffix = extra ? ` ${extra}` : '';
-    addLog(`[fog_diag] layer=${layerName} active=${fogActive ? 'yes' : 'no'} near=${(fogRender?.ramp?.near || 0).toFixed(2)} mid=${(fogRender?.ramp?.mid || 0).toFixed(2)} far=${(fogRender?.ramp?.far || 0).toFixed(2)} near_strength=${(fogRender?.ramp?.nearStrength || 0).toFixed(2)} mid_strength=${(fogRender?.ramp?.midStrength || 0).toFixed(2)}${suffix}`);
-  }
-
-  function renderLayersByBackend(P, V, PV, forward, fogRender){
+  function renderLayersByBackend(P, V, PV, forward){
     const result = { drawCalls: 0 };
     if (!state.glb.ready) ensureGlbRendererReady();
-    syncThreePointFogUniforms(fogRender);
-    result.drawCalls = drawTerrainThree(P, V, forward, fogRender);
-    drawOverlaysThree(P, V, forward, fogRender);
-    drawItemsThree(P, V, fogRender);
-    drawGlbItems(P, V, fogRender);
+    result.drawCalls = drawTerrainThree(P, V, forward);
+    drawOverlaysThree(P, V, forward);
+    drawItemsThree(P, V);
+    drawGlbItems(P, V);
     return result;
   }
 
@@ -1952,25 +1921,10 @@
   const exportBtn = document.getElementById("exportBtn");
   const showPanelBtn = document.getElementById("showPanelBtn");
   const showLayersBtn = document.getElementById("showLayersBtn");
-  const debugFogBtn = null;
   const hideAllLayersBtn = document.getElementById("hideAllLayersBtn");
   const showAllLayersBtn = document.getElementById("showAllLayersBtn");
   const canvasShowPanelEl = document.getElementById("canvasShowPanel");
   const layerVisibilityPanelEl = document.getElementById("layerVisibilityPanel");
-  const debugFogPanelEl = null;
-  const debugFogPresetBtnsEl = null;
-  const fogDbgNearDistEl = null;
-  const fogDbgMidDistEl = null;
-  const fogDbgFarDistEl = null;
-  const fogDbgNearStrengthEl = null;
-  const fogDbgMidStrengthEl = null;
-  const fogDbgNearDistValEl = null;
-  const fogDbgMidDistValEl = null;
-  const fogDbgFarDistValEl = null;
-  const fogDbgNearStrengthValEl = null;
-  const fogDbgMidStrengthValEl = null;
-  const fogDbgRgbTextEl = null;
-  const fogDbgColorSwatchEl = null;
   const layerVisibilityListEl = document.getElementById("layerVisibilityList");
   const canvasWrapEl = document.getElementById("canvasWrap");
   const statusEl = document.getElementById("status");
@@ -2035,12 +1989,6 @@
   const giLoseRows = document.getElementById("giLoseRows");
   const giWaterEnabled = document.getElementById("giWaterEnabled");
   const giWaterLevel = document.getElementById("giWaterLevel");
-  const giFogDistEnabled = document.getElementById("giFogDistEnabled");
-  const giFogLevel = document.getElementById("giFogLevel");
-  const giFogColorEnabled = document.getElementById("giFogColorEnabled");
-  const giFogR = document.getElementById("giFogR");
-  const giFogG = document.getElementById("giFogG");
-  const giFogB = document.getElementById("giFogB");
   const giWindSpeed = document.getElementById("giWindSpeed");
   const giWindDirection = document.getElementById("giWindDirection");
   const giEnvironment = document.getElementById("giEnvironment");
@@ -2180,8 +2128,6 @@
     nvgAvailable: 1048576,
     nvgStartOn: 4194304,
     waterOverride: 1,
-    fogDistanceOverride: 2,
-    fogColorOverride: 4,
     weatherOverride: 8,
   };
 
@@ -2190,8 +2136,7 @@
     | GENERAL_ATTRIB_BITS.nvgAvailable
     | GENERAL_ATTRIB_BITS.nvgStartOn
     | GENERAL_ATTRIB_BITS.waterOverride
-    | GENERAL_ATTRIB_BITS.fogDistanceOverride
-    | GENERAL_ATTRIB_BITS.fogColorOverride;
+;
 
   const GENERAL_TERRAINS = ["dvd1","dvd2","dvd3","jungle1","arctic1","desert1"];
   const GENERAL_TILES = ["trntile11","trntile12","trntile13","trntile21","trntile31"];
@@ -2259,7 +2204,6 @@
   function joinFixedPositionRaw(whole, fraction){
     return ((parseIntSafe(whole) << 16) | parseUInt16Safe(fraction)) | 0;
   }
-
 
   function invalidateFilteredItemsCache(){
     state.filteredItemsCache = null;
@@ -3198,7 +3142,6 @@
     }).join("");
   }
 
-
   function getGeneralConditionOptions(kind){
     const isWin = kind === "win";
     const keyRegex = isWin ? /^STRWINCOND(\d{3})$/ : /^STRLOSECOND(\d{3})$/;
@@ -3270,7 +3213,6 @@
     names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     return names;
   }
-
 
   function parseAiTextfileLabelsFromMeditens(raw){
     const map = new Map();
@@ -3447,18 +3389,6 @@
     }
   }
 
-  function decodeFogColor(n){
-    const v = Math.max(0, Math.trunc(Number(n) || 0));
-    return { r:(v >> 16) & 255, g:(v >> 8) & 255, b:v & 255 };
-  }
-
-  function encodeFogColor(r,g,b){
-    const rr = Math.max(0, Math.min(255, Math.trunc(Number(r) || 0)));
-    const gg = Math.max(0, Math.min(255, Math.trunc(Number(g) || 0)));
-    const bb = Math.max(0, Math.min(255, Math.trunc(Number(b) || 0)));
-    return (rr << 16) | (gg << 8) | bb;
-  }
-
   function fixed16ToNumber(v){
     const n = Number(v);
     return Number.isFinite(n) ? (n / 65536) : 0;
@@ -3540,9 +3470,6 @@
       env[m[1].toLowerCase()] = m[2].trim();
     }
     return {
-      fogLevel: Math.max(0, Math.trunc(Number(env.fog_level) || 0)),
-      fogType: Math.max(0, Math.trunc(Number(env.fog_type) || 0)),
-      fogRgb: parseEnvRgb(env.fog_rgb),
     };
   }
 
@@ -3571,33 +3498,6 @@
     addLog(`Environment files preload finished: loaded=${loadedCount}, failed=${failedCount}`);
   }
 
-  function applyEnvironmentFogToInputs(){
-    if (!hasMisLoaded()){
-      giFogLevel.value = "0";
-      giFogR.value = "0";
-      giFogG.value = "0";
-      giFogB.value = "0";
-      return;
-    }
-
-    const selectedEnv = String(giEnvironment.value || "").trim().toLowerCase();
-    const envData = GENERAL_ENV_DATA.get(selectedEnv);
-    if (!envData) return;
-
-    if (!giFogDistEnabled.checked) giFogLevel.value = String(envData.fogLevel);
-    if (!giFogColorEnabled.checked){
-      if (envData.fogRgb){
-        giFogR.value = String(envData.fogRgb.r);
-        giFogG.value = String(envData.fogRgb.g);
-        giFogB.value = String(envData.fogRgb.b);
-      } else {
-        giFogR.value = "0";
-        giFogG.value = "0";
-        giFogB.value = "0";
-      }
-    }
-  }
-
   async function applyTerrainWaterToInput(){
     if (!hasMisLoaded()){
       giWaterLevel.value = "0";
@@ -3610,11 +3510,6 @@
 
   function updateGeneralInfoEnables(){
     giWaterLevel.disabled = !giWaterEnabled.checked;
-    giFogLevel.disabled = !giFogDistEnabled.checked;
-    const fogEnabled = giFogColorEnabled.checked;
-    giFogR.disabled = !fogEnabled;
-    giFogG.disabled = !fogEnabled;
-    giFogB.disabled = !fogEnabled;
     giNvgStartOn.disabled = !giNvgAvailable.checked;
   }
 
@@ -3694,13 +3589,6 @@
     giWaterEnabled.checked = (attrib & GENERAL_ATTRIB_BITS.waterOverride) !== 0;
     giWaterLevel.value = Number.isFinite(waterRaw) ? String(waterRaw * 0.5) : "0";
 
-    giFogDistEnabled.checked = (attrib & GENERAL_ATTRIB_BITS.fogDistanceOverride) !== 0;
-    giFogLevel.value = String(fixed16ToNumber(kv.fog_level || 0));
-
-    giFogColorEnabled.checked = (attrib & GENERAL_ATTRIB_BITS.fogColorOverride) !== 0;
-    const rgb = decodeFogColor(kv.fog_color || 0);
-    giFogR.value = String(rgb.r); giFogG.value = String(rgb.g); giFogB.value = String(rgb.b);
-
     const wind = parseIntList(kv.wind, 2);
     giWindSpeed.value = String(wind[0]);
     giWindDirection.value = String(wind[1]);
@@ -3711,18 +3599,10 @@
 
     if (!hasMisLoaded()) {
       giWaterEnabled.checked = false;
-      giFogDistEnabled.checked = false;
-      giFogColorEnabled.checked = false;
-      giWaterLevel.value = "0";
-      giFogLevel.value = "0";
-      giFogR.value = "0";
-      giFogG.value = "0";
-      giFogB.value = "0";
       giWindSpeed.value = "0";
       giWindDirection.value = "0";
     }
 
-    applyEnvironmentFogToInputs();
     applyTerrainWaterToInput();
     updateGeneralInfoEnables();
   }
@@ -3750,8 +3630,6 @@
     if (giNvgAvailable.checked) attrib |= GENERAL_ATTRIB_BITS.nvgAvailable;
     if (giNvgStartOn.checked) attrib |= GENERAL_ATTRIB_BITS.nvgStartOn;
     if (giWaterEnabled.checked) attrib |= GENERAL_ATTRIB_BITS.waterOverride;
-    if (giFogDistEnabled.checked) attrib |= GENERAL_ATTRIB_BITS.fogDistanceOverride;
-    if (giFogColorEnabled.checked) attrib |= GENERAL_ATTRIB_BITS.fogColorOverride;
     kv.attrib = String(attrib);
 
     kv.map_zoom = String(Number(giMapZoom.value || 0).toFixed(2));
@@ -3771,16 +3649,6 @@
       kv.water_level = String(Math.max(0, Math.round(Number(giWaterLevel.value || 0) / 0.5)));
     } else {
       delete kv.water_level;
-    }
-    if (giFogDistEnabled.checked){
-      kv.fog_level = String(numberToFixed16(giFogLevel.value || 0));
-    } else {
-      delete kv.fog_level;
-    }
-    if (giFogColorEnabled.checked){
-      kv.fog_color = String(encodeFogColor(giFogR.value, giFogG.value, giFogB.value));
-    } else {
-      delete kv.fog_color;
     }
 
     kv.wind = `${Math.max(0, Math.trunc(Number(giWindSpeed.value || 0)))} ${Math.max(0, Math.trunc(Number(giWindDirection.value || 0)))}`;
@@ -3827,7 +3695,6 @@
       return `<option value="${escapeHtml(String(n))}">${escapeHtml(label)}</option>`;
     }).join("");
   }
-
 
   const WAYPOINT_COLORS = [
     "Orange","Black","Yellow","Red","Green","Blue","Gray","LtGray","Purple","Cyan","Brown","Aqua","Indigo","Tan","Teal","Dark Red","White","Violet","Pink","Magenta","Dark Blue","Dark Green","Dark Yellow"
@@ -3912,7 +3779,6 @@
     requestRender();
     syncGlbItems();
   }
-
 
   function fillLayerEditor(sec){
     const name = sec?.kv?.description || "";
@@ -4207,7 +4073,6 @@
     return out.join("\n");
   }
 
-
   function getSectionsByKind(kind){
     return state.sectionBlocks.filter(s => s.kind === kind);
   }
@@ -4230,7 +4095,6 @@
     const id = sec.label || sec.kv.id || sec.kv.name || sec.kv.description || sec.kv.title || sec.id;
     return `${sec.kind} ${id}`;
   }
-
 
   function getSectionWindowTitle(kind){
     switch (kind){
@@ -4740,7 +4604,6 @@
     statusEl.textContent = `Default loadout: ${summary}`;
   }
 
-
   function selectAllGroupMembers(){
     const selectedGroup = Math.max(1, Math.min(63, Number(state.groupSelectedNumber) || 1));
     const matchedIds = state.items
@@ -4772,7 +4635,6 @@
     }
     downloadText('groups_export.txt', lines.join('\n'));
   }
-
 
   function saveWaypointsAs(){
     const secs = [];
@@ -5350,7 +5212,7 @@
     if (e.key === "Escape" && state.modalOpen) closeModalCancel();
     if (e.key === "Escape" && state.sectionEditorOpen) closeSectionEditor();
     if (e.key === "Escape" && state.liveMisOpen) closeLiveMisWindow();
-    if (e.key === "Escape") { setCanvasShowPanelOpen(false); setLayerVisibilityPanelOpen(false); setDebugFogPanelOpen(false); }
+    if (e.key === "Escape") { setCanvasShowPanelOpen(false); setLayerVisibilityPanelOpen(false); }
     if (e.key === "Escape" && state.pastePlacementActive){
       state.pastePlacementActive = false;
       state.pastePreviewWorld = null;
@@ -5532,24 +5394,6 @@
     showPanelBtn?.classList.toggle("active", visible);
   }
 
-  function positionDebugFogPanel(){
-    if (!debugFogPanelEl || !debugFogBtn || !canvasWrapEl) return;
-    const wrapRect = canvasWrapEl.getBoundingClientRect();
-    const btnRect = debugFogBtn.getBoundingClientRect();
-    const top = Math.max(8, (btnRect.bottom - wrapRect.top) + 6);
-    const left = Math.max(8, btnRect.left - wrapRect.left);
-    debugFogPanelEl.style.top = `${Math.round(top)}px`;
-    debugFogPanelEl.style.left = `${Math.round(left)}px`;
-  }
-
-  function setDebugFogPanelOpen(open){
-    const visible = !!open;
-    if (visible) positionDebugFogPanel();
-    debugFogPanelEl?.classList.toggle("open", visible);
-    debugFogPanelEl?.setAttribute("aria-hidden", visible ? "false" : "true");
-    debugFogBtn?.classList.toggle("active", visible);
-  }
-
   function focusCameraNearItem(it){
     if (!it) return;
     const x = rawToWorld(it.x, 'x');
@@ -5576,7 +5420,6 @@
     const next = !canvasShowPanelEl?.classList.contains("open");
     if (next){
       setLayerVisibilityPanelOpen(false);
-      setDebugFogPanelOpen(false);
     }
     setCanvasShowPanelOpen(next);
   });
@@ -5586,19 +5429,8 @@
     const next = !layerVisibilityPanelEl?.classList.contains("open");
     if (next){
       setCanvasShowPanelOpen(false);
-      setDebugFogPanelOpen(false);
     }
     setLayerVisibilityPanelOpen(next);
-  });
-
-  debugFogBtn?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const next = !debugFogPanelEl?.classList.contains("open");
-    if (next){
-      setCanvasShowPanelOpen(false);
-      setLayerVisibilityPanelOpen(false);
-    }
-    setDebugFogPanelOpen(next);
   });
 
   hideAllLayersBtn?.addEventListener("click", (event) => {
@@ -5614,22 +5446,15 @@
   canvasShowPanelEl?.addEventListener("click", (event) => {
     event.stopPropagation();
   });
-  debugFogPanelEl?.addEventListener("click", (event) => {
-    event.stopPropagation();
-  });
 
   document.addEventListener("mousedown", (event) => {
     if (canvasShowPanelEl?.classList.contains("open")){
       if (!(canvasShowPanelEl.contains(event.target) || showPanelBtn?.contains(event.target))) setCanvasShowPanelOpen(false);
     }
-    if (debugFogPanelEl?.classList.contains("open")){
-      if (!(debugFogPanelEl.contains(event.target) || debugFogBtn?.contains(event.target))) setDebugFogPanelOpen(false);
-    }
   });
 
   addEventListener("resize", () => {
     if (canvasShowPanelEl?.classList.contains("open")) positionCanvasShowPanel();
-    if (debugFogPanelEl?.classList.contains("open")) positionDebugFogPanel();
   });
 
   exportBtn.addEventListener("click", () => {
@@ -5724,12 +5549,9 @@
   giOkBtn.addEventListener("click", applySectionBlock);
   giCancelBtn.addEventListener("click", deleteSectionBlock);
   sectionAddBtn.addEventListener("click", addSectionBlock);
-  [giWaterEnabled, giFogDistEnabled, giFogColorEnabled, giNvgAvailable].forEach(el => {
+  [giWaterEnabled, giNvgAvailable].forEach(el => {
     if (el) el.addEventListener("change", updateGeneralInfoEnables);
   });
-  giEnvironment.addEventListener("change", applyEnvironmentFogToInputs);
-  giFogDistEnabled.addEventListener("change", applyEnvironmentFogToInputs);
-  giFogColorEnabled.addEventListener("change", applyEnvironmentFogToInputs);
   giTerrain.addEventListener("change", applyTerrainWaterToInput);
   giWaterEnabled.addEventListener("change", applyTerrainWaterToInput);
   groupSelectMembersBtn?.addEventListener("click", selectAllGroupMembers);
@@ -6167,7 +5989,6 @@
     state.selectedWaypointMarkerIds.clear();
     updateWaypointMarkerCount(0);
 
-
     buildLayerOptions();
     buildWaypointList();
     buildGroupOptions();
@@ -6390,7 +6211,6 @@
   function screenRay(sx,sy){ const r=cv.getBoundingClientRect(), nx=(sx/r.width)*2-1, ny=1-(sy/r.height)*2, aspect=r.width/Math.max(r.height,1), t=Math.tan(Math.PI/6); const {forward,right}=cameraBasis(); const up=vec3Norm(vec3Cross(right,forward)); const dir=vec3Norm(vec3Add(vec3Add(forward,vec3Scale(right,nx*t*aspect)),vec3Scale(up,ny*t))); return {origin:cam.pos,dir}; }
   function screenToWorld(sx,sy,zPlane=0){ const ray=screenRay(sx,sy), dz=ray.dir.z; if(Math.abs(dz)<1e-6) return {x:ray.origin.x,y:ray.origin.y,z:zPlane}; const t=(zPlane-ray.origin.z)/dz; return {x:ray.origin.x+ray.dir.x*Math.max(t,0), y:ray.origin.y+ray.dir.y*Math.max(t,0), z:zPlane}; }
 
-
   function extractFrustumPlanes(m){
     const planes=[
       [m[3]+m[0],m[7]+m[4],m[11]+m[8],m[15]+m[12]],
@@ -6533,11 +6353,9 @@
       terrain.material = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         side: THREE.DoubleSide,
-        fog: false,
         transparent: false,
         depthWrite: true,
       });
-      applyThreePointFogRampToMaterial(terrain.material, 'terrain');
     }
     terrain.material.map = getThreeTerrainTextureByMode();
     terrain.material.needsUpdate = true;
@@ -6578,7 +6396,7 @@
     return g;
   }
 
-  function drawTerrainThree(P, V, forward, fogRenderArg){
+  function drawTerrainThree(P, V, forward){
     if (!state.glb.ready || !state.glb.renderer || !state.glb.camera || !sectors || !meshSectorLods[0]?.[1]) return 0;
     if (!ensureThreeTerrainReady()) return 0;
     const { renderer, camera } = state.glb;
@@ -6616,10 +6434,6 @@
       terrain.meshPool.push(mesh);
     }
 
-    const fogRender = fogRenderArg || getRenderFogSettings();
-    applyFogToThreeScene(terrain.scene, fogRender);
-    logFogLayerDiagnostics('terrain', fogRender, `tiles=${vis.visibleTiles.length}`);
-
     applyThreeCameraFromPV(P, V);
     renderer.resetState();
     renderer.render(terrain.scene, camera);
@@ -6640,15 +6454,13 @@
       opacity: 0.28,
       depthTest: true,
       depthWrite: false,
-      fog: false,
     });
-    applyThreePointFogRampToMaterial(overlays.waterMaterial, 'water');
     overlays.waterPool = [];
     overlays.waterMap = new Map();
 
     const gridGeom = new THREE.BufferGeometry();
     gridGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
-    const gridMat = new THREE.LineBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, transparent: false, fog: false });
+    const gridMat = new THREE.LineBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, transparent: false });
     overlays.gridLines = new THREE.LineSegments(gridGeom, gridMat);
     overlays.gridLines.frustumCulled = false;
     overlays.scene.add(overlays.gridLines);
@@ -6656,7 +6468,7 @@
     const rectGeom = new THREE.BufferGeometry();
     rectGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
     rectGeom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(0), 3));
-    const rectMat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, depthWrite: false, transparent: false, fog: false });
+    const rectMat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, depthWrite: false, transparent: false });
     overlays.rectLines = new THREE.LineSegments(rectGeom, rectMat);
     overlays.rectLines.frustumCulled = false;
     overlays.scene.add(overlays.rectLines);
@@ -6706,7 +6518,7 @@
     }
   }
 
-  function drawOverlaysThree(P, V, forward, fogRenderArg){
+  function drawOverlaysThree(P, V, forward){
     if (!ensureThreeOverlaysReady()) return;
     if (!sectors || !Number.isFinite(sectorCount) || sectorCount <= 0){
       updateThreeLineGeometry(state.threeOverlays.gridLines, new Float32Array(0));
@@ -6756,10 +6568,6 @@
       overlays.waterPool.push(mesh);
     }
 
-    const fogRender = fogRenderArg || getRenderFogSettings();
-    applyFogToThreeScene(overlays.scene, fogRender);
-    logFogLayerDiagnostics('overlays', fogRender, `water_tiles=${overlays.waterMap.size}`);
-
     const gridPositions = [];
     if(gridVisible){
       const gridSize=gridSizeMeters();
@@ -6807,8 +6615,6 @@
     state.glb.renderer.render(overlays.scene, state.glb.camera);
     state.glb.renderer.resetState();
   }
-
-
 
   function collectItemPointGroups(){
     if (!renderUiState.showAnchorPoints){
@@ -6883,7 +6689,6 @@
         vertexShader: `uniform float uPointSize; void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = uPointSize; }`,
         fragmentShader: `uniform vec4 uColor; void main(){ vec2 c = gl_PointCoord - vec2(0.5); if(dot(c,c) > 0.25) discard; gl_FragColor = uColor; }`,
         transparent: true,
-        fog: false,
         depthWrite: true,
       });
       const geometry = new THREE.BufferGeometry();
@@ -6921,7 +6726,7 @@
     state.threeItems.drawCountByGroup.set(group, Math.floor(srcLen / 3));
   }
 
-  function drawItemsThree(P, V, fogRenderArg){
+  function drawItemsThree(P, V){
     if (!ensureThreeItemsReady()) return;
     const groups = collectItemPointGroups();
     if (!groups.enabled) {
@@ -6936,16 +6741,11 @@
     updateThreeItemGroup('selected', groups.selectedBuf, groups.selectedLen);
     updateThreeItemGroup('paste', groups.pasteBuf, groups.pasteLen);
 
-    const fogRender = fogRenderArg || getRenderFogSettings();
-    const totalPoints = Math.floor((groups.normalLen + groups.waypointLen + groups.selectedLen + groups.pasteLen) / 3);
-    logFogLayerDiagnostics('items', fogRender, `anchors_no_fog=yes points=${totalPoints}`);
-
     applyThreeCameraFromPV(P, V);
     state.glb.renderer.resetState();
     state.glb.renderer.render(state.threeItems.scene, state.glb.camera);
     state.glb.renderer.resetState();
   }
-
 
   function applyItemTransformToObject(obj, it){
     if (!obj || !it) return;
@@ -7048,15 +6848,6 @@
         state.glb.scene = scene3d;
         state.glb.camera = camera3d;
         state.glb.loader = new GLTFLoader();
-        state.glb.fogUniforms = {
-          uFogEnabled: { value: 0.0 },
-          uFogNearDist: { value: 0.0 },
-          uFogMidDist: { value: 0.0 },
-          uFogFarDist: { value: 0.0 },
-          uFogNearStrength: { value: 0.0 },
-          uFogMidStrength: { value: 0.0 },
-          uFogColor: { value: new THREE.Color(0.65, 0.70, 0.75) },
-        };
         if (!state.glb.lodConfigLogged){
           const activeLevels = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
             ? state.glb.activeLodLevels
@@ -7128,63 +6919,6 @@
     return { entries: out, stats };
   }
 
-  function applyThreePointFogRampToMaterial(material, patchKey = 'material'){
-    if (!material || material.userData?._customFogRampPatched || !state.glb.fogUniforms) return;
-    material.fog = true;
-    material.userData = material.userData || {};
-    material.userData._customFogRampPatched = true;
-    material.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, state.glb.fogUniforms);
-      shader.fragmentShader = shader.fragmentShader.replace(
-        'void main() {',
-        `uniform float uFogEnabled;
-uniform float uFogNearDist;
-uniform float uFogMidDist;
-uniform float uFogFarDist;
-uniform float uFogNearStrength;
-uniform float uFogMidStrength;
-uniform vec3 uFogColor;
-void main() {`
-      );
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <fog_fragment>',
-        `#ifdef USE_FOG
-          float fogAmount = 0.0;
-          if (uFogEnabled > 0.5 && uFogFarDist > 0.0) {
-            float distToCam = vFogDepth;
-            if (distToCam <= uFogNearDist) {
-              fogAmount = 0.0;
-            } else if (distToCam <= uFogMidDist) {
-              float tNearMid = clamp((distToCam - uFogNearDist) / max(0.0001, uFogMidDist - uFogNearDist), 0.0, 1.0);
-              fogAmount = mix(uFogNearStrength, uFogMidStrength, tNearMid);
-            } else if (distToCam <= uFogFarDist) {
-              float tMidFar = clamp((distToCam - uFogMidDist) / max(0.0001, uFogFarDist - uFogMidDist), 0.0, 1.0);
-              fogAmount = mix(uFogMidStrength, 1.0, tMidFar);
-            } else {
-              fogAmount = 1.0;
-            }
-          }
-          gl_FragColor.rgb = mix(gl_FragColor.rgb, uFogColor, clamp(fogAmount, 0.0, 1.0));
-        #endif`
-      );
-    };
-    material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v2_${patchKey}`;
-    material.needsUpdate = true;
-  }
-
-  function applyCustomFogToGlbMaterial(material){
-    applyThreePointFogRampToMaterial(material, 'glb');
-  }
-
-  function applyCustomFogToGlbObject(root){
-    if (!root?.traverse) return;
-    root.traverse((obj) => {
-      if (!obj?.isMesh || !obj.material) return;
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      for (const mat of mats) applyCustomFogToGlbMaterial(mat);
-    });
-  }
-
   async function loadGraphicTemplate(graphic){
     const key = String(graphic || "").trim();
     if (!key) return null;
@@ -7239,14 +6973,12 @@ void main() {`
             alphaTest: m.alphaTest || 0,
             vertexColors: !!m.vertexColors,
             flatShading: !!m.flatShading,
-            fog: false,
-          });
+              });
         });
 
         obj.material = Array.isArray(obj.material) ? converted : converted[0];
       });
 
-      applyCustomFogToGlbObject(root);
       convertNamedTopLevelObjectsToLodGroups(root);
 
       state.glb.templateByGraphic.set(key, root);
@@ -7316,7 +7048,6 @@ void main() {`
       alphaTest: baseMat?.alphaTest || 0,
       depthTest: baseMat?.depthTest !== false,
       depthWrite: baseMat?.depthWrite !== false,
-      fog: false,
       toneMapped: false,
     });
     mat.needsUpdate = true;
@@ -7367,7 +7098,6 @@ void main() {`
     addLog(`[3d_items] wireframe ${next ? "on" : "off"}`);
   }
 
-
   function cleanupGlbInstanceVisualState(instance){
     if (!instance) return;
     clearGlbSelectionOutline(instance);
@@ -7416,7 +7146,6 @@ void main() {`
             if (Array.isArray(obj.material)) obj.material = obj.material.map(m => m ? m.clone() : m);
             else if (obj.material) obj.material = obj.material.clone();
           });
-          applyCustomFogToGlbObject(instance);
           applyWireframeToGlbObject(instance);
           instance.userData.itemId = it.id;
           instance.userData.graphic = graphic;
@@ -7495,11 +7224,7 @@ void main() {`
     state.glb.transformDirtyIds.clear();
   }
 
-  function syncThreePointFogUniforms(){ return; }
-
-  function syncGlbFogState(){ if (state.glb?.scene) state.glb.scene.fog = null; }
-
-  function drawGlbItems(P, V, fogRenderArg){
+  function drawGlbItems(P, V){
     if (!state.glb.ready){
       ensureGlbRendererReady().then((ready) => {
         if (ready) syncGlbItems();
@@ -7509,9 +7234,6 @@ void main() {`
     updateGlbTransformsFromState();
 
     const { renderer, scene } = state.glb;
-    const fogRender = fogRenderArg || getRenderFogSettings();
-    syncGlbFogState(fogRender);
-    logFogLayerDiagnostics('glb', fogRender, `instances=${state.glb.itemInstances.size}`);
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
 
@@ -7892,163 +7614,6 @@ void main() {`
 
   function pickItemAt(sx,sy){ const world=screenToWorld(sx,sy,0); const size=Math.max(64, Number(state.spatialIndex.cellSize)||2048); const candidates=getSpatialCandidatesByWorldRect(world.x-size,world.y-size,world.x+size,world.y+size); const filteredSet=new Set(getFilteredItems().map(it=>it.id)); let best=null,bestD2=Infinity; for(const it of candidates){ if(!filteredSet.has(it.id)) continue; if(!isItemLayerVisible(it)) continue; const p=worldToScreen(rawToWorld(it.x,'x'),rawToWorld(it.y,'y'),getItemWorldZ(it)); if(!p.visible) continue; const dx=p.sx-sx,dy=p.sy-sy,d2=dx*dx+dy*dy; if(d2<bestD2){bestD2=d2;best=it;} } return (best&&bestD2<14*14)?best:null; }
 
-  const FOG_PRESET_BASE_DISTANCE = 128;
-  const FOG_PRESET_DEFAULTS = {
-    0: { nearDistance: 1.275392, midDistance: 35.325952, farDistance: 24.064, nearStrength: 0.24, midStrength: 0.86 },
-    1: { nearDistance: 10.233984, midDistance: 102.457472, farDistance: 117.632, nearStrength: 0.06, midStrength: 0.59 },
-    2: { nearDistance: 48.3616, midDistance: 77.05344, farDistance: 81.28, nearStrength: 0.06, midStrength: 0.69 },
-    3: { nearDistance: 40.192, midDistance: 90.368, farDistance: 128, nearStrength: 0.0, midStrength: 0.34 },
-  };
-
-  function makeFogPresetRatios(preset){
-    return {
-      nearStartRatio: Math.max(0, Math.min(1, (Number(preset?.nearDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
-      midStartRatio: Math.max(0, Math.min(1, (Number(preset?.midDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
-      farRefRatio: Math.max(0.05, Math.min(1, (Number(preset?.farDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
-      nearStrength: Math.max(0, Math.min(1, Number(preset?.nearStrength) || 0)),
-      midStrength: Math.max(0, Math.min(1, Number(preset?.midStrength) || 0)),
-    };
-  }
-
-  function ensureDebugFogPresetValues(){
-    for (const key of [0,1,2,3]){
-      if (!state.debugFog.presetValues.has(key)){
-        state.debugFog.presetValues.set(key, makeFogPresetRatios(FOG_PRESET_DEFAULTS[key]));
-      }
-    }
-  }
-
-  function getFogPresetConfig(fogType){
-    ensureDebugFogPresetValues();
-    return state.debugFog.presetValues.get(fogType) || state.debugFog.presetValues.get(0);
-  }
-
-  function normalizeFogRamp(fogDistance, fogType){
-    const safeFar = Math.max(0, Number(fogDistance) || 0);
-    if (!(safeFar > 0)) return { near: 0, mid: 0, far: 0, nearStrength: 0, midStrength: 0 };
-
-    const preset = getFogPresetConfig(fogType);
-    const farRefRatio = Math.max(0.05, Number(preset.farRefRatio) || 0.05);
-    const nearStartRatio = Math.max(0, Math.min(1, Number(preset.nearStartRatio) || 0));
-    const midStartRatio = Math.max(0, Math.min(1, Number(preset.midStartRatio) || 0));
-
-    const near = safeFar * (nearStartRatio / farRefRatio);
-    const mid = safeFar * (midStartRatio / farRefRatio);
-
-    return {
-      near: Math.max(0, Math.min(safeFar, near)),
-      mid: Math.max(0, Math.min(safeFar, mid)),
-      far: safeFar,
-      nearStrength: Math.max(0, Math.min(1, Number(preset.nearStrength) || 0)),
-      midStrength: Math.max(0, Math.min(1, Number(preset.midStrength) || 0)),
-      farRefRatio,
-    };
-  }
-
-  function getActiveFogDistanceValue(){
-    const gi = state.sectionBlocks.find(sec => sec.kind === 'general_information');
-    if (!(gi && gi.kv)) return 0;
-    const attrib = Number(gi.kv.attrib || 0);
-    const attribInt = Number.isFinite(attrib) ? Math.trunc(attrib) : 0;
-    const fogDistanceEnabled = (attribInt & GENERAL_ATTRIB_BITS.fogDistanceOverride) !== 0;
-    const envName = String(gi.kv.sunset || giEnvironment?.value || '').trim().toLowerCase();
-    const envData = envName ? GENERAL_ENV_DATA.get(envName) : null;
-    const fogDistance = fogDistanceEnabled
-      ? fixed16ToNumber(gi.kv.fog_level || 0)
-      : Math.max(0, Math.trunc(Number(envData?.fogLevel) || 0));
-    return Number.isFinite(fogDistance) ? Math.max(0, fogDistance) : 0;
-  }
-
-  function syncDebugFogPresetSelection(fogType){
-    const next = [0,1,2,3].includes(fogType) ? fogType : 0;
-    state.debugFog.selectedPreset = next;
-    if (debugFogPresetBtnsEl){
-      debugFogPresetBtnsEl.querySelectorAll('button[data-fog-preset]').forEach((btn) => {
-        const value = Math.trunc(Number(btn.dataset.fogPreset) || 0);
-        btn.classList.toggle('active', value === next);
-      });
-    }
-    updateDebugFogPanelUi();
-  }
-
-  function updateDebugFogColorReadout(color){
-    if (!fogDbgRgbTextEl || !fogDbgColorSwatchEl || !color) return;
-    const rr = Math.max(0, Math.min(255, Math.round((Number(color.r) || 0) * 255)));
-    const gg = Math.max(0, Math.min(255, Math.round((Number(color.g) || 0) * 255)));
-    const bb = Math.max(0, Math.min(255, Math.round((Number(color.b) || 0) * 255)));
-    fogDbgRgbTextEl.textContent = `RGB(${rr}, ${gg}, ${bb})`;
-    fogDbgColorSwatchEl.style.background = `rgb(${rr}, ${gg}, ${bb})`;
-  }
-
-  function updateDebugFogPanelUi(){
-    ensureDebugFogPresetValues();
-    const preset = getFogPresetConfig(state.debugFog.selectedPreset);
-    const farDistance = getActiveFogDistanceValue();
-    state.debugFog.suppressUiHandlers = true;
-    if (fogDbgNearDistEl) fogDbgNearDistEl.value = String(preset.nearStartRatio);
-    if (fogDbgMidDistEl) fogDbgMidDistEl.value = String(preset.midStartRatio);
-    if (fogDbgFarDistEl) fogDbgFarDistEl.value = String(preset.farRefRatio);
-    if (fogDbgNearStrengthEl) fogDbgNearStrengthEl.value = String(preset.nearStrength);
-    if (fogDbgMidStrengthEl) fogDbgMidStrengthEl.value = String(preset.midStrength);
-    state.debugFog.suppressUiHandlers = false;
-
-    const farRefRatio = Math.max(0.05, Number(preset.farRefRatio) || 0.05);
-    const nearScaledRatio = (Number(preset.nearStartRatio) || 0) / farRefRatio;
-    const midScaledRatio = (Number(preset.midStartRatio) || 0) / farRefRatio;
-    const nearM = farDistance * nearScaledRatio;
-    const midM = farDistance * midScaledRatio;
-    if (fogDbgNearDistValEl) fogDbgNearDistValEl.textContent = `${(nearScaledRatio*100).toFixed(1)}% do far (${nearM.toFixed(1)}m)`;
-    if (fogDbgMidDistValEl) fogDbgMidDistValEl.textContent = `${(midScaledRatio*100).toFixed(1)}% do far (${midM.toFixed(1)}m)`;
-    if (fogDbgFarDistValEl) fogDbgFarDistValEl.textContent = `${((Number(preset.farRefRatio) || 0)*100).toFixed(1)}% de 128m (referência preset)`;
-    if (fogDbgNearStrengthValEl) fogDbgNearStrengthValEl.textContent = `${((Number(preset.nearStrength) || 0)*100).toFixed(0)}%`;
-    if (fogDbgMidStrengthValEl) fogDbgMidStrengthValEl.textContent = `${((Number(preset.midStrength) || 0)*100).toFixed(0)}%`;
-  }
-
-  function updateSelectedFogPresetFromUi(nextPreset){
-    const presetId = [0,1,2,3].includes(nextPreset) ? nextPreset : 0;
-    state.debugFog.selectedPreset = presetId;
-    syncDebugFogPresetSelection(presetId);
-    requestRender();
-  }
-
-  function bindDebugFogSlider(inputEl, applyValue){
-    if (!inputEl) return;
-    inputEl.addEventListener('input', () => {
-      if (state.debugFog.suppressUiHandlers) return;
-      ensureDebugFogPresetValues();
-      const preset = getFogPresetConfig(state.debugFog.selectedPreset);
-      applyValue(preset, Number(inputEl.value));
-      updateDebugFogPanelUi();
-      requestRender();
-    });
-  }
-
-  function initDebugFogPanel(){
-    ensureDebugFogPresetValues();
-    if (debugFogPresetBtnsEl){
-      debugFogPresetBtnsEl.querySelectorAll('button[data-fog-preset]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          updateSelectedFogPresetFromUi(Math.trunc(Number(btn.dataset.fogPreset) || 0));
-        });
-      });
-    }
-
-    bindDebugFogSlider(fogDbgNearDistEl, (preset, value) => { preset.nearStartRatio = Math.max(0, Math.min(1, value || 0)); });
-    bindDebugFogSlider(fogDbgMidDistEl, (preset, value) => { preset.midStartRatio = Math.max(0, Math.min(1, value || 0)); });
-    bindDebugFogSlider(fogDbgFarDistEl, (preset, value) => { preset.farRefRatio = Math.max(0.05, Math.min(1, value || 0.05)); });
-    bindDebugFogSlider(fogDbgNearStrengthEl, (preset, value) => { preset.nearStrength = Math.max(0, Math.min(1, value || 0)); });
-    bindDebugFogSlider(fogDbgMidStrengthEl, (preset, value) => { preset.midStrength = Math.max(0, Math.min(1, value || 0)); });
-
-    syncDebugFogPresetSelection(0);
-    updateDebugFogColorReadout({ r: 0.65, g: 0.7, b: 0.75 });
-  }
-
-  initDebugFogPanel();
-
-  function getRenderFogSettings(){
-    return { enabled: false, distance: 0, color: { r: 0.05, g: 0.06, b: 0.08 }, source: 'disabled', fogType: 0, ramp: { near: 0, mid: 0, far: 0, nearStrength: 0, midStrength: 0 } };
-  }
-
   function extractTerrainNameFromMis(){ const gi=state.sectionBlocks.find(s=>s.kind==='general_information'); return gi&&gi.kv&&gi.kv.terrain?String(gi.kv.terrain).trim():''; }
   function getRenderWaterHeightRaw(){
     const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
@@ -8225,8 +7790,6 @@ void main() {`
     addLog(`[terrain] terrain rebuild complete: ${folder}/${trnFile}`);
   }
 
-
-
   function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); if(state.glb.renderer){ state.glb.renderer.setSize(cv.width, cv.height, false); } if(gizmoCanvasEl){ gizmoCanvasEl.width=Math.floor(r.width*dpr); gizmoCanvasEl.height=Math.floor(r.height*dpr); } }
 
   function fitView(){
@@ -8317,13 +7880,12 @@ void main() {`
     }
     const {forwardXY,right,forward}=cameraBasis(); const canMoveWithKeys=(document.pointerLockElement===cv && state.cameraLookActive); let dir=vec3(0,0,0); if(canMoveWithKeys&&move.w) dir=vec3Add(dir,forwardXY); if(canMoveWithKeys&&move.s) dir=vec3Sub(dir,forwardXY); if(canMoveWithKeys&&move.d) dir=vec3Add(dir,right); if(canMoveWithKeys&&move.a) dir=vec3Sub(dir,right); if(canMoveWithKeys&&move.e) dir=vec3Add(dir,vec3(0,0,1)); if(canMoveWithKeys&&move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); const speedTable=[12.5,25,50,100,200,300,450,600]; const lvl=Math.max(1,Math.min(8,renderUiState.speedLevel|0)); const scalar=Math.max(0.1,renderUiState.speedScalar||1); const base=speedTable[lvl-1]*scalar; const spd=base; state.camera.speed=spd; const targetVel=dlen>0?vec3Scale(dir,spd/dlen):vec3(0,0,0); const smoothBoost=1.3; const accel=12.0/smoothBoost, decel=10.0/smoothBoost; const blend=Math.min(1, (dlen>0?accel:decel)*dt); camVel=vec3Add(camVel, vec3Scale(vec3Sub(targetVel,camVel), blend)); cam.pos=vec3Add(cam.pos,vec3Scale(camVel,dt));
     if(renderUiState.groundClamp && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=renderUiState.clearance; if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
-    const fogRender = getRenderFogSettings();
-    const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
+    const clearCol = { r: 0.05, g: 0.06, b: 0.08 };
     if (state.glb.renderer){
       state.glb.renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
       state.glb.renderer.clear(true, true, true);
     }
-    const {P,V,PV}=currentPV(); const renderStats=renderLayersByBackend(P, V, PV, forward, fogRender); const drawCalls=renderStats.drawCalls;
+    const {P,V,PV}=currentPV(); const renderStats=renderLayersByBackend(P, V, PV, forward); const drawCalls=renderStats.drawCalls;
     logRenderDiagnostics(drawCalls);
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
