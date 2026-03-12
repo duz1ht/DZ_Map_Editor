@@ -1841,6 +1841,46 @@
     pendingUiRenderRaf: 0,
     pendingLiveMisRaf: 0,
     terrainPerf: { draws: 0, culledFrustum: 0, culledBackface: 0 },
+    renderBackend: 'three-only',
+    renderLayers: {
+      terrain: { owner: 'three', phase: 1 },
+      items: { owner: 'three', phase: 2 },
+      overlays: { owner: 'three', phase: 3 },
+      glb: { owner: 'three', phase: 'existing' },
+    },
+    renderDiagnostics: {
+      lastBackendLogged: null,
+      lastTickMs: 0,
+      fogByLayer: new Map(),
+      fogLastTickMs: 0,
+    },
+    threeTerrain: {
+      scene: null,
+      material: null,
+      textures: { color: null, height: null, delta: null },
+      geometryCache: new Map(),
+      visibleTileMap: new Map(),
+      meshPool: [],
+      activeDraws: 0,
+      ready: false,
+      dirty: true,
+    },
+    threeItems: {
+      scene: null,
+      materials: null,
+      pointsByGroup: new Map(),
+      drawCountByGroup: new Map(),
+      ready: false,
+    },
+    threeOverlays: {
+      scene: null,
+      waterMaterial: null,
+      waterPool: [],
+      waterMap: new Map(),
+      gridLines: null,
+      rectLines: null,
+      ready: false,
+    },
     itemsById: new Map(),
     itemSectionByStart: new Map(),
     layerVisibility: new Map(),
@@ -1883,6 +1923,95 @@
       lastEnvFogType: null,
     },
   };
+
+  const RENDER_BACKENDS = Object.freeze({ THREE_ONLY: 'three-only' });
+
+  function normalizeRenderBackend(value){
+    return RENDER_BACKENDS.THREE_ONLY;
+  }
+
+  function parseRenderBackend(value){
+    if (value === RENDER_BACKENDS.THREE_ONLY) return value;
+    return null;
+  }
+
+  function resolveInitialRenderBackend(){
+    const qsBackend = parseRenderBackend(new URLSearchParams(location.search).get('renderBackend'));
+    const storedBackend = parseRenderBackend(localStorage.getItem('dz.renderBackend'));
+    return qsBackend || storedBackend || RENDER_BACKENDS.THREE_ONLY;
+  }
+
+  function setRenderBackend(nextBackend, options = {}){
+    const normalized = normalizeRenderBackend(nextBackend);
+    if (nextBackend && nextBackend !== RENDER_BACKENDS.THREE_ONLY){
+      addLog(`[render_backend] '${nextBackend}' is deprecated; forcing '${RENDER_BACKENDS.THREE_ONLY}'.`);
+    }
+    if (state.renderBackend === normalized && !options.force) return;
+    state.renderBackend = normalized;
+    state.renderLayers.terrain.owner = 'three';
+    state.renderLayers.items.owner = 'three';
+    state.renderLayers.overlays.owner = 'three';
+    try { localStorage.setItem('dz.renderBackend', normalized); } catch (_) {}
+    addLog(`[render_backend] active=${normalized} (terrain=${state.renderLayers.terrain.owner}, items=${state.renderLayers.items.owner}, overlays=${state.renderLayers.overlays.owner}, glb=${state.renderLayers.glb.owner})`);
+  }
+
+  function logRenderDiagnostics(drawCalls){
+    const now = performance.now();
+    const backendChanged = state.renderDiagnostics.lastBackendLogged !== state.renderBackend;
+    if (!backendChanged && (now - state.renderDiagnostics.lastTickMs) < 5000) return;
+    state.renderDiagnostics.lastBackendLogged = state.renderBackend;
+    state.renderDiagnostics.lastTickMs = now;
+    addLog(`[render_diag] backend=${state.renderBackend} terrain_draw_calls=${drawCalls} glb_ready=${state.glb.ready ? 'yes' : 'no'} glb_instances=${state.glb.itemInstances.size}`);
+  }
+
+  function applyFogToThreeScene(scene, fogRender){
+    if (!scene || !state.glb.THREE) return;
+    if (fogRender?.enabled && fogRender?.ramp?.far > 0){
+      if (!scene.fog || !scene.fog.isFog){
+        scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
+      }
+      scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
+      scene.fog.near = 1;
+      scene.fog.far = Math.max(1, fogRender.ramp.far);
+      return;
+    }
+    scene.fog = null;
+  }
+
+  function logFogLayerDiagnostics(layerName, fogRender, extra = ''){
+    const now = performance.now();
+    const diag = state.renderDiagnostics;
+    const fogActive = fogRender?.enabled && fogRender?.ramp?.far > 0;
+    const signature = fogActive
+      ? `on:${fogRender.ramp.near.toFixed(2)}:${fogRender.ramp.mid.toFixed(2)}:${fogRender.ramp.far.toFixed(2)}:${fogRender.ramp.nearStrength.toFixed(2)}:${fogRender.ramp.midStrength.toFixed(2)}`
+      : 'off';
+    const prevSig = diag.fogByLayer.get(layerName);
+    const changed = prevSig !== signature;
+    if (!changed && (now - diag.fogLastTickMs) < 5000) return;
+    diag.fogByLayer.set(layerName, signature);
+    diag.fogLastTickMs = now;
+    const suffix = extra ? ` ${extra}` : '';
+    addLog(`[fog_diag] layer=${layerName} active=${fogActive ? 'yes' : 'no'} near=${(fogRender?.ramp?.near || 0).toFixed(2)} mid=${(fogRender?.ramp?.mid || 0).toFixed(2)} far=${(fogRender?.ramp?.far || 0).toFixed(2)} near_strength=${(fogRender?.ramp?.nearStrength || 0).toFixed(2)} mid_strength=${(fogRender?.ramp?.midStrength || 0).toFixed(2)}${suffix}`);
+  }
+
+  function renderLayersByBackend(P, V, PV, forward, fogRender){
+    const result = { drawCalls: 0 };
+    if (!state.glb.ready) ensureGlbRendererReady();
+    syncThreePointFogUniforms(fogRender);
+    result.drawCalls = drawTerrainThree(P, V, forward, fogRender);
+    drawOverlaysThree(P, V, forward, fogRender);
+    drawItemsThree(P, V, fogRender);
+    drawGlbItems(P, V, fogRender);
+    return result;
+  }
+
+  window.DZMapEditor = window.DZMapEditor || {};
+  window.DZMapEditor.setRenderBackend = (backend) => {
+    setRenderBackend(backend);
+    requestRender();
+    return state.renderBackend;
+  };
+  window.DZMapEditor.getRenderBackend = () => state.renderBackend;
 
   // UI refs
   const fileMisEl = document.getElementById("fileMis");
@@ -6137,50 +6266,6 @@
   const fpsCounterEl = document.getElementById("fpsCounter");
   const gizmoCanvasEl = document.getElementById("gizmoCanvas");
   const gizmoCtx = gizmoCanvasEl?.getContext("2d");
-  const gl = cv.getContext('webgl',{antialias:true, alpha:false});
-  if(!gl){ statusEl.textContent = "WebGL unavailable."; throw new Error('WebGL not available'); }
-  const extUInt=gl.getExtension('OES_element_index_uint');
-
-  function compile(type,src){
-    const sh=gl.createShader(type); gl.shaderSource(sh,src); gl.compileShader(sh);
-    if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)||'shader compile failed');
-    return sh;
-  }
-
-  const vsSrc=`attribute vec3 aPos; attribute vec2 aUV; uniform mat4 uMVP; uniform vec2 uModelOffset; varying vec2 vUV; varying vec3 vWorldPos; void main(){ vec3 worldPos=vec3(aPos.x+uModelOffset.x,aPos.y+uModelOffset.y,aPos.z); gl_Position=uMVP*vec4(aPos,1.0); vUV=aUV; vWorldPos=worldPos; }`;
-  const fsSrc=`precision mediump float; varying vec2 vUV; varying vec3 vWorldPos; uniform sampler2D uTex; uniform float uFlipV; uniform float uFogEnabled; uniform vec3 uFogColor; uniform vec3 uCamPos; uniform float uFogNearDist; uniform float uFogMidDist; uniform float uFogFarDist; uniform float uFogNearStrength; uniform float uFogMidStrength; float fogRamp3(float distToCam){ if(distToCam<=uFogNearDist) return 0.0; if(distToCam<=uFogMidDist){ float t=clamp((distToCam-uFogNearDist)/max(0.0001,uFogMidDist-uFogNearDist),0.0,1.0); return mix(uFogNearStrength,uFogMidStrength,t); } if(distToCam<=uFogFarDist){ float t=clamp((distToCam-uFogMidDist)/max(0.0001,uFogFarDist-uFogMidDist),0.0,1.0); return mix(uFogMidStrength,1.0,t); } return 1.0; } void main(){ vec2 uv=vec2(vUV.x, mix(vUV.y,1.0-vUV.y,uFlipV)); vec4 texel=texture2D(uTex,uv); vec3 color=texel.rgb; if(uFogEnabled>0.5&&uFogFarDist>0.0){ float distToCam=distance(vWorldPos,uCamPos); float fogAmount=fogRamp3(distToCam); color=mix(color,uFogColor,clamp(fogAmount,0.0,1.0)); } gl_FragColor=vec4(color,texel.a); }`;
-  const prog=gl.createProgram(); gl.attachShader(prog,compile(gl.VERTEX_SHADER,vsSrc)); gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fsSrc)); gl.linkProgram(prog);
-  if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog)||'link failed');
-  const aPos=gl.getAttribLocation(prog,'aPos'), aUV=gl.getAttribLocation(prog,'aUV');
-  const uMVP=gl.getUniformLocation(prog,'uMVP'), uFlipV=gl.getUniformLocation(prog,'uFlipV'), uTex=gl.getUniformLocation(prog,'uTex'), uModelOffset=gl.getUniformLocation(prog,'uModelOffset'), uFogEnabled=gl.getUniformLocation(prog,'uFogEnabled'), uFogColor=gl.getUniformLocation(prog,'uFogColor'), uCamPos=gl.getUniformLocation(prog,'uCamPos'), uFogNearDist=gl.getUniformLocation(prog,'uFogNearDist'), uFogMidDist=gl.getUniformLocation(prog,'uFogMidDist'), uFogFarDist=gl.getUniformLocation(prog,'uFogFarDist'), uFogNearStrength=gl.getUniformLocation(prog,'uFogNearStrength'), uFogMidStrength=gl.getUniformLocation(prog,'uFogMidStrength');
-
-  const itemVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform float uPointSize; void main(){ gl_Position=uMVP*vec4(aPos,1.0); gl_PointSize=uPointSize; }`;
-  const itemFs=`precision mediump float; uniform vec4 uColor; void main(){ vec2 c=gl_PointCoord-vec2(0.5); if(dot(c,c)>0.25) discard; gl_FragColor=uColor; }`;
-  const itemProg=gl.createProgram(); gl.attachShader(itemProg,compile(gl.VERTEX_SHADER,itemVs)); gl.attachShader(itemProg,compile(gl.FRAGMENT_SHADER,itemFs)); gl.linkProgram(itemProg);
-  const iaPos=gl.getAttribLocation(itemProg,'aPos'), iuMVP=gl.getUniformLocation(itemProg,'uMVP'), iuPointSize=gl.getUniformLocation(itemProg,'uPointSize'), iuColor=gl.getUniformLocation(itemProg,'uColor');
-  const itemVB=gl.createBuffer();
-
-  const lineVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z+=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
-  const lineFs=`precision mediump float; uniform vec3 uColor; void main(){ gl_FragColor=vec4(uColor,1.0); }`;
-  const lineProg=gl.createProgram(); gl.attachShader(lineProg,compile(gl.VERTEX_SHADER,lineVs)); gl.attachShader(lineProg,compile(gl.FRAGMENT_SHADER,lineFs)); gl.linkProgram(lineProg);
-  const laPos=gl.getAttribLocation(lineProg,'aPos'), luMVP=gl.getUniformLocation(lineProg,'uMVP'), luOffsetXY=gl.getUniformLocation(lineProg,'uOffsetXY'), luScaleXY=gl.getUniformLocation(lineProg,'uScaleXY'), luZ=gl.getUniformLocation(lineProg,'uZ'), luColor=gl.getUniformLocation(lineProg,'uColor');
-
-  const gridVs=`attribute vec3 aPos; uniform mat4 uMVP; void main(){ gl_Position=uMVP*vec4(aPos,1.0); }`;
-  const gridFs=`precision mediump float; void main(){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); }`;
-  const gridProg=gl.createProgram(); gl.attachShader(gridProg,compile(gl.VERTEX_SHADER,gridVs)); gl.attachShader(gridProg,compile(gl.FRAGMENT_SHADER,gridFs)); gl.linkProgram(gridProg);
-  const gaPos=gl.getAttribLocation(gridProg,'aPos'), guMVP=gl.getUniformLocation(gridProg,'uMVP');
-  const gridVB=gl.createBuffer();
-
-  const waterVs=`attribute vec3 aPos; uniform mat4 uMVP; uniform vec2 uOffsetXY; uniform vec2 uScaleXY; uniform float uZ; void main(){ vec3 p=aPos; p.x=p.x*uScaleXY.x+uOffsetXY.x; p.y=p.y*uScaleXY.y+uOffsetXY.y; p.z=uZ; gl_Position=uMVP*vec4(p,1.0); }`;
-  const waterFs=`precision mediump float; uniform vec3 uColor; uniform float uAlpha; void main(){ gl_FragColor=vec4(uColor,uAlpha); }`;
-  const waterProg=gl.createProgram(); gl.attachShader(waterProg,compile(gl.VERTEX_SHADER,waterVs)); gl.attachShader(waterProg,compile(gl.FRAGMENT_SHADER,waterFs)); gl.linkProgram(waterProg);
-  const waPos=gl.getAttribLocation(waterProg,'aPos'), wuMVP=gl.getUniformLocation(waterProg,'uMVP'), wuOffsetXY=gl.getUniformLocation(waterProg,'uOffsetXY'), wuScaleXY=gl.getUniformLocation(waterProg,'uScaleXY'), wuZ=gl.getUniformLocation(waterProg,'uZ'), wuColor=gl.getUniformLocation(waterProg,'uColor'), wuAlpha=gl.getUniformLocation(waterProg,'uAlpha');
-
-  const waterVB=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,waterVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,0,1,0,0,1,1,0,0,1,0]),gl.STATIC_DRAW);
-  const waterIB=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array([0,1,2,0,2,3]),gl.STATIC_DRAW);
-  const lineVB=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,lineVB); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,0,1,0,0,1,0,0,1,1,0,1,1,0,0,1,0,0,1,0,0,0,0]),gl.STATIC_DRAW);
-
-  const scratchGrid = { verts: new Float32Array(0) };
   const itemDrawScratch = {
     normal: new Float32Array(0),
     waypoint: new Float32Array(0),
@@ -6203,14 +6288,6 @@
   function mat4Identity(){ return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]); }
   function mat4MulInto(out,a,b){ for(let c=0;c<4;c++) for(let r=0;r<4;r++) out[c*4+r]=a[0*4+r]*b[c*4+0]+a[1*4+r]*b[c*4+1]+a[2*4+r]*b[c*4+2]+a[3*4+r]*b[c*4+3]; return out; }
   function mat4TranslateInto(out,x,y,z){ out[0]=1; out[1]=0; out[2]=0; out[3]=0; out[4]=0; out[5]=1; out[6]=0; out[7]=0; out[8]=0; out[9]=0; out[10]=1; out[11]=0; out[12]=x; out[13]=y; out[14]=z; out[15]=1; return out; }
-  function resetFixedGlState(){
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.disable(gl.BLEND);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthMask(true);
-    gl.useProgram(null);
-  }
   function mat4Mul(a,b){ const o=new Float32Array(16); for(let c=0;c<4;c++) for(let r=0;r<4;r++) o[c*4+r]=a[0*4+r]*b[c*4+0]+a[1*4+r]*b[c*4+1]+a[2*4+r]*b[c*4+2]+a[3*4+r]*b[c*4+3]; return o; }
   function mat4Perspective(fovy,aspect,near,far){ const f=1/Math.tan(fovy/2), nf=1/(near-far); const o=new Float32Array(16); o[0]=f/aspect;o[5]=f;o[10]=(far+near)*nf;o[11]=-1;o[14]=(2*far*near)*nf; return o; }
   function vec3(x,y,z){return {x,y,z};} function vec3Add(a,b){return vec3(a.x+b.x,a.y+b.y,a.z+b.z);} function vec3Sub(a,b){return vec3(a.x-b.x,a.y-b.y,a.z-b.z);} function vec3Scale(a,s){return vec3(a.x*s,a.y*s,a.z*s);} function vec3Dot(a,b){return a.x*b.x+a.y*b.y+a.z*b.z;} function vec3Cross(a,b){return vec3(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);} function vec3Len(a){return Math.hypot(a.x,a.y,a.z);} function vec3Norm(a){const l=vec3Len(a)||1;return vec3(a.x/l,a.y/l,a.z/l);}
@@ -6249,7 +6326,7 @@
   }
   let sectorCount=8, terrainOrigin={x:0,y:0}, wrapX=1, wrapY=1, sectors=null, lastDepth=null, lastImg=null, loadedTrnName=null;
   let trnInfo={colormap:null,detailmap:null,polydata:null,tilestrip:null,charmap:null,foliagemap:null,waterHeight:null};
-  let texColor=null, texHeight=null, texDelta=null; let meshSectorLods=[];
+  let meshSectorLods=[];
   let cam={pos:vec3(0,1500,400), yaw:Math.PI, pitch:-0.25}, move={w:0,a:0,s:0,d:0,q:0,e:0};
   let camVel=vec3(0,0,0);
   let renderMode='C';
@@ -6276,22 +6353,34 @@
   function getSectorOffset(sectorIndex){ switch(sectorIndex|0){ case 1:return {x:0,y:0}; case 2:return {x:0,y:512}; case 3:return {x:512,y:0}; case 4:return {x:512,y:512}; default:return {x:0,y:0}; } }
   function heightSample(sectorIndex,x,y){ if(!lastDepth) return 0; const off=getSectorOffset(sectorIndex); const sx=(x>=SECTOR_SIZE)?(SECTOR_SIZE-1):x, sy=(y>=SECTOR_SIZE)?(SECTOR_SIZE-1):y, ix=off.x+sx, iy=off.y+sy; if(ix<0||iy<0||ix>=DEPTH_W||iy>=DEPTH_H) return 0; return lastDepth[iy*DEPTH_W+ix]/256.0; }
   function buildMeshSingleSector(sectorIndex,step,heightMul){ if(!lastDepth) return {verts:new Float32Array(0),idx:new Uint32Array(0)}; const uvOff=getSectorOffset(sectorIndex); const xs=[],ys=[]; for(let v=0;v<=SECTOR_MESH_MAX;v+=step) xs.push(v); if(xs.at(-1)!==SECTOR_MESH_MAX) xs.push(SECTOR_MESH_MAX); for(let v=0;v<=SECTOR_MESH_MAX;v+=step) ys.push(v); if(ys.at(-1)!==SECTOR_MESH_MAX) ys.push(SECTOR_MESH_MAX); const gw=xs.length,gh=ys.length; const verts=new Float32Array(gw*gh*5), idx=new Uint32Array((gw-1)*(gh-1)*6); let vb=0; for(let y=0;y<gh;y++) for(let x=0;x<gw;x++){ const lx=xs[x],ly=ys[y],sampleY=TERRAIN_BASE_FLIP_Y?(SECTOR_SIZE-ly):ly,h=heightSample(sectorIndex,lx,sampleY)*heightMul; const su=(lx>=SECTOR_SIZE)?(SECTOR_SIZE-1):lx, sv=(sampleY>=SECTOR_SIZE)?(SECTOR_SIZE-1):sampleY; const u=(uvOff.x+su)/1024.0,v=(uvOff.y+sv)/1024.0,o=vb*5; verts[o]=lx;verts[o+1]=ly;verts[o+2]=h;verts[o+3]=u;verts[o+4]=v; vb++; } let ib=0; for(let y=0;y<gh-1;y++) for(let x=0;x<gw-1;x++){ const a=y*gw+x,b=a+1,c=a+gw,d=c+1; idx[ib++]=a;idx[ib++]=b;idx[ib++]=c; idx[ib++]=b;idx[ib++]=d;idx[ib++]=c; } return {verts,idx}; }
-  function createTextureFromPixels(w,h,pixels,opts={}){ const filter=opts.nearest?gl.NEAREST:gl.LINEAR; const tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); return tex; }
-  function createHeightmapTextureFromSectors(){ const px=new Uint8Array(DEPTH_W*DEPTH_H*4); for(let s=1;s<=4;s++){ const off=getSectorOffset(s); for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){ const g=Math.max(0,Math.min(255,Math.round(heightSample(s,x,y)*2.0))); const dst=((off.y+y)*DEPTH_W+(off.x+x))*4; px[dst]=g;px[dst+1]=g;px[dst+2]=g;px[dst+3]=255; } } return createTextureFromPixels(DEPTH_W,DEPTH_H,px); }
-  function createDeltaTextureFromSectors(){ const px=new Uint8Array(DEPTH_W*DEPTH_H*4); for(let s=1;s<=4;s++){ const off=getSectorOffset(s); for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){ const c=heightSample(s,x,y), xm=Math.max(0,x-1),xp=Math.min(SECTOR_SIZE-1,x+1), ym=Math.max(0,y-1),yp=Math.min(SECTOR_SIZE-1,y+1); const has=(Math.abs(heightSample(s,xm,y)-c)>1e-9)||(Math.abs(heightSample(s,xp,y)-c)>1e-9)||(Math.abs(heightSample(s,x,ym)-c)>1e-9)||(Math.abs(heightSample(s,x,yp)-c)>1e-9); const v=has?128:0,dst=((off.y+y)*DEPTH_W+(off.x+x))*4; px[dst]=v;px[dst+1]=v;px[dst+2]=v;px[dst+3]=255; } } return createTextureFromPixels(DEPTH_W,DEPTH_H,px,{nearest:true}); }
-  function activeTerrainTexture(){ if(renderMode==='H') return texHeight||texColor||texDelta; if(renderMode==='D') return texDelta||texColor||texHeight; return texColor||texHeight||texDelta; }
   function clearTerrainRenderState(){
     loadedTrnName=null;
     sectors=null;
     lastDepth=null;
     lastImg=null;
-    texColor=null;
-    texHeight=null;
-    texDelta=null;
     meshSectorLods=[];
+    if (state.threeTerrain.scene){
+      for (const mesh of state.threeTerrain.visibleTileMap.values()) state.threeTerrain.scene.remove(mesh);
+    }
+    state.threeTerrain.visibleTileMap.clear();
+    state.threeTerrain.meshPool.length = 0;
+    state.threeTerrain.geometryCache.clear();
+    if (state.threeTerrain.textures.color) state.threeTerrain.textures.color.dispose();
+    if (state.threeTerrain.textures.height) state.threeTerrain.textures.height.dispose();
+    if (state.threeTerrain.textures.delta) state.threeTerrain.textures.delta.dispose();
+    state.threeTerrain.textures.color = null;
+    state.threeTerrain.textures.height = null;
+    state.threeTerrain.textures.delta = null;
+    state.threeTerrain.dirty = true;
+    state.threeTerrain.ready = false;
+    if (state.threeOverlays.scene){
+      for (const mesh of state.threeOverlays.waterMap.values()) state.threeOverlays.scene.remove(mesh);
+      state.threeOverlays.waterMap.clear();
+      state.threeOverlays.waterPool.length = 0;
+    }
   }
-  function Mesh(){ this.vb=null; this.ib=null; this.indexCount=0; this.indexType=gl.UNSIGNED_INT; }
-  Mesh.prototype.upload=function(mesh){ this.vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.vb); gl.bufferData(gl.ARRAY_BUFFER,mesh.verts,gl.STATIC_DRAW); this.ib=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,mesh.idx,gl.STATIC_DRAW); this.indexCount=mesh.idx.length; this.indexType=(mesh.idx instanceof Uint32Array)?gl.UNSIGNED_INT:gl.UNSIGNED_SHORT; if(this.indexType===gl.UNSIGNED_INT&&!extUInt) throw new Error('OES_element_index_uint not supported'); };
+  function Mesh(){ this.indexCount=0; this.sourceVerts=null; this.sourceIdx=null; }
+  Mesh.prototype.upload=function(mesh){ this.indexCount=mesh.idx.length; this.sourceVerts=mesh.verts; this.sourceIdx=mesh.idx; };
   function rebuildTerrain(){
     if(!lastDepth||!lastImg||!sectors) return;
     const baseStep=Math.max(1, parseInt(document.getElementById('step')?.value||'8',10)||8), hmul=1.0;
@@ -6305,9 +6394,7 @@
       }
       return lod;
     });
-    texColor=createTextureFromPixels(lastImg.w,lastImg.h,lastImg.pixels);
-    texHeight=createHeightmapTextureFromSectors();
-    texDelta=createDeltaTextureFromSectors();
+    state.threeTerrain.dirty = true;
   }
 
   function mapSrcIdx(g,wrap){ if(wrap===1) return posMod(g,sectorCount); if(g<0) return 0; if(g>=sectorCount) return sectorCount-1; return g; }
@@ -6412,36 +6499,17 @@
     return 2;
   }
 
-  function bindMesh(m){ gl.bindBuffer(gl.ARRAY_BUFFER,m.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib); gl.enableVertexAttribArray(aPos); gl.enableVertexAttribArray(aUV); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,20,0); gl.vertexAttribPointer(aUV,2,gl.FLOAT,false,20,12); }
-  function drawTerrain(P,V,forward){
-    const tex=activeTerrainTexture();
-    if(!(tex&&sectors&&meshSectorLods[0]?.[1])) return 0;
-    gl.useProgram(prog);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.uniform1i(uTex,0);
-    gl.uniform1f(uFlipV, renderMode==='C'?1.0:0.0);
-    const fogRender = getRenderFogSettings();
-    gl.uniform1f(uFogEnabled, fogRender.enabled ? 1.0 : 0.0);
-    gl.uniform3f(uFogColor, fogRender.color.r, fogRender.color.g, fogRender.color.b);
-    gl.uniform3f(uCamPos, cam.pos.x, cam.pos.y, cam.pos.z);
-    gl.uniform1f(uFogNearDist, fogRender.ramp.near);
-    gl.uniform1f(uFogMidDist, fogRender.ramp.mid);
-    gl.uniform1f(uFogFarDist, fogRender.ramp.far);
-    gl.uniform1f(uFogNearStrength, fogRender.ramp.nearStrength);
-    gl.uniform1f(uFogMidStrength, fogRender.ramp.midStrength);
-    gl.bindTexture(gl.TEXTURE_2D,tex);
-
+  function collectVisibleTerrainTiles(P, V, forward){
+    if (!sectors || !Number.isFinite(sectorCount) || sectorCount <= 0){
+      return { visibleTiles: [], culledFrustum: 0, culledBackface: 0, ox: originWorldX(), oy: originWorldY(), radius: renderUiState.drawRadius || 0 };
+    }
     const ox=originWorldX(),oy=originWorldY(),radius=renderUiState.drawRadius;
     const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1;
     const j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1;
     const PV=mat4Mul(P,V);
     const frustum=extractFrustumPlanes(PV);
     const sectorSphereR=Math.hypot(SECTOR_STRIDE*0.5,SECTOR_STRIDE*0.5,350);
-    const overlayRadius=Math.max(SECTOR_STRIDE*2, radius*OVERLAY_RADIUS_FACTOR);
-    const overlayI0=Math.floor((cam.pos.x-overlayRadius-ox)/SECTOR_STRIDE)-1, overlayI1=Math.floor((cam.pos.x+overlayRadius-ox)/SECTOR_STRIDE)+1;
-    const overlayJ0=Math.floor((cam.pos.y-overlayRadius-oy)/SECTOR_STRIDE)-1, overlayJ1=Math.floor((cam.pos.y+overlayRadius-oy)/SECTOR_STRIDE)+1;
 
-    let draws=0;
     let culledFrustum=0;
     let culledBackface=0;
     const visibleTiles=[];
@@ -6460,48 +6528,316 @@
       const sectorIndex=sectors[srcY*sectorCount+srcX]|0;
       if(sectorIndex<=0) continue;
       const lodLevel=pickTerrainLodByDistance(distXY, radius);
-      const m=meshSectorLods[lodLevel]?.[sectorIndex] || meshSectorLods[0]?.[sectorIndex];
-      if(!m||!m.indexCount) continue;
-
-      const tileOffsetX = ox+gx*SECTOR_STRIDE;
-      const tileOffsetY = oy+gy*SECTOR_STRIDE;
-      mat4TranslateInto(scratchModelMatrix,tileOffsetX, tileOffsetY,0);
-      mat4MulInto(scratchMVPMatrix, PV, scratchModelMatrix);
-      gl.uniformMatrix4fv(uMVP,false,scratchMVPMatrix);
-      gl.uniform2f(uModelOffset,tileOffsetX,tileOffsetY);
-      bindMesh(m);
-      gl.drawElements(gl.TRIANGLES,m.indexCount,m.indexType,0);
-      draws++;
-      visibleTiles.push([gx,gy]);
+      visibleTiles.push({ gx, gy, srcX, srcY, sectorIndex, lodLevel });
     }
+
+    return { visibleTiles, culledFrustum, culledBackface, ox, oy, radius };
+  }
+
+  function getThreeTerrainTextureByMode(){
+    const t = state.threeTerrain.textures;
+    if(renderMode==='H') return t.height||t.color||t.delta||null;
+    if(renderMode==='D') return t.delta||t.color||t.height||null;
+    return t.color||t.height||t.delta||null;
+  }
+
+  function ensureThreeTerrainReady(){
+    if (!state.glb.ready || !state.glb.THREE || !state.threeTerrain.dirty) return state.threeTerrain.ready;
+    const { THREE } = state.glb;
+    const terrain = state.threeTerrain;
+    if (!terrain.scene){
+      terrain.scene = new THREE.Scene();
+    }
+    for (const mesh of terrain.visibleTileMap.values()) terrain.scene.remove(mesh);
+    terrain.visibleTileMap.clear();
+    terrain.meshPool.length = 0;
+    terrain.geometryCache.clear();
+
+    if (terrain.textures.color) terrain.textures.color.dispose();
+    if (terrain.textures.height) terrain.textures.height.dispose();
+    if (terrain.textures.delta) terrain.textures.delta.dispose();
+
+    if (lastImg?.pixels){
+      const colorTex = new THREE.DataTexture(lastImg.pixels, lastImg.w, lastImg.h, THREE.RGBAFormat, THREE.UnsignedByteType);
+      colorTex.needsUpdate = true;
+      // Legacy WebGL path flips only colormap V in shader (uFlipV when renderMode='C').
+      // Mirror that behavior here to keep sector placement/repetition parity in three-only.
+      colorTex.flipY = true;
+      colorTex.colorSpace = THREE.SRGBColorSpace;
+      colorTex.wrapS = THREE.ClampToEdgeWrapping;
+      colorTex.wrapT = THREE.ClampToEdgeWrapping;
+      colorTex.minFilter = THREE.LinearFilter;
+      colorTex.magFilter = THREE.LinearFilter;
+      terrain.textures.color = colorTex;
+    }
+
+    const buildMapPixels = (nearest=false) => {
+      const px=new Uint8Array(DEPTH_W*DEPTH_H*4);
+      for(let s=1;s<=4;s++){
+        const off=getSectorOffset(s);
+        for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){
+          const dst=((off.y+y)*DEPTH_W+(off.x+x))*4;
+          if (nearest){
+            const c=heightSample(s,x,y), xm=Math.max(0,x-1),xp=Math.min(SECTOR_SIZE-1,x+1), ym=Math.max(0,y-1),yp=Math.min(SECTOR_SIZE-1,y+1);
+            const has=(Math.abs(heightSample(s,xm,y)-c)>1e-9)||(Math.abs(heightSample(s,xp,y)-c)>1e-9)||(Math.abs(heightSample(s,x,ym)-c)>1e-9)||(Math.abs(heightSample(s,x,yp)-c)>1e-9);
+            const v=has?128:0;
+            px[dst]=v;px[dst+1]=v;px[dst+2]=v;px[dst+3]=255;
+          } else {
+            const g=Math.max(0,Math.min(255,Math.round(heightSample(s,x,y)*2.0)));
+            px[dst]=g;px[dst+1]=g;px[dst+2]=g;px[dst+3]=255;
+          }
+        }
+      }
+      const tex = new THREE.DataTexture(px, DEPTH_W, DEPTH_H, THREE.RGBAFormat, THREE.UnsignedByteType);
+      tex.needsUpdate = true;
+      tex.flipY = false;
+      tex.wrapS = THREE.ClampToEdgeWrapping;
+      tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.minFilter = nearest ? THREE.NearestFilter : THREE.LinearFilter;
+      tex.magFilter = nearest ? THREE.NearestFilter : THREE.LinearFilter;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    };
+
+    if (lastDepth){
+      terrain.textures.height = buildMapPixels(false);
+      terrain.textures.delta = buildMapPixels(true);
+    }
+
+    if (!terrain.material){
+      // Terrain in three-only should not depend on scene lights to keep colormap parity
+      // with legacy WebGL path and avoid black terrain when no lights are configured.
+      terrain.material = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        fog: true,
+        transparent: false,
+        depthWrite: true,
+      });
+      applyThreePointFogRampToMaterial(terrain.material, 'terrain');
+    }
+    terrain.material.map = getThreeTerrainTextureByMode();
+    terrain.material.needsUpdate = true;
+    terrain.ready = true;
+    terrain.dirty = false;
+    addLog('[terrain_three] terrain layer rebuilt.');
+    return true;
+  }
+
+  function ensureThreeTerrainGeometry(lodLevel, sectorIndex){
+    const terrain = state.threeTerrain;
+    const key = `${lodLevel}:${sectorIndex}`;
+    if (terrain.geometryCache.has(key)) return terrain.geometryCache.get(key);
+    const source = meshSectorLods[lodLevel]?.[sectorIndex] || meshSectorLods[0]?.[sectorIndex];
+    if (!source?.sourceVerts || !source?.sourceIdx || !state.glb.THREE) return null;
+    const { THREE } = state.glb;
+    const verts = source.sourceVerts;
+    const idx = source.sourceIdx;
+    const vertexCount = Math.floor(verts.length / 5);
+    const positions = new Float32Array(vertexCount * 3);
+    const uvs = new Float32Array(vertexCount * 2);
+    for (let i=0;i<vertexCount;i++){
+      const src = i*5;
+      const dstP = i*3;
+      const dstU = i*2;
+      positions[dstP]=verts[src];
+      positions[dstP+1]=verts[src+1];
+      positions[dstP+2]=verts[src+2];
+      uvs[dstU]=verts[src+3];
+      uvs[dstU+1]=verts[src+4];
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.computeVertexNormals();
+    terrain.geometryCache.set(key, g);
+    return g;
+  }
+
+  function drawTerrainThree(P, V, forward, fogRenderArg){
+    if (!state.glb.ready || !state.glb.renderer || !state.glb.camera || !sectors || !meshSectorLods[0]?.[1]) return 0;
+    if (!ensureThreeTerrainReady()) return 0;
+    const { renderer, camera } = state.glb;
+    const terrain = state.threeTerrain;
+    const vis = collectVisibleTerrainTiles(P, V, forward);
+    state.terrainPerf = { draws: vis.visibleTiles.length, culledFrustum: vis.culledFrustum, culledBackface: vis.culledBackface };
+
+    const nextKeys = new Set();
+    terrain.material.map = getThreeTerrainTextureByMode();
+
+    for (const tile of vis.visibleTiles){
+      const meshKey = `${tile.gx}:${tile.gy}:${tile.lodLevel}:${tile.sectorIndex}`;
+      nextKeys.add(meshKey);
+      let mesh = terrain.visibleTileMap.get(meshKey);
+      if (!mesh){
+        const geom = ensureThreeTerrainGeometry(tile.lodLevel, tile.sectorIndex);
+        if (!geom) continue;
+        mesh = terrain.meshPool.pop() || new state.glb.THREE.Mesh(geom, terrain.material);
+        mesh.geometry = geom;
+        mesh.material = terrain.material;
+        terrain.visibleTileMap.set(meshKey, mesh);
+        terrain.scene.add(mesh);
+      }
+      mesh.position.set(vis.ox + tile.gx*SECTOR_STRIDE, vis.oy + tile.gy*SECTOR_STRIDE, 0);
+      mesh.rotation.set(0,0,0);
+      mesh.scale.set(1,1,1);
+      mesh.matrixAutoUpdate = true;
+      mesh.visible = true;
+    }
+
+    for (const [key, mesh] of Array.from(terrain.visibleTileMap.entries())){
+      if (nextKeys.has(key)) continue;
+      terrain.scene.remove(mesh);
+      terrain.visibleTileMap.delete(key);
+      terrain.meshPool.push(mesh);
+    }
+
+    const fogRender = fogRenderArg || getRenderFogSettings();
+    applyFogToThreeScene(terrain.scene, fogRender);
+    logFogLayerDiagnostics('terrain', fogRender, `tiles=${vis.visibleTiles.length}`);
+
+    applyThreeCameraFromPV(P, V);
+    renderer.resetState();
+    renderer.render(terrain.scene, camera);
+    renderer.resetState();
+    terrain.activeDraws = vis.visibleTiles.length;
+    return vis.visibleTiles.length;
+  }
+
+  function ensureThreeOverlaysReady(){
+    if (!state.glb.ready || !state.glb.THREE || !state.glb.renderer || !state.glb.camera) return false;
+    if (state.threeOverlays.ready) return true;
+    const { THREE } = state.glb;
+    const overlays = state.threeOverlays;
+    overlays.scene = new THREE.Scene();
+    overlays.waterMaterial = new THREE.MeshBasicMaterial({
+      color: 0x8cd8ff,
+      transparent: true,
+      opacity: 0.28,
+      depthTest: true,
+      depthWrite: false,
+      fog: true,
+    });
+    applyThreePointFogRampToMaterial(overlays.waterMaterial, 'water');
+    overlays.waterPool = [];
+    overlays.waterMap = new Map();
+
+    const gridGeom = new THREE.BufferGeometry();
+    gridGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+    const gridMat = new THREE.LineBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, transparent: false, fog: false });
+    overlays.gridLines = new THREE.LineSegments(gridGeom, gridMat);
+    overlays.gridLines.frustumCulled = false;
+    overlays.scene.add(overlays.gridLines);
+
+    const rectGeom = new THREE.BufferGeometry();
+    rectGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+    rectGeom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(0), 3));
+    const rectMat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, depthWrite: false, transparent: false, fog: false });
+    overlays.rectLines = new THREE.LineSegments(rectGeom, rectMat);
+    overlays.rectLines.frustumCulled = false;
+    overlays.scene.add(overlays.rectLines);
+    overlays.ready = true;
+    addLog('[overlays_three] overlays layer initialized.');
+    return true;
+  }
+
+  function updateThreeLineGeometry(lineSegments, positions, colors=null){
+    if (!lineSegments?.geometry) return;
+    const g = lineSegments.geometry;
+    let posAttr = g.getAttribute('position');
+    if (!posAttr || posAttr.array.length < positions.length){
+      let cap = Math.max(128, posAttr?.array?.length || 128);
+      while (cap < positions.length) cap *= 2;
+      posAttr = new state.glb.THREE.BufferAttribute(new Float32Array(cap), 3);
+      posAttr.setUsage(state.glb.THREE.DynamicDrawUsage);
+      g.setAttribute('position', posAttr);
+    }
+    if (positions.length) posAttr.array.set(positions, 0);
+    posAttr.needsUpdate = true;
+
+    if (colors){
+      let colAttr = g.getAttribute('color');
+      if (!colAttr || colAttr.array.length < colors.length){
+        let cap = Math.max(128, colAttr?.array?.length || 128);
+        while (cap < colors.length) cap *= 2;
+        colAttr = new state.glb.THREE.BufferAttribute(new Float32Array(cap), 3);
+        colAttr.setUsage(state.glb.THREE.DynamicDrawUsage);
+        g.setAttribute('color', colAttr);
+      }
+      if (colors.length) colAttr.array.set(colors, 0);
+      colAttr.needsUpdate = true;
+    }
+
+    g.setDrawRange(0, Math.floor(positions.length / 3));
+    lineSegments.visible = positions.length > 0;
+  }
+
+  function appendRectLineData(posArr, colorArr, offsetX, offsetY, scaleX, scaleY, z, color){
+    const pts = [
+      [0,0],[1,0], [1,0],[1,1], [1,1],[0,1], [0,1],[0,0],
+    ];
+    for (const [px,py] of pts){
+      posArr.push(px*scaleX+offsetX, py*scaleY+offsetY, z);
+      colorArr.push(color[0], color[1], color[2]);
+    }
+  }
+
+  function drawOverlaysThree(P, V, forward, fogRenderArg){
+    if (!ensureThreeOverlaysReady()) return;
+    if (!sectors || !Number.isFinite(sectorCount) || sectorCount <= 0){
+      updateThreeLineGeometry(state.threeOverlays.gridLines, new Float32Array(0));
+      updateThreeLineGeometry(state.threeOverlays.rectLines, new Float32Array(0), new Float32Array(0));
+      for (const mesh of state.threeOverlays.waterMap.values()) state.threeOverlays.scene.remove(mesh);
+      state.threeOverlays.waterMap.clear();
+      state.threeOverlays.waterPool.length = 0;
+      return;
+    }
+    const overlays = state.threeOverlays;
+    const vis = collectVisibleTerrainTiles(P, V, forward);
+    const { visibleTiles: tilesForSector, ox, oy, radius } = vis;
+
+    const overlayRadius=Math.max(SECTOR_STRIDE*2, radius*OVERLAY_RADIUS_FACTOR);
+    const overlayI0=Math.floor((cam.pos.x-overlayRadius-ox)/SECTOR_STRIDE)-1, overlayI1=Math.floor((cam.pos.x+overlayRadius-ox)/SECTOR_STRIDE)+1;
+    const overlayJ0=Math.floor((cam.pos.y-overlayRadius-oy)/SECTOR_STRIDE)-1, overlayJ1=Math.floor((cam.pos.y+overlayRadius-oy)/SECTOR_STRIDE)+1;
 
     const waterRender = getRenderWaterHeightRaw();
+    const nextWaterKeys = new Set();
     if(waterRender.raw!==null&&Number.isFinite(waterRender.raw)){
-      gl.useProgram(waterProg);
-      gl.bindBuffer(gl.ARRAY_BUFFER,waterVB);
-      gl.enableVertexAttribArray(waPos);
-      gl.vertexAttribPointer(waPos,3,gl.FLOAT,false,12,0);
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,waterIB);
-      gl.uniformMatrix4fv(wuMVP,false,PV);
-      gl.uniform3f(wuColor,0.55,0.85,1.0);
-      gl.uniform1f(wuAlpha,0.28);
-      gl.uniform1f(wuZ,waterRender.raw*0.5);
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-      gl.depthMask(false);
       let waterTiles=0;
-      for (const [gx,gy] of visibleTiles){
+      for (const tile of tilesForSector){
         if(waterTiles>=MAX_WATER_TILES_PER_FRAME) break;
+        const gx = tile.gx, gy = tile.gy;
         if(gx<overlayI0||gx>overlayI1||gy<overlayJ0||gy>overlayJ1) continue;
-        gl.uniform2f(wuOffsetXY,ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE);
-        gl.uniform2f(wuScaleXY,SECTOR_STRIDE,SECTOR_STRIDE);
-        gl.drawElements(gl.TRIANGLES,6,gl.UNSIGNED_SHORT,0);
+        const key = `${gx}:${gy}`;
+        nextWaterKeys.add(key);
+        let mesh = overlays.waterMap.get(key);
+        if (!mesh){
+          mesh = overlays.waterPool.pop();
+          if (!mesh){
+            mesh = new state.glb.THREE.Mesh(new state.glb.THREE.PlaneGeometry(1,1), overlays.waterMaterial);
+          }
+          overlays.waterMap.set(key, mesh);
+          overlays.scene.add(mesh);
+        }
+        mesh.position.set(ox+gx*SECTOR_STRIDE+SECTOR_STRIDE*0.5, oy+gy*SECTOR_STRIDE+SECTOR_STRIDE*0.5, waterRender.raw*0.5);
+        mesh.scale.set(SECTOR_STRIDE, SECTOR_STRIDE, 1);
+        mesh.visible = true;
         waterTiles++;
       }
-      gl.depthMask(true);
-      gl.disable(gl.BLEND);
+    }
+    for (const [key, mesh] of Array.from(overlays.waterMap.entries())){
+      if (nextWaterKeys.has(key)) continue;
+      overlays.scene.remove(mesh);
+      overlays.waterMap.delete(key);
+      overlays.waterPool.push(mesh);
     }
 
+    const fogRender = fogRenderArg || getRenderFogSettings();
+    applyFogToThreeScene(overlays.scene, fogRender);
+    logFogLayerDiagnostics('overlays', fogRender, `water_tiles=${overlays.waterMap.size}`);
+
+    const gridPositions = [];
     if(gridVisible){
       const gridSize=gridSizeMeters();
       if(gridSize>0){
@@ -6518,59 +6854,47 @@
         const firstY=oy + Math.ceil((gridMinY-oy)/gridSize)*gridSize;
         const countX=Math.max(0, Math.floor((gridMaxX-firstX)/gridSize)+1);
         const countY=Math.max(0, Math.floor((gridMaxY-firstY)/gridSize)+1);
-        if(countX>0 || countY>0){
-          const lineCount=countX+countY;
-          const neededVerts=lineCount*2*3; if(scratchGrid.verts.length<neededVerts){ let cap=Math.max(256,scratchGrid.verts.length||256); while(cap<neededVerts) cap*=2; scratchGrid.verts=new Float32Array(cap);} const verts=scratchGrid.verts;
-          let ptr=0;
-          for(let i=0;i<countX;i++){ const x=firstX+i*gridSize; verts[ptr++]=x; verts[ptr++]=gridMinY; verts[ptr++]=0.2; verts[ptr++]=x; verts[ptr++]=gridMaxY; verts[ptr++]=0.2; }
-          for(let i=0;i<countY;i++){ const y=firstY+i*gridSize; verts[ptr++]=gridMinX; verts[ptr++]=y; verts[ptr++]=0.2; verts[ptr++]=gridMaxX; verts[ptr++]=y; verts[ptr++]=0.2; }
-          gl.useProgram(gridProg);
-          gl.bindBuffer(gl.ARRAY_BUFFER,gridVB);
-          gl.bufferData(gl.ARRAY_BUFFER,verts.subarray(0, neededVerts),gl.DYNAMIC_DRAW);
-          gl.enableVertexAttribArray(gaPos);
-          gl.vertexAttribPointer(gaPos,3,gl.FLOAT,false,12,0);
-          gl.uniformMatrix4fv(guMVP,false,PV);
-          gl.disable(gl.DEPTH_TEST);
-          gl.drawArrays(gl.LINES,0,lineCount*2);
-          gl.enable(gl.DEPTH_TEST);
-          gl.useProgram(prog);
-        }
+        for(let i=0;i<countX;i++){ const x=firstX+i*gridSize; gridPositions.push(x, gridMinY, 0.2, x, gridMaxY, 0.2); }
+        for(let i=0;i<countY;i++){ const y=firstY+i*gridSize; gridPositions.push(gridMinX, y, 0.2, gridMaxX, y, 0.2); }
       }
     }
+    updateThreeLineGeometry(overlays.gridLines, new Float32Array(gridPositions));
 
+    const rectPos=[];
+    const rectColors=[];
     const mainAreaOn=renderUiState.mainArea; const showSectorsOn=renderUiState.showSectors;
     if(mainAreaOn||showSectorsOn){
-      const MVPcam=PV;
-      gl.useProgram(lineProg);
-      gl.bindBuffer(gl.ARRAY_BUFFER,lineVB);
-      gl.enableVertexAttribArray(laPos);
-      gl.vertexAttribPointer(laPos,3,gl.FLOAT,false,12,0);
-      gl.uniformMatrix4fv(luMVP,false,MVPcam);
-      gl.uniform1f(luZ,0.25);
-      gl.disable(gl.DEPTH_TEST);
       const spanX=terrainSpanX(), spanY=terrainSpanY();
-      function drawRect(offsetX, offsetY, scaleX, scaleY, color3){ gl.uniform3f(luColor,color3[0],color3[1],color3[2]); gl.uniform2f(luOffsetXY,offsetX,offsetY); gl.uniform2f(luScaleXY,scaleX,scaleY); gl.drawArrays(gl.LINES,0,8);}
       if(showSectorsOn){
         let rectCount=0;
-        for (const [gx,gy] of visibleTiles){
+        for (const tile of tilesForSector){
           if(rectCount>=MAX_SECTOR_RECTS_PER_FRAME) break;
-          drawRect(ox+gx*SECTOR_STRIDE,oy+gy*SECTOR_STRIDE,SECTOR_STRIDE,SECTOR_STRIDE,[0.2,0.8,1]);
+          appendRectLineData(rectPos, rectColors, ox+tile.gx*SECTOR_STRIDE, oy+tile.gy*SECTOR_STRIDE, SECTOR_STRIDE, SECTOR_STRIDE, 0.25, [0.2,0.8,1]);
           rectCount++;
         }
       }
-      if(mainAreaOn) drawRect(ox,oy,spanX,spanY,[1,0,0]);
-      gl.enable(gl.DEPTH_TEST);
-      gl.useProgram(prog);
+      if(mainAreaOn){
+        appendRectLineData(rectPos, rectColors, ox, oy, spanX, spanY, 0.25, [1,0,0]);
+      }
     }
-    state.terrainPerf = { draws, culledFrustum, culledBackface };
-    return draws;
+    updateThreeLineGeometry(overlays.rectLines, new Float32Array(rectPos), new Float32Array(rectColors));
+
+    applyThreeCameraFromPV(P, V);
+    state.glb.renderer.resetState();
+    state.glb.renderer.render(overlays.scene, state.glb.camera);
+    state.glb.renderer.resetState();
   }
 
 
-  function drawItems(PV){
-    if (!renderUiState.showAnchorPoints) return;
+
+  function collectItemPointGroups(){
+    if (!renderUiState.showAnchorPoints){
+      return { enabled: false, normalBuf: null, normalLen: 0, waypointBuf: null, waypointLen: 0, selectedBuf: null, selectedLen: 0, pasteBuf: null, pasteLen: 0 };
+    }
     const items = getFilteredItems().filter((it) => isItemLayerVisible(it));
-    if (!items.length && !(state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length)) return;
+    if (!items.length && !(state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length)){
+      return { enabled: true, normalBuf: null, normalLen: 0, waypointBuf: null, waypointLen: 0, selectedBuf: null, selectedLen: 0, pasteBuf: null, pasteLen: 0 };
+    }
 
     const normalCount = 3 * items.length;
     const waypointCount = 3 * items.length;
@@ -6595,36 +6919,110 @@
       }
     }
 
-    gl.useProgram(itemProg);
-    gl.bindBuffer(gl.ARRAY_BUFFER,itemVB);
-    gl.enableVertexAttribArray(iaPos);
-    gl.vertexAttribPointer(iaPos,3,gl.FLOAT,false,0,0);
-    gl.uniformMatrix4fv(iuMVP,false,PV);
-
-    function drawGroup(buffer, len, color, size){
-      if (!len) return;
-      gl.bufferData(gl.ARRAY_BUFFER,buffer.subarray(0, len),gl.DYNAMIC_DRAW);
-      gl.uniform4f(iuColor,color[0],color[1],color[2],color[3]);
-      gl.uniform1f(iuPointSize,size);
-      gl.drawArrays(gl.POINTS,0,len/3);
-    }
-
-    drawGroup(normalBuf, normalLen, [0.88,0.9,1.0,1], 8);
-    drawGroup(waypointBuf, waypointLen, [1.0,0.8,0.2,1], 8);
-    drawGroup(selectedBuf, selectedLen, [0.35,0.45,0.95,1], 11);
-
+    let pasteBuf = null;
+    let pasteLen = 0;
     if(state.pastePlacementActive&&state.pastePreviewWorld&&state.itemClipboardItems.length){
-      const pasteLen = state.itemClipboardItems.length * 3;
-      const p = ensureScratchCapacity('paste', pasteLen);
-      let ptr = 0;
+      const maxPasteLen = state.itemClipboardItems.length * 3;
+      pasteBuf = ensureScratchCapacity('paste', maxPasteLen);
       for(const entry of state.itemClipboardItems){
-        p[ptr++]=state.pastePreviewWorld.x+entry.dx;
-        p[ptr++]=state.pastePreviewWorld.y+entry.dy;
-        p[ptr++]=state.pastePreviewWorld.z||0;
+        pasteBuf[pasteLen++]=state.pastePreviewWorld.x+entry.dx;
+        pasteBuf[pasteLen++]=state.pastePreviewWorld.y+entry.dy;
+        pasteBuf[pasteLen++]=state.pastePreviewWorld.z||0;
       }
-      drawGroup(p, ptr, [0.34,0.83,0.55,0.9], 13);
     }
+
+    return { enabled: true, normalBuf, normalLen, waypointBuf, waypointLen, selectedBuf, selectedLen, pasteBuf, pasteLen };
   }
+
+  function ensureThreeItemsReady(){
+    if (!state.glb.ready || !state.glb.THREE || !state.glb.renderer || !state.glb.camera) return false;
+    if (state.threeItems.ready) return true;
+    const { THREE } = state.glb;
+    const items = state.threeItems;
+    items.scene = new THREE.Scene();
+    items.materials = new Map();
+    items.pointsByGroup = new Map();
+    items.drawCountByGroup = new Map();
+
+    const groupDefs = [
+      ['normal', [0.88,0.9,1.0,1], 8],
+      ['waypoint', [1.0,0.8,0.2,1], 8],
+      ['selected', [0.35,0.45,0.95,1], 11],
+      ['paste', [0.34,0.83,0.55,0.9], 13],
+    ];
+
+    for (const [group, color, size] of groupDefs){
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Vector4(color[0], color[1], color[2], color[3]) },
+          uPointSize: { value: size },
+        },
+        vertexShader: `uniform float uPointSize; void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = uPointSize; }`,
+        fragmentShader: `uniform vec4 uColor; void main(){ vec2 c = gl_PointCoord - vec2(0.5); if(dot(c,c) > 0.25) discard; gl_FragColor = uColor; }`,
+        transparent: true,
+        fog: false,
+        depthWrite: true,
+      });
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+      geometry.setDrawRange(0, 0);
+      const points = new THREE.Points(geometry, material);
+      items.materials.set(group, material);
+      items.pointsByGroup.set(group, points);
+      items.drawCountByGroup.set(group, 0);
+      items.scene.add(points);
+    }
+    items.ready = true;
+    addLog('[items_three] item points layer initialized.');
+    return true;
+  }
+
+  function updateThreeItemGroup(group, srcBuf, srcLen){
+    const points = state.threeItems.pointsByGroup.get(group);
+    if (!points) return;
+    const needed = srcLen;
+    let attr = points.geometry.getAttribute('position');
+    if (!attr || attr.array.length < needed){
+      let cap = Math.max(64, attr?.array?.length || 64);
+      while (cap < needed) cap *= 2;
+      attr = new state.glb.THREE.BufferAttribute(new Float32Array(cap), 3);
+      attr.setUsage(state.glb.THREE.DynamicDrawUsage);
+      points.geometry.setAttribute('position', attr);
+    }
+    if (srcLen > 0 && srcBuf){
+      attr.array.set(srcBuf.subarray(0, srcLen), 0);
+      attr.needsUpdate = true;
+    }
+    points.geometry.setDrawRange(0, Math.floor(srcLen / 3));
+    points.visible = srcLen > 0;
+    state.threeItems.drawCountByGroup.set(group, Math.floor(srcLen / 3));
+  }
+
+  function drawItemsThree(P, V, fogRenderArg){
+    if (!ensureThreeItemsReady()) return;
+    const groups = collectItemPointGroups();
+    if (!groups.enabled) {
+      updateThreeItemGroup('normal', null, 0);
+      updateThreeItemGroup('waypoint', null, 0);
+      updateThreeItemGroup('selected', null, 0);
+      updateThreeItemGroup('paste', null, 0);
+      return;
+    }
+    updateThreeItemGroup('normal', groups.normalBuf, groups.normalLen);
+    updateThreeItemGroup('waypoint', groups.waypointBuf, groups.waypointLen);
+    updateThreeItemGroup('selected', groups.selectedBuf, groups.selectedLen);
+    updateThreeItemGroup('paste', groups.pasteBuf, groups.pasteLen);
+
+    const fogRender = fogRenderArg || getRenderFogSettings();
+    const totalPoints = Math.floor((groups.normalLen + groups.waypointLen + groups.selectedLen + groups.pasteLen) / 3);
+    logFogLayerDiagnostics('items', fogRender, `anchors_no_fog=yes points=${totalPoints}`);
+
+    applyThreeCameraFromPV(P, V);
+    state.glb.renderer.resetState();
+    state.glb.renderer.render(state.threeItems.scene, state.glb.camera);
+    state.glb.renderer.resetState();
+  }
+
 
   function applyItemTransformToObject(obj, it){
     if (!obj || !it) return;
@@ -6706,7 +7104,7 @@
       try {
         const THREE = await import(THREE_MODULE_URL);
         const { GLTFLoader } = await import(GLTF_LOADER_URL);
-        const renderer = new THREE.WebGLRenderer({ canvas: cv, context: gl, antialias: true, alpha: false });
+        const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: false });
         renderer.autoClear = false;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -6734,6 +7132,7 @@
           uFogFarDist: { value: 0.0 },
           uFogNearStrength: { value: 0.0 },
           uFogMidStrength: { value: 0.0 },
+          uFogColor: { value: new THREE.Color(0.65, 0.70, 0.75) },
         };
         if (!state.glb.lodConfigLogged){
           const activeLevels = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
@@ -6746,6 +7145,7 @@
       } catch (err) {
         addLog(`[3d_items] error starting GLB renderer: ${err?.message || err}`);
         state.glb.ready = false;
+        state.glb.initPromise = null;
       }
       return state.glb.ready;
     })();
@@ -6805,7 +7205,7 @@
     return { entries: out, stats };
   }
 
-  function applyCustomFogToGlbMaterial(material){
+  function applyThreePointFogRampToMaterial(material, patchKey = 'material'){
     if (!material || material.userData?._customFogRampPatched || !state.glb.fogUniforms) return;
     material.fog = true;
     material.userData = material.userData || {};
@@ -6820,6 +7220,7 @@ uniform float uFogMidDist;
 uniform float uFogFarDist;
 uniform float uFogNearStrength;
 uniform float uFogMidStrength;
+uniform vec3 uFogColor;
 void main() {`
       );
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -6840,12 +7241,16 @@ void main() {`
               fogAmount = 1.0;
             }
           }
-          gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, clamp(fogAmount, 0.0, 1.0));
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, uFogColor, clamp(fogAmount, 0.0, 1.0));
         #endif`
       );
     };
-    material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v1`;
+    material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v2_${patchKey}`;
     material.needsUpdate = true;
+  }
+
+  function applyCustomFogToGlbMaterial(material){
+    applyThreePointFogRampToMaterial(material, 'glb');
   }
 
   function applyCustomFogToGlbObject(root){
@@ -7167,7 +7572,41 @@ void main() {`
     state.glb.transformDirtyIds.clear();
   }
 
-  function drawGlbItems(P, V){
+  function syncThreePointFogUniforms(fogRender){
+    if (!state.glb.THREE || !state.glb.fogUniforms) return;
+    const fogEnabled = !!(fogRender?.enabled && fogRender?.ramp?.far > 0);
+    state.glb.fogUniforms.uFogEnabled.value = fogEnabled ? 1.0 : 0.0;
+    state.glb.fogUniforms.uFogNearDist.value = fogRender?.ramp?.near || 0;
+    state.glb.fogUniforms.uFogMidDist.value = fogRender?.ramp?.mid || 0;
+    state.glb.fogUniforms.uFogFarDist.value = fogRender?.ramp?.far || 0;
+    state.glb.fogUniforms.uFogNearStrength.value = fogRender?.ramp?.nearStrength || 0;
+    state.glb.fogUniforms.uFogMidStrength.value = fogRender?.ramp?.midStrength || 0;
+    state.glb.fogUniforms.uFogColor.value.setRGB(
+      fogRender?.color?.r || 0,
+      fogRender?.color?.g || 0,
+      fogRender?.color?.b || 0,
+    );
+  }
+
+  function syncGlbFogState(fogRender){
+    syncThreePointFogUniforms(fogRender);
+    if (!state.glb.THREE || !state.glb.fogUniforms) return;
+    const fogEnabled = !!(fogRender?.enabled && fogRender?.ramp?.far > 0);
+
+    // Fallback global antigo mantido nesta fase para compatibilidade com materiais não patchados.
+    if (fogEnabled){
+      if (!state.glb.scene.fog || !state.glb.scene.fog.isFog){
+        state.glb.scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
+      }
+      state.glb.scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
+      state.glb.scene.fog.near = 1;
+      state.glb.scene.fog.far = Math.max(1, fogRender.ramp.far);
+    } else {
+      state.glb.scene.fog = null;
+    }
+  }
+
+  function drawGlbItems(P, V, fogRenderArg){
     if (!state.glb.ready){
       ensureGlbRendererReady().then((ready) => {
         if (ready) syncGlbItems();
@@ -7177,34 +7616,15 @@ void main() {`
     updateGlbTransformsFromState();
 
     const { renderer, scene } = state.glb;
-    const fogRender = getRenderFogSettings();
-    if (state.glb.THREE && state.glb.fogUniforms){
-      const fogEnabled = fogRender.enabled && fogRender.ramp.far > 0;
-      state.glb.fogUniforms.uFogEnabled.value = fogEnabled ? 1.0 : 0.0;
-      state.glb.fogUniforms.uFogNearDist.value = fogRender.ramp.near;
-      state.glb.fogUniforms.uFogMidDist.value = fogRender.ramp.mid;
-      state.glb.fogUniforms.uFogFarDist.value = fogRender.ramp.far;
-      state.glb.fogUniforms.uFogNearStrength.value = fogRender.ramp.nearStrength;
-      state.glb.fogUniforms.uFogMidStrength.value = fogRender.ramp.midStrength;
-
-      if (fogEnabled){
-        if (!scene.fog || !scene.fog.isFog){
-          scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
-        }
-        scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
-        scene.fog.near = 1;
-        scene.fog.far = Math.max(1, fogRender.ramp.far);
-      } else {
-        scene.fog = null;
-      }
-    }
+    const fogRender = fogRenderArg || getRenderFogSettings();
+    syncGlbFogState(fogRender);
+    logFogLayerDiagnostics('glb', fogRender, `instances=${state.glb.itemInstances.size}`);
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
 
     renderer.resetState();
     renderer.render(scene, state.glb.camera);
     renderer.resetState();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   function applyThreeCameraFromPV(P, V){
@@ -7960,7 +8380,7 @@ void main() {`
 
 
 
-  function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); gl.viewport(0,0,cv.width,cv.height); if(gizmoCanvasEl){ gizmoCanvasEl.width=Math.floor(r.width*dpr); gizmoCanvasEl.height=Math.floor(r.height*dpr); } }
+  function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); if(state.glb.renderer){ state.glb.renderer.setSize(cv.width, cv.height, false); } if(gizmoCanvasEl){ gizmoCanvasEl.width=Math.floor(r.width*dpr); gizmoCanvasEl.height=Math.floor(r.height*dpr); } }
 
   function fitView(){
     const items = state.items || [];
@@ -8050,11 +8470,14 @@ void main() {`
     }
     const {forwardXY,right,forward}=cameraBasis(); const canMoveWithKeys=(document.pointerLockElement===cv && state.cameraLookActive); let dir=vec3(0,0,0); if(canMoveWithKeys&&move.w) dir=vec3Add(dir,forwardXY); if(canMoveWithKeys&&move.s) dir=vec3Sub(dir,forwardXY); if(canMoveWithKeys&&move.d) dir=vec3Add(dir,right); if(canMoveWithKeys&&move.a) dir=vec3Sub(dir,right); if(canMoveWithKeys&&move.e) dir=vec3Add(dir,vec3(0,0,1)); if(canMoveWithKeys&&move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); const speedTable=[12.5,25,50,100,200,300,450,600]; const lvl=Math.max(1,Math.min(8,renderUiState.speedLevel|0)); const scalar=Math.max(0.1,renderUiState.speedScalar||1); const base=speedTable[lvl-1]*scalar; const spd=base; state.camera.speed=spd; const targetVel=dlen>0?vec3Scale(dir,spd/dlen):vec3(0,0,0); const smoothBoost=1.3; const accel=12.0/smoothBoost, decel=10.0/smoothBoost; const blend=Math.min(1, (dlen>0?accel:decel)*dt); camVel=vec3Add(camVel, vec3Scale(vec3Sub(targetVel,camVel), blend)); cam.pos=vec3Add(cam.pos,vec3Scale(camVel,dt));
     if(renderUiState.groundClamp && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=renderUiState.clearance; if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
-    resetFixedGlState();
     const fogRender = getRenderFogSettings();
     const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
-    gl.clearColor(clearCol.r, clearCol.g, clearCol.b, 1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
+    if (state.glb.renderer){
+      state.glb.renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
+      state.glb.renderer.clear(true, true, true);
+    }
+    const {P,V,PV}=currentPV(); const renderStats=renderLayersByBackend(P, V, PV, forward, fogRender); const drawCalls=renderStats.drawCalls;
+    logRenderDiagnostics(drawCalls);
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
@@ -8076,6 +8499,7 @@ water_z_used          ${waterZUsedLabel}
 water_source          ${waterRender.source}
 
 Mode: ${renderMode==='C' ? 'Colormap' : (renderMode==='H' ? 'Heightmap' : 'Delta')}
+Render backend: ${state.renderBackend}
 Grid: ${gridVisible ? formatGridValue(gridSizeMeters()) : 'off'}
 Top view lock: ${topViewLocked?'on':'off'}
 Draw calls: ${drawCalls}
@@ -8386,6 +8810,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   (async function boot(){
     initTheme();
     addLog("Editor boot started.");
+    setRenderBackend(resolveInitialRenderBackend(), { force: true });
     try{
       await loadAndApplyItemCatalogs();
     } catch (err){
