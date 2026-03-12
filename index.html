@@ -1881,6 +1881,15 @@
       terrainScene: null,
       overlayScene: null,
       itemsScene: null,
+      terrainMaterial: null,
+      terrainTextureCache: {
+        C: null,
+        H: null,
+        D: null,
+      },
+      terrainLodRoots: [],
+      terrainGeometryCache: new Map(),
+      terrainMeshCount: 0,
       useThreeCameraAsSource: true,
     },
     debugFog: {
@@ -2029,6 +2038,7 @@
     showSectors: !!showSectorsEl?.checked,
     showStats: showStatsEl?.checked !== false,
     showAnchorPoints: showAnchorPointsEl?.checked !== false,
+    useLegacyTerrain: false,
   };
 
   function syncRenderUiState(){
@@ -6275,7 +6285,7 @@
   function formatGridValue(m){ if(m<1) return (m*100).toFixed(3)+'cm'; if(m>=1024) return m.toFixed(0)+'m'; if(Number.isInteger(m)) return m.toFixed(0)+'m'; return m.toFixed(3)+'m'; }
   function updateGridUi(){ const el=document.getElementById('gridValue'); if(el) el.textContent=formatGridValue(gridSizeMeters()); const p=document.getElementById('gridPlus'); const n=document.getElementById('gridMinus'); if(p) p.disabled=gridExponent>=GRID_EXP_MAX; if(n) n.disabled=gridExponent<=GRID_EXP_MIN; }
   function stepGridExponent(d){ gridExponent=Math.max(GRID_EXP_MIN,Math.min(GRID_EXP_MAX,gridExponent+d)); updateGridUi(); }
-  function setRenderMode(mode){ if(!['C','H','D'].includes(mode)) return; renderMode=mode; const c=document.getElementById('modeC'),h=document.getElementById('modeH'),d=document.getElementById('modeD'); if(c)c.classList.toggle('active',mode==='C'); if(h)h.classList.toggle('active',mode==='H'); if(d)d.classList.toggle('active',mode==='D'); }
+  function setRenderMode(mode){ if(!['C','H','D'].includes(mode)) return; renderMode=mode; const c=document.getElementById('modeC'),h=document.getElementById('modeH'),d=document.getElementById('modeD'); if(c)c.classList.toggle('active',mode==='C'); if(h)h.classList.toggle('active',mode==='H'); if(d)d.classList.toggle('active',mode==='D'); syncThreeTerrainMaterialTexture(); }
   function terrainSpanX(){ return sectorCount*SECTOR_STRIDE; } function terrainSpanY(){ return sectorCount*SECTOR_STRIDE; } function originWorldX(){ return terrainOrigin.x*SECTOR_STRIDE; } function originWorldY(){ return terrainOrigin.y*SECTOR_STRIDE; }
   function resetCamera(){ const spanX=terrainSpanX(),spanY=terrainSpanY(), cx=originWorldX()+spanX*0.5, cy=originWorldY()+spanY*0.5, span=Math.max(spanX,spanY); cam.pos=vec3(cx,cy+span*0.65,220); cam.yaw=Math.PI; cam.pitch=-0.25; }
 
@@ -6284,8 +6294,10 @@
   function heightSample(sectorIndex,x,y){ if(!lastDepth) return 0; const off=getSectorOffset(sectorIndex); const sx=(x>=SECTOR_SIZE)?(SECTOR_SIZE-1):x, sy=(y>=SECTOR_SIZE)?(SECTOR_SIZE-1):y, ix=off.x+sx, iy=off.y+sy; if(ix<0||iy<0||ix>=DEPTH_W||iy>=DEPTH_H) return 0; return lastDepth[iy*DEPTH_W+ix]/256.0; }
   function buildMeshSingleSector(sectorIndex,step,heightMul){ if(!lastDepth) return {verts:new Float32Array(0),idx:new Uint32Array(0)}; const uvOff=getSectorOffset(sectorIndex); const xs=[],ys=[]; for(let v=0;v<=SECTOR_MESH_MAX;v+=step) xs.push(v); if(xs.at(-1)!==SECTOR_MESH_MAX) xs.push(SECTOR_MESH_MAX); for(let v=0;v<=SECTOR_MESH_MAX;v+=step) ys.push(v); if(ys.at(-1)!==SECTOR_MESH_MAX) ys.push(SECTOR_MESH_MAX); const gw=xs.length,gh=ys.length; const verts=new Float32Array(gw*gh*5), idx=new Uint32Array((gw-1)*(gh-1)*6); let vb=0; for(let y=0;y<gh;y++) for(let x=0;x<gw;x++){ const lx=xs[x],ly=ys[y],sampleY=TERRAIN_BASE_FLIP_Y?(SECTOR_SIZE-ly):ly,h=heightSample(sectorIndex,lx,sampleY)*heightMul; const su=(lx>=SECTOR_SIZE)?(SECTOR_SIZE-1):lx, sv=(sampleY>=SECTOR_SIZE)?(SECTOR_SIZE-1):sampleY; const u=(uvOff.x+su)/1024.0,v=(uvOff.y+sv)/1024.0,o=vb*5; verts[o]=lx;verts[o+1]=ly;verts[o+2]=h;verts[o+3]=u;verts[o+4]=v; vb++; } let ib=0; for(let y=0;y<gh-1;y++) for(let x=0;x<gw-1;x++){ const a=y*gw+x,b=a+1,c=a+gw,d=c+1; idx[ib++]=a;idx[ib++]=b;idx[ib++]=c; idx[ib++]=b;idx[ib++]=d;idx[ib++]=c; } return {verts,idx}; }
   function createTextureFromPixels(w,h,pixels,opts={}){ const filter=opts.nearest?gl.NEAREST:gl.LINEAR; const tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); return tex; }
-  function createHeightmapTextureFromSectors(){ const px=new Uint8Array(DEPTH_W*DEPTH_H*4); for(let s=1;s<=4;s++){ const off=getSectorOffset(s); for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){ const g=Math.max(0,Math.min(255,Math.round(heightSample(s,x,y)*2.0))); const dst=((off.y+y)*DEPTH_W+(off.x+x))*4; px[dst]=g;px[dst+1]=g;px[dst+2]=g;px[dst+3]=255; } } return createTextureFromPixels(DEPTH_W,DEPTH_H,px); }
-  function createDeltaTextureFromSectors(){ const px=new Uint8Array(DEPTH_W*DEPTH_H*4); for(let s=1;s<=4;s++){ const off=getSectorOffset(s); for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){ const c=heightSample(s,x,y), xm=Math.max(0,x-1),xp=Math.min(SECTOR_SIZE-1,x+1), ym=Math.max(0,y-1),yp=Math.min(SECTOR_SIZE-1,y+1); const has=(Math.abs(heightSample(s,xm,y)-c)>1e-9)||(Math.abs(heightSample(s,xp,y)-c)>1e-9)||(Math.abs(heightSample(s,x,ym)-c)>1e-9)||(Math.abs(heightSample(s,x,yp)-c)>1e-9); const v=has?128:0,dst=((off.y+y)*DEPTH_W+(off.x+x))*4; px[dst]=v;px[dst+1]=v;px[dst+2]=v;px[dst+3]=255; } } return createTextureFromPixels(DEPTH_W,DEPTH_H,px,{nearest:true}); }
+  function buildHeightmapPixelsFromSectors(){ const px=new Uint8Array(DEPTH_W*DEPTH_H*4); for(let s=1;s<=4;s++){ const off=getSectorOffset(s); for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){ const g=Math.max(0,Math.min(255,Math.round(heightSample(s,x,y)*2.0))); const dst=((off.y+y)*DEPTH_W+(off.x+x))*4; px[dst]=g;px[dst+1]=g;px[dst+2]=g;px[dst+3]=255; } } return px; }
+  function buildDeltaPixelsFromSectors(){ const px=new Uint8Array(DEPTH_W*DEPTH_H*4); for(let s=1;s<=4;s++){ const off=getSectorOffset(s); for(let y=0;y<SECTOR_SIZE;y++) for(let x=0;x<SECTOR_SIZE;x++){ const c=heightSample(s,x,y), xm=Math.max(0,x-1),xp=Math.min(SECTOR_SIZE-1,x+1), ym=Math.max(0,y-1),yp=Math.min(SECTOR_SIZE-1,y+1); const has=(Math.abs(heightSample(s,xm,y)-c)>1e-9)||(Math.abs(heightSample(s,xp,y)-c)>1e-9)||(Math.abs(heightSample(s,x,ym)-c)>1e-9)||(Math.abs(heightSample(s,x,yp)-c)>1e-9); const v=has?128:0,dst=((off.y+y)*DEPTH_W+(off.x+x))*4; px[dst]=v;px[dst+1]=v;px[dst+2]=v;px[dst+3]=255; } } return px; }
+  function createHeightmapTextureFromSectors(){ return createTextureFromPixels(DEPTH_W,DEPTH_H,buildHeightmapPixelsFromSectors()); }
+  function createDeltaTextureFromSectors(){ return createTextureFromPixels(DEPTH_W,DEPTH_H,buildDeltaPixelsFromSectors(),{nearest:true}); }
   function activeTerrainTexture(){ if(renderMode==='H') return texHeight||texColor||texDelta; if(renderMode==='D') return texDelta||texColor||texHeight; return texColor||texHeight||texDelta; }
   function clearTerrainRenderState(){
     loadedTrnName=null;
@@ -6296,6 +6308,17 @@
     texHeight=null;
     texDelta=null;
     meshSectorLods=[];
+    disposeThreeTerrainResources();
+    if (state.threeWorld?.terrainMaterial){
+      state.threeWorld.terrainMaterial.dispose?.();
+      state.threeWorld.terrainMaterial = null;
+    }
+    if (state.threeWorld?.terrainTextureCache){
+      for (const k of Object.keys(state.threeWorld.terrainTextureCache)){
+        state.threeWorld.terrainTextureCache[k]?.dispose?.();
+        state.threeWorld.terrainTextureCache[k] = null;
+      }
+    }
   }
   function Mesh(){ this.vb=null; this.ib=null; this.indexCount=0; this.indexType=gl.UNSIGNED_INT; }
   Mesh.prototype.upload=function(mesh){ this.vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.vb); gl.bufferData(gl.ARRAY_BUFFER,mesh.verts,gl.STATIC_DRAW); this.ib=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,mesh.idx,gl.STATIC_DRAW); this.indexCount=mesh.idx.length; this.indexType=(mesh.idx instanceof Uint32Array)?gl.UNSIGNED_INT:gl.UNSIGNED_SHORT; if(this.indexType===gl.UNSIGNED_INT&&!extUInt) throw new Error('OES_element_index_uint not supported'); };
@@ -6315,6 +6338,167 @@
     texColor=createTextureFromPixels(lastImg.w,lastImg.h,lastImg.pixels);
     texHeight=createHeightmapTextureFromSectors();
     texDelta=createDeltaTextureFromSectors();
+    rebuildThreeTerrainFromLegacyMeshes();
+  }
+
+  function disposeThreeTerrainResources(){
+    const world = state.threeWorld;
+    if (!world) return;
+    if (world.terrainScene){
+      for (const child of Array.from(world.terrainScene.children || [])){
+        world.terrainScene.remove(child);
+      }
+    }
+    for (const entry of world.terrainGeometryCache.values()){
+      entry?.dispose?.();
+    }
+    world.terrainGeometryCache.clear();
+    world.terrainLodRoots = [];
+    world.terrainMeshCount = 0;
+  }
+
+  function ensureThreeDataTexture(modeKey){
+    if (!state.glb.THREE) return null;
+    const THREE = state.glb.THREE;
+    const world = state.threeWorld;
+    if (!world?.terrainTextureCache) return null;
+    if (world.terrainTextureCache[modeKey]) return world.terrainTextureCache[modeKey];
+
+    let width = 0;
+    let height = 0;
+    let pixels = null;
+    let nearest = false;
+
+    if (modeKey === 'C' && lastImg?.pixels){
+      width = lastImg.w;
+      height = lastImg.h;
+      pixels = lastImg.pixels;
+    } else if (modeKey === 'H'){
+      width = DEPTH_W;
+      height = DEPTH_H;
+      pixels = buildHeightmapPixelsFromSectors();
+    } else if (modeKey === 'D'){
+      width = DEPTH_W;
+      height = DEPTH_H;
+      pixels = buildDeltaPixelsFromSectors();
+      nearest = true;
+    }
+
+    if (!pixels || !width || !height) return null;
+
+    const tex = new THREE.DataTexture(pixels, width, height, THREE.RGBAFormat);
+    tex.flipY = false;
+    tex.needsUpdate = true;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.minFilter = nearest ? THREE.NearestFilter : THREE.LinearFilter;
+    tex.magFilter = nearest ? THREE.NearestFilter : THREE.LinearFilter;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    world.terrainTextureCache[modeKey] = tex;
+    return tex;
+  }
+
+  function getThreeTerrainTextureForMode(){
+    return ensureThreeDataTexture(renderMode)
+      || ensureThreeDataTexture('C')
+      || ensureThreeDataTexture('H')
+      || ensureThreeDataTexture('D')
+      || null;
+  }
+
+  function syncThreeTerrainMaterialTexture(){
+    const material = state.threeWorld?.terrainMaterial;
+    if (!material) return;
+    const nextMap = getThreeTerrainTextureForMode();
+    if (!nextMap || material.map === nextMap) return;
+    material.map = nextMap;
+    material.needsUpdate = true;
+  }
+
+  function buildThreeTerrainGeometryFromMesh(mesh){
+    const THREE = state.glb.THREE;
+    if (!THREE || !mesh?.verts?.length || !mesh?.idx?.length) return null;
+    const srcVerts = mesh.verts;
+    const vertexCount = (srcVerts.length / 5) | 0;
+    const positions = new Float32Array(vertexCount * 3);
+    const uvs = new Float32Array(vertexCount * 2);
+    let p = 0;
+    let u = 0;
+    for (let i = 0; i < srcVerts.length; i += 5){
+      positions[p++] = srcVerts[i];
+      positions[p++] = srcVerts[i + 1];
+      positions[p++] = srcVerts[i + 2];
+      uvs[u++] = srcVerts[i + 3];
+      uvs[u++] = srcVerts[i + 4];
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geom.setIndex(Array.from(mesh.idx));
+    geom.computeVertexNormals();
+    geom.computeBoundingSphere();
+    return geom;
+  }
+
+  function rebuildThreeTerrainFromLegacyMeshes(){
+    if (!state.glb.ready || !state.glb.THREE) return;
+    if (!state.threeWorld?.terrainScene) return;
+    if (!meshSectorLods?.[0]?.[1] || !sectors) return;
+
+    const THREE = state.glb.THREE;
+    const world = state.threeWorld;
+
+    disposeThreeTerrainResources();
+    for (const key of Object.keys(world.terrainTextureCache || {})){
+      world.terrainTextureCache[key]?.dispose?.();
+      world.terrainTextureCache[key] = null;
+    }
+
+    const terrainMap = getThreeTerrainTextureForMode();
+    if (!terrainMap) return;
+
+    world.terrainMaterial?.dispose?.();
+    const material = new THREE.MeshBasicMaterial({
+      map: terrainMap,
+      toneMapped: false,
+    });
+    world.terrainMaterial = material;
+
+    const ox = originWorldX();
+    const oy = originWorldY();
+    let meshCount = 0;
+
+    for (let gy = 0; gy < sectorCount; gy++){
+      for (let gx = 0; gx < sectorCount; gx++){
+        const sectorIndex = sectors[gy * sectorCount + gx] | 0;
+        if (sectorIndex <= 0) continue;
+
+        const lod = new THREE.LOD();
+        lod.position.set(ox + gx * SECTOR_STRIDE, oy + gy * SECTOR_STRIDE, 0);
+
+        for (let level = 0; level < meshSectorLods.length; level++){
+          const mesh = meshSectorLods[level]?.[sectorIndex] || meshSectorLods[0]?.[sectorIndex];
+          if (!mesh) continue;
+          const key = `${level}:${sectorIndex}`;
+          if (!world.terrainGeometryCache.has(key)){
+            const geom = buildThreeTerrainGeometryFromMesh(mesh);
+            if (geom) world.terrainGeometryCache.set(key, geom);
+          }
+          const geom = world.terrainGeometryCache.get(key);
+          if (!geom) continue;
+          const lodMesh = new THREE.Mesh(geom, material);
+          lodMesh.frustumCulled = true;
+          lod.addLevel(lodMesh, lodDistanceForLevel(level));
+        }
+
+        if (!lod.levels.length) continue;
+        world.terrainScene.add(lod);
+        world.terrainLodRoots.push(lod);
+        meshCount++;
+      }
+    }
+    world.terrainMeshCount = meshCount;
   }
 
   function mapSrcIdx(g,wrap){ if(wrap===1) return posMod(g,sectorCount); if(g<0) return 0; if(g>=sectorCount) return sectorCount-1; return g; }
@@ -6754,6 +6938,7 @@
         state.threeWorld.terrainScene = terrainScene;
         state.threeWorld.overlayScene = overlayScene;
         state.threeWorld.itemsScene = itemsScene;
+        rebuildThreeTerrainFromLegacyMeshes();
         if (!state.glb.lodConfigLogged){
           const activeLevels = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
             ? state.glb.activeLodLevels
@@ -8089,7 +8274,11 @@ void main() {`
     const fogRender = getRenderFogSettings();
     const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
     gl.clearColor(clearCol.r, clearCol.g, clearCol.b, 1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems();
+    const {P,V,PV}=currentPV();
+    const drawCalls = renderUiState.useLegacyTerrain ? drawTerrain(P,V,forward) : (state.threeWorld?.terrainMeshCount || 0);
+    if (renderUiState.useLegacyTerrain) drawItems(PV);
+    else if (renderUiState.showAnchorPoints) drawItems(PV);
+    drawGlbItems();
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
