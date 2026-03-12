@@ -1876,6 +1876,13 @@
       fogUniforms: null,
       ready: false,
     },
+    threeWorld: {
+      rootScene: null,
+      terrainScene: null,
+      overlayScene: null,
+      itemsScene: null,
+      useThreeCameraAsSource: true,
+    },
     debugFog: {
       selectedPreset: 0,
       presetValues: new Map(),
@@ -6712,19 +6719,27 @@
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.2;
 
-        const scene3d = new THREE.Scene();
-        scene3d.add(new THREE.HemisphereLight(0xf6f8ff, 0x4f657d, 1.05));
-        scene3d.add(new THREE.AmbientLight(0xffffff, 0.22));
-        const dir1 = new THREE.DirectionalLight(0xffffff, 0.95); dir1.position.set(5, 8, 6); scene3d.add(dir1);
-        const dir2 = new THREE.DirectionalLight(0xffffff, 0.8); dir2.position.set(-6, 3, -5); scene3d.add(dir2);
+        const rootScene = new THREE.Scene();
+        const terrainScene = new THREE.Group();
+        terrainScene.name = "THREE_TERRAIN_SCENE";
+        const overlayScene = new THREE.Group();
+        overlayScene.name = "THREE_OVERLAY_SCENE";
+        const itemsScene = new THREE.Group();
+        itemsScene.name = "THREE_ITEMS_SCENE";
+        rootScene.add(terrainScene, overlayScene, itemsScene);
+
+        rootScene.add(new THREE.HemisphereLight(0xf6f8ff, 0x4f657d, 1.05));
+        rootScene.add(new THREE.AmbientLight(0xffffff, 0.22));
+        const dir1 = new THREE.DirectionalLight(0xffffff, 0.95); dir1.position.set(5, 8, 6); rootScene.add(dir1);
+        const dir2 = new THREE.DirectionalLight(0xffffff, 0.8); dir2.position.set(-6, 3, -5); rootScene.add(dir2);
 
         const camera3d = new THREE.PerspectiveCamera(60, 1, 0.01, 20000);
-        camera3d.matrixAutoUpdate = false;
+        camera3d.matrixAutoUpdate = true;
 
         state.glb.THREE = THREE;
         state.glb.GLTFLoader = GLTFLoader;
         state.glb.renderer = renderer;
-        state.glb.scene = scene3d;
+        state.glb.scene = itemsScene;
         state.glb.camera = camera3d;
         state.glb.loader = new GLTFLoader();
         state.glb.fogUniforms = {
@@ -6735,6 +6750,10 @@
           uFogNearStrength: { value: 0.0 },
           uFogMidStrength: { value: 0.0 },
         };
+        state.threeWorld.rootScene = rootScene;
+        state.threeWorld.terrainScene = terrainScene;
+        state.threeWorld.overlayScene = overlayScene;
+        state.threeWorld.itemsScene = itemsScene;
         if (!state.glb.lodConfigLogged){
           const activeLevels = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
             ? state.glb.activeLodLevels
@@ -7167,7 +7186,22 @@ void main() {`
     state.glb.transformDirtyIds.clear();
   }
 
-  function drawGlbItems(P, V){
+  function syncThreeCameraFromEditorCamera(){
+    if (!state.glb.ready || !state.glb.camera) return;
+    const camera = state.glb.camera;
+    const { forward } = cameraBasis();
+    const aspect = Math.max(1, cv.width) / Math.max(1, cv.height);
+    if (Math.abs((camera.aspect || 1) - aspect) > 1e-6){
+      camera.aspect = aspect;
+      camera.updateProjectionMatrix();
+    }
+    camera.position.set(cam.pos.x, cam.pos.y, cam.pos.z);
+    camera.up.set(0, 0, 1);
+    camera.lookAt(cam.pos.x + forward.x, cam.pos.y + forward.y, cam.pos.z + forward.z);
+    camera.updateMatrixWorld(true);
+  }
+
+  function drawGlbItems(){
     if (!state.glb.ready){
       ensureGlbRendererReady().then((ready) => {
         if (ready) syncGlbItems();
@@ -7176,7 +7210,9 @@ void main() {`
     }
     updateGlbTransformsFromState();
 
-    const { renderer, scene } = state.glb;
+    const renderer = state.glb.renderer;
+    const scene = state.threeWorld.rootScene || state.glb.scene;
+    if (!renderer || !scene || !state.glb.camera) return;
     const fogRender = getRenderFogSettings();
     if (state.glb.THREE && state.glb.fogUniforms){
       const fogEnabled = fogRender.enabled && fogRender.ramp.far > 0;
@@ -7198,7 +7234,7 @@ void main() {`
         scene.fog = null;
       }
     }
-    applyThreeCameraFromPV(P, V);
+    syncThreeCameraFromEditorCamera();
     updateSelectedGlbVisual();
 
     renderer.resetState();
@@ -7326,8 +7362,7 @@ void main() {`
     const rect = cv.getBoundingClientRect();
     const nx = (sx / rect.width) * 2 - 1;
     const ny = 1 - (sy / rect.height) * 2;
-    const { P, V } = currentPV();
-    applyThreeCameraFromPV(P, V);
+    syncThreeCameraFromEditorCamera();
 
     if (!state.glb.raycaster) state.glb.raycaster = new state.glb.THREE.Raycaster();
     if (!state.glb.pointerNdc) state.glb.pointerNdc = new state.glb.THREE.Vector2();
@@ -8054,7 +8089,7 @@ void main() {`
     const fogRender = getRenderFogSettings();
     const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
     gl.clearColor(clearCol.r, clearCol.g, clearCol.b, 1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
+    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems();
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
