@@ -7096,6 +7096,8 @@
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.2;
+        renderer.setSize(cv.width, cv.height, false);
+        renderer.setViewport(0, 0, cv.width, cv.height);
 
         const rootScene = new THREE.Scene();
         const terrainScene = new THREE.Group();
@@ -7111,7 +7113,7 @@
         const dir1 = new THREE.DirectionalLight(0xffffff, 0.95); dir1.position.set(5, 8, 6); rootScene.add(dir1);
         const dir2 = new THREE.DirectionalLight(0xffffff, 0.8); dir2.position.set(-6, 3, -5); rootScene.add(dir2);
 
-        const camera3d = new THREE.PerspectiveCamera(60, 1, 0.01, 20000);
+        const camera3d = new THREE.PerspectiveCamera(60, 1, 0.01, 1000000);
         camera3d.matrixAutoUpdate = true;
 
         state.glb.THREE = THREE;
@@ -7617,6 +7619,8 @@ void main() {`
     updateSelectedGlbVisual();
 
     const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
+    renderer.setSize(cv.width, cv.height, false);
+    renderer.setViewport(0, 0, cv.width, cv.height);
     renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
     renderer.clear(true, true, true);
 
@@ -8435,7 +8439,17 @@ void main() {`
 
 
 
-  function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); gl.viewport(0,0,cv.width,cv.height); if(gizmoCanvasEl){ gizmoCanvasEl.width=Math.floor(r.width*dpr); gizmoCanvasEl.height=Math.floor(r.height*dpr); } }
+  function resizeCanvas(){
+    const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2);
+    cv.width=Math.floor(r.width*dpr);
+    cv.height=Math.floor(r.height*dpr);
+    gl.viewport(0,0,cv.width,cv.height);
+    if (state.glb?.renderer){
+      state.glb.renderer.setSize(cv.width, cv.height, false);
+      state.glb.renderer.setViewport(0, 0, cv.width, cv.height);
+    }
+    if(gizmoCanvasEl){ gizmoCanvasEl.width=Math.floor(r.width*dpr); gizmoCanvasEl.height=Math.floor(r.height*dpr); }
+  }
 
   function fitView(){
     const items = state.items || [];
