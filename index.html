@@ -7132,6 +7132,8 @@
           uFogFarDist: { value: 0.0 },
           uFogNearStrength: { value: 0.0 },
           uFogMidStrength: { value: 0.0 },
+          uCameraNear: { value: 0.1 },
+          uCameraFar: { value: 20000.0 },
           uFogColor: { value: new THREE.Color(0.65, 0.70, 0.75) },
         };
         if (!state.glb.lodConfigLogged){
@@ -7220,6 +7222,8 @@ uniform float uFogMidDist;
 uniform float uFogFarDist;
 uniform float uFogNearStrength;
 uniform float uFogMidStrength;
+uniform float uCameraNear;
+uniform float uCameraFar;
 uniform vec3 uFogColor;
 void main() {`
       );
@@ -7228,7 +7232,9 @@ void main() {`
         `#ifdef USE_FOG
           float fogAmount = 0.0;
           if (uFogEnabled > 0.5 && uFogFarDist > 0.0) {
-            float distToCam = vFogDepth;
+            float zNdc = gl_FragCoord.z * 2.0 - 1.0;
+            float linearDepth = (2.0 * uCameraNear * uCameraFar) / max(0.0001, (uCameraFar + uCameraNear) - zNdc * (uCameraFar - uCameraNear));
+            float distToCam = max(0.0, linearDepth - uCameraNear);
             if (distToCam <= uFogNearDist) {
               fogAmount = 0.0;
             } else if (distToCam <= uFogMidDist) {
@@ -7245,7 +7251,7 @@ void main() {`
         #endif`
       );
     };
-    material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v2_${patchKey}`;
+    material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v3_${patchKey}`;
     material.needsUpdate = true;
   }
 
@@ -7586,6 +7592,10 @@ void main() {`
       fogRender?.color?.g || 0,
       fogRender?.color?.b || 0,
     );
+    const camNear = Number(state.glb.camera?.near);
+    const camFar = Number(state.glb.camera?.far);
+    state.glb.fogUniforms.uCameraNear.value = Number.isFinite(camNear) ? Math.max(0.0001, camNear) : 0.1;
+    state.glb.fogUniforms.uCameraFar.value = Number.isFinite(camFar) ? Math.max(state.glb.fogUniforms.uCameraNear.value + 0.0001, camFar) : 20000.0;
   }
 
   function syncGlbFogState(fogRender){
