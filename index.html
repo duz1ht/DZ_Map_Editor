@@ -1915,6 +1915,9 @@
       pointerNdc: null,
       fogUniforms: null,
       fullscreenFog: null,
+      fullscreenFogDisabled: false,
+      fullscreenFogWarned: false,
+      useFullscreenFogThisFrame: false,
       ready: false,
     },
     debugFog: {
@@ -7580,7 +7583,8 @@ void main() {`
 
   function syncThreePointFogUniforms(fogRender){
     if (!state.glb.THREE || !state.glb.fogUniforms) return;
-    state.glb.fogUniforms.uFogEnabled.value = 0.0;
+    const fogEnabled = !!(fogRender?.enabled && fogRender?.ramp?.far > 0);
+    state.glb.fogUniforms.uFogEnabled.value = state.glb.useFullscreenFogThisFrame ? 0.0 : (fogEnabled ? 1.0 : 0.0);
     state.glb.fogUniforms.uFogNearDist.value = fogRender?.ramp?.near || 0;
     state.glb.fogUniforms.uFogMidDist.value = fogRender?.ramp?.mid || 0;
     state.glb.fogUniforms.uFogFarDist.value = fogRender?.ramp?.far || 0;
@@ -7606,15 +7610,35 @@ void main() {`
 
   function ensureFullscreenFogPass(){
     if (!state.glb.ready || !state.glb.renderer || !state.glb.THREE) return false;
+    if (state.glb.fullscreenFogDisabled) return false;
     const { THREE, renderer } = state.glb;
+    const hasDepthTextureSupport = renderer.capabilities?.isWebGL2 || renderer.extensions?.has?.('WEBGL_depth_texture');
+    if (!hasDepthTextureSupport){
+      state.glb.fullscreenFogDisabled = true;
+      if (!state.glb.fullscreenFogWarned){
+        addLog('[fog_fullscreen] depth texture unsupported; fallback para fog por material.');
+        state.glb.fullscreenFogWarned = true;
+      }
+      return false;
+    }
     const width = Math.max(1, cv.width || renderer.domElement?.width || 1);
     const height = Math.max(1, cv.height || renderer.domElement?.height || 1);
 
     if (!state.glb.fullscreenFog){
-      const target = new THREE.WebGLRenderTarget(width, height, {
+      let target;
+      try {
+        target = new THREE.WebGLRenderTarget(width, height, {
         depthBuffer: true,
         stencilBuffer: false,
       });
+      } catch (err) {
+        state.glb.fullscreenFogDisabled = true;
+        if (!state.glb.fullscreenFogWarned){
+          addLog(`[fog_fullscreen] erro criando render target; fallback por material: ${err?.message || err}`);
+          state.glb.fullscreenFogWarned = true;
+        }
+        return false;
+      }
       target.texture.minFilter = THREE.LinearFilter;
       target.texture.magFilter = THREE.LinearFilter;
       target.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
@@ -8587,18 +8611,33 @@ void main(){
     if (state.glb.renderer && ensureFullscreenFogPass()){
       const renderer = state.glb.renderer;
       const pass = state.glb.fullscreenFog;
-      renderer.setRenderTarget(pass.target);
-      renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
-      renderer.clear(true, true, true);
-      renderStats = renderLayersByBackend(P, V, PV, forward, fogRender);
-      syncFullscreenFogUniforms(fogRender);
-      renderer.setRenderTarget(null);
-      renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
-      renderer.clear(true, true, true);
-      renderer.resetState();
-      renderer.render(pass.scene, pass.camera);
-      renderer.resetState();
+      try {
+        state.glb.useFullscreenFogThisFrame = true;
+        renderer.setRenderTarget(pass.target);
+        renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
+        renderer.clear(true, true, true);
+        renderStats = renderLayersByBackend(P, V, PV, forward, fogRender);
+        syncFullscreenFogUniforms(fogRender);
+        renderer.setRenderTarget(null);
+        renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
+        renderer.clear(true, true, true);
+        renderer.resetState();
+        renderer.render(pass.scene, pass.camera);
+        renderer.resetState();
+      } catch (err) {
+        state.glb.fullscreenFogDisabled = true;
+        state.glb.useFullscreenFogThisFrame = false;
+        if (!state.glb.fullscreenFogWarned){
+          addLog(`[fog_fullscreen] falhou em runtime; fallback por material: ${err?.message || err}`);
+          state.glb.fullscreenFogWarned = true;
+        }
+        renderer.setRenderTarget(null);
+        renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
+        renderer.clear(true, true, true);
+        renderStats = renderLayersByBackend(P, V, PV, forward, fogRender);
+      }
     } else {
+      state.glb.useFullscreenFogThisFrame = false;
       if (state.glb.renderer){
         state.glb.renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
         state.glb.renderer.clear(true, true, true);
