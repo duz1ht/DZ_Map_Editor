@@ -1997,6 +1997,7 @@
   function renderLayersByBackend(P, V, PV, forward, fogRender){
     const result = { drawCalls: 0 };
     if (!state.glb.ready) ensureGlbRendererReady();
+    syncThreePointFogUniforms(fogRender);
     result.drawCalls = drawTerrainThree(P, V, forward, fogRender);
     drawOverlaysThree(P, V, forward, fogRender);
     drawItemsThree(P, V, fogRender);
@@ -6613,6 +6614,7 @@
         transparent: false,
         depthWrite: true,
       });
+      applyThreePointFogRampToMaterial(terrain.material, 'terrain');
     }
     terrain.material.map = getThreeTerrainTextureByMode();
     terrain.material.needsUpdate = true;
@@ -6717,6 +6719,7 @@
       depthWrite: false,
       fog: true,
     });
+    applyThreePointFogRampToMaterial(overlays.waterMaterial, 'water');
     overlays.waterPool = [];
     overlays.waterMap = new Map();
 
@@ -7202,7 +7205,7 @@
     return { entries: out, stats };
   }
 
-  function applyCustomFogToGlbMaterial(material){
+  function applyThreePointFogRampToMaterial(material, patchKey = 'material'){
     if (!material || material.userData?._customFogRampPatched || !state.glb.fogUniforms) return;
     material.fog = true;
     material.userData = material.userData || {};
@@ -7222,7 +7225,8 @@ void main() {`
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <fog_fragment>',
-        `float fogAmount = 0.0;
+        `#ifdef USE_FOG
+          float fogAmount = 0.0;
           if (uFogEnabled > 0.5 && uFogFarDist > 0.0) {
             float distToCam = vFogDepth;
             if (distToCam <= uFogNearDist) {
@@ -7237,11 +7241,16 @@ void main() {`
               fogAmount = 1.0;
             }
           }
-          gl_FragColor.rgb = mix(gl_FragColor.rgb, uFogColor, clamp(fogAmount, 0.0, 1.0));`
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, uFogColor, clamp(fogAmount, 0.0, 1.0));
+        #endif`
       );
     };
-    material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v1`;
+    material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v2_${patchKey}`;
     material.needsUpdate = true;
+  }
+
+  function applyCustomFogToGlbMaterial(material){
+    applyThreePointFogRampToMaterial(material, 'glb');
   }
 
   function applyCustomFogToGlbObject(root){
@@ -7563,7 +7572,7 @@ void main() {`
     state.glb.transformDirtyIds.clear();
   }
 
-  function syncGlbFogState(fogRender){
+  function syncThreePointFogUniforms(fogRender){
     if (!state.glb.THREE || !state.glb.fogUniforms) return;
     const fogEnabled = !!(fogRender?.enabled && fogRender?.ramp?.far > 0);
     state.glb.fogUniforms.uFogEnabled.value = fogEnabled ? 1.0 : 0.0;
@@ -7577,6 +7586,12 @@ void main() {`
       fogRender?.color?.g || 0,
       fogRender?.color?.b || 0,
     );
+  }
+
+  function syncGlbFogState(fogRender){
+    syncThreePointFogUniforms(fogRender);
+    if (!state.glb.THREE || !state.glb.fogUniforms) return;
+    const fogEnabled = !!(fogRender?.enabled && fogRender?.ramp?.far > 0);
 
     // Fallback global antigo mantido nesta fase para compatibilidade com materiais não patchados.
     if (fogEnabled){
