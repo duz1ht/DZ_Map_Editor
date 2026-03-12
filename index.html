@@ -1851,6 +1851,8 @@
     renderDiagnostics: {
       lastBackendLogged: null,
       lastTickMs: 0,
+      fogByLayer: new Map(),
+      fogLastTickMs: 0,
     },
     threeTerrain: {
       scene: null,
@@ -1962,13 +1964,43 @@
     addLog(`[render_diag] backend=${state.renderBackend} terrain_draw_calls=${drawCalls} glb_ready=${state.glb.ready ? 'yes' : 'no'} glb_instances=${state.glb.itemInstances.size}`);
   }
 
-  function renderLayersByBackend(P, V, PV, forward){
+  function applyFogToThreeScene(scene, fogRender){
+    if (!scene || !state.glb.THREE) return;
+    if (fogRender?.enabled && fogRender?.ramp?.far > 0){
+      if (!scene.fog || !scene.fog.isFog){
+        scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
+      }
+      scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
+      scene.fog.near = 1;
+      scene.fog.far = Math.max(1, fogRender.ramp.far);
+      return;
+    }
+    scene.fog = null;
+  }
+
+  function logFogLayerDiagnostics(layerName, fogRender, extra = ''){
+    const now = performance.now();
+    const diag = state.renderDiagnostics;
+    const fogActive = fogRender?.enabled && fogRender?.ramp?.far > 0;
+    const signature = fogActive
+      ? `on:${fogRender.ramp.near.toFixed(2)}:${fogRender.ramp.mid.toFixed(2)}:${fogRender.ramp.far.toFixed(2)}:${fogRender.ramp.nearStrength.toFixed(2)}:${fogRender.ramp.midStrength.toFixed(2)}`
+      : 'off';
+    const prevSig = diag.fogByLayer.get(layerName);
+    const changed = prevSig !== signature;
+    if (!changed && (now - diag.fogLastTickMs) < 5000) return;
+    diag.fogByLayer.set(layerName, signature);
+    diag.fogLastTickMs = now;
+    const suffix = extra ? ` ${extra}` : '';
+    addLog(`[fog_diag] layer=${layerName} active=${fogActive ? 'yes' : 'no'} near=${(fogRender?.ramp?.near || 0).toFixed(2)} mid=${(fogRender?.ramp?.mid || 0).toFixed(2)} far=${(fogRender?.ramp?.far || 0).toFixed(2)} near_strength=${(fogRender?.ramp?.nearStrength || 0).toFixed(2)} mid_strength=${(fogRender?.ramp?.midStrength || 0).toFixed(2)}${suffix}`);
+  }
+
+  function renderLayersByBackend(P, V, PV, forward, fogRender){
     const result = { drawCalls: 0 };
     if (!state.glb.ready) ensureGlbRendererReady();
-    result.drawCalls = drawTerrainThree(P, V, forward);
-    drawOverlaysThree(P, V, forward);
-    drawItemsThree(P, V);
-    drawGlbItems(P, V);
+    result.drawCalls = drawTerrainThree(P, V, forward, fogRender);
+    drawOverlaysThree(P, V, forward, fogRender);
+    drawItemsThree(P, V, fogRender);
+    drawGlbItems(P, V, fogRender);
     return result;
   }
 
@@ -6621,7 +6653,7 @@
     return g;
   }
 
-  function drawTerrainThree(P, V, forward){
+  function drawTerrainThree(P, V, forward, fogRenderArg){
     if (!state.glb.ready || !state.glb.renderer || !state.glb.camera || !sectors || !meshSectorLods[0]?.[1]) return 0;
     if (!ensureThreeTerrainReady()) return 0;
     const { renderer, camera } = state.glb;
@@ -6659,17 +6691,9 @@
       terrain.meshPool.push(mesh);
     }
 
-    const fogRender = getRenderFogSettings();
-    if (fogRender.enabled && fogRender.ramp.far > 0){
-      if (!terrain.scene.fog || !terrain.scene.fog.isFog){
-        terrain.scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
-      }
-      terrain.scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
-      terrain.scene.fog.near = 1;
-      terrain.scene.fog.far = Math.max(1, fogRender.ramp.far);
-    } else {
-      terrain.scene.fog = null;
-    }
+    const fogRender = fogRenderArg || getRenderFogSettings();
+    applyFogToThreeScene(terrain.scene, fogRender);
+    logFogLayerDiagnostics('terrain', fogRender, `tiles=${vis.visibleTiles.length}`);
 
     applyThreeCameraFromPV(P, V);
     renderer.resetState();
@@ -6756,7 +6780,7 @@
     }
   }
 
-  function drawOverlaysThree(P, V, forward){
+  function drawOverlaysThree(P, V, forward, fogRenderArg){
     if (!ensureThreeOverlaysReady()) return;
     if (!sectors || !Number.isFinite(sectorCount) || sectorCount <= 0){
       updateThreeLineGeometry(state.threeOverlays.gridLines, new Float32Array(0));
@@ -6806,17 +6830,9 @@
       overlays.waterPool.push(mesh);
     }
 
-    const fogRender = getRenderFogSettings();
-    if (fogRender.enabled && fogRender.ramp.far > 0){
-      if (!overlays.scene.fog || !overlays.scene.fog.isFog){
-        overlays.scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
-      }
-      overlays.scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
-      overlays.scene.fog.near = 1;
-      overlays.scene.fog.far = Math.max(1, fogRender.ramp.far);
-    } else {
-      overlays.scene.fog = null;
-    }
+    const fogRender = fogRenderArg || getRenderFogSettings();
+    applyFogToThreeScene(overlays.scene, fogRender);
+    logFogLayerDiagnostics('overlays', fogRender, `water_tiles=${overlays.waterMap.size}`);
 
     const gridPositions = [];
     if(gridVisible){
@@ -6979,7 +6995,7 @@
     state.threeItems.drawCountByGroup.set(group, Math.floor(srcLen / 3));
   }
 
-  function drawItemsThree(P, V){
+  function drawItemsThree(P, V, fogRenderArg){
     if (!ensureThreeItemsReady()) return;
     const groups = collectItemPointGroups();
     if (!groups.enabled) {
@@ -6993,6 +7009,10 @@
     updateThreeItemGroup('waypoint', groups.waypointBuf, groups.waypointLen);
     updateThreeItemGroup('selected', groups.selectedBuf, groups.selectedLen);
     updateThreeItemGroup('paste', groups.pasteBuf, groups.pasteLen);
+
+    const fogRender = fogRenderArg || getRenderFogSettings();
+    const totalPoints = Math.floor((groups.normalLen + groups.waypointLen + groups.selectedLen + groups.pasteLen) / 3);
+    logFogLayerDiagnostics('items', fogRender, `anchors_no_fog=yes points=${totalPoints}`);
 
     applyThreeCameraFromPV(P, V);
     state.glb.renderer.resetState();
@@ -7543,7 +7563,7 @@ void main() {`
     state.glb.transformDirtyIds.clear();
   }
 
-  function drawGlbItems(P, V){
+  function drawGlbItems(P, V, fogRenderArg){
     if (!state.glb.ready){
       ensureGlbRendererReady().then((ready) => {
         if (ready) syncGlbItems();
@@ -7553,7 +7573,7 @@ void main() {`
     updateGlbTransformsFromState();
 
     const { renderer, scene } = state.glb;
-    const fogRender = getRenderFogSettings();
+    const fogRender = fogRenderArg || getRenderFogSettings();
     if (state.glb.THREE && state.glb.fogUniforms){
       const fogEnabled = fogRender.enabled && fogRender.ramp.far > 0;
       state.glb.fogUniforms.uFogEnabled.value = fogEnabled ? 1.0 : 0.0;
@@ -7574,6 +7594,7 @@ void main() {`
         scene.fog = null;
       }
     }
+    logFogLayerDiagnostics('glb', fogRender, `instances=${state.glb.itemInstances.size}`);
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
 
@@ -8431,7 +8452,7 @@ void main() {`
       state.glb.renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
       state.glb.renderer.clear(true, true, true);
     }
-    const {P,V,PV}=currentPV(); const renderStats=renderLayersByBackend(P, V, PV, forward); const drawCalls=renderStats.drawCalls;
+    const {P,V,PV}=currentPV(); const renderStats=renderLayersByBackend(P, V, PV, forward, fogRender); const drawCalls=renderStats.drawCalls;
     logRenderDiagnostics(drawCalls);
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
