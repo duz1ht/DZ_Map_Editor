@@ -1841,11 +1841,11 @@
     pendingUiRenderRaf: 0,
     pendingLiveMisRaf: 0,
     terrainPerf: { draws: 0, culledFrustum: 0, culledBackface: 0 },
-    renderBackend: 'hybrid',
+    renderBackend: 'three-only',
     renderLayers: {
-      terrain: { owner: 'legacy-webgl', phase: 1 },
-      items: { owner: 'legacy-webgl', phase: 2 },
-      overlays: { owner: 'legacy-webgl', phase: 3 },
+      terrain: { owner: 'three', phase: 1 },
+      items: { owner: 'three', phase: 2 },
+      overlays: { owner: 'three', phase: 3 },
       glb: { owner: 'three', phase: 'existing' },
     },
     renderDiagnostics: {
@@ -1922,29 +1922,33 @@
     },
   };
 
-  const RENDER_BACKENDS = Object.freeze({ HYBRID: 'hybrid', THREE_ONLY: 'three-only' });
+  const RENDER_BACKENDS = Object.freeze({ THREE_ONLY: 'three-only' });
 
   function normalizeRenderBackend(value){
-    return value === RENDER_BACKENDS.THREE_ONLY ? RENDER_BACKENDS.THREE_ONLY : RENDER_BACKENDS.HYBRID;
+    return RENDER_BACKENDS.THREE_ONLY;
   }
 
   function parseRenderBackend(value){
-    if (value === RENDER_BACKENDS.HYBRID || value === RENDER_BACKENDS.THREE_ONLY) return value;
+    if (value === RENDER_BACKENDS.THREE_ONLY) return value;
     return null;
   }
 
   function resolveInitialRenderBackend(){
     const qsBackend = parseRenderBackend(new URLSearchParams(location.search).get('renderBackend'));
     const storedBackend = parseRenderBackend(localStorage.getItem('dz.renderBackend'));
-    return qsBackend || storedBackend || RENDER_BACKENDS.HYBRID;
+    return qsBackend || storedBackend || RENDER_BACKENDS.THREE_ONLY;
   }
 
   function setRenderBackend(nextBackend, options = {}){
     const normalized = normalizeRenderBackend(nextBackend);
+    if (nextBackend && nextBackend !== RENDER_BACKENDS.THREE_ONLY){
+      addLog(`[render_backend] '${nextBackend}' is deprecated; forcing '${RENDER_BACKENDS.THREE_ONLY}'.`);
+    }
     if (state.renderBackend === normalized && !options.force) return;
     state.renderBackend = normalized;
-    state.renderLayers.terrain.owner = normalized === RENDER_BACKENDS.THREE_ONLY ? 'three' : 'legacy-webgl';
-    state.renderLayers.overlays.owner = normalized === RENDER_BACKENDS.THREE_ONLY ? 'three' : 'legacy-webgl';
+    state.renderLayers.terrain.owner = 'three';
+    state.renderLayers.items.owner = 'three';
+    state.renderLayers.overlays.owner = 'three';
     try { localStorage.setItem('dz.renderBackend', normalized); } catch (_) {}
     addLog(`[render_backend] active=${normalized} (terrain=${state.renderLayers.terrain.owner}, items=${state.renderLayers.items.owner}, overlays=${state.renderLayers.overlays.owner}, glb=${state.renderLayers.glb.owner})`);
   }
@@ -1960,24 +1964,10 @@
 
   function renderLayersByBackend(P, V, PV, forward){
     const result = { drawCalls: 0 };
-    if (state.renderBackend === RENDER_BACKENDS.THREE_ONLY){
-      if (!state.glb.ready){
-        ensureGlbRendererReady();
-        // Keep canvas responsive while Three.js renderer is still booting/fetching modules.
-        // This avoids a full black frame in three-only mode during init failures/delays.
-        result.drawCalls = drawTerrain(P, V, forward);
-        drawItems(PV);
-        drawGlbItems(P, V);
-        return result;
-      }
-      result.drawCalls = drawTerrainThree(P, V, forward);
-      drawOverlaysThree(P, V, forward);
-      drawItemsThree(P, V);
-      drawGlbItems(P, V);
-      return result;
-    }
-    result.drawCalls = drawTerrain(P, V, forward);
-    drawItems(PV);
+    if (!state.glb.ready) ensureGlbRendererReady();
+    result.drawCalls = drawTerrainThree(P, V, forward);
+    drawOverlaysThree(P, V, forward);
+    drawItemsThree(P, V);
     drawGlbItems(P, V);
     return result;
   }
