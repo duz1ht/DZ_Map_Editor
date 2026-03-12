@@ -1863,6 +1863,13 @@
       ready: false,
       dirty: true,
     },
+    threeItems: {
+      scene: null,
+      materials: null,
+      pointsByGroup: new Map(),
+      drawCountByGroup: new Map(),
+      ready: false,
+    },
     itemsById: new Map(),
     itemSectionByStart: new Map(),
     layerVisibility: new Map(),
@@ -1946,7 +1953,7 @@
     if (state.renderBackend === RENDER_BACKENDS.THREE_ONLY){
       result.drawCalls = drawTerrainThree(P, V, forward);
       drawTerrain(P, V, forward, { drawBase: false });
-      drawItems(PV);
+      drawItemsThree(P, V);
       drawGlbItems(P, V);
       return result;
     }
@@ -6849,10 +6856,14 @@
   }
 
 
-  function drawItems(PV){
-    if (!renderUiState.showAnchorPoints) return;
+  function collectItemPointGroups(){
+    if (!renderUiState.showAnchorPoints){
+      return { enabled: false, normalBuf: null, normalLen: 0, waypointBuf: null, waypointLen: 0, selectedBuf: null, selectedLen: 0, pasteBuf: null, pasteLen: 0 };
+    }
     const items = getFilteredItems().filter((it) => isItemLayerVisible(it));
-    if (!items.length && !(state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length)) return;
+    if (!items.length && !(state.pastePlacementActive && state.pastePreviewWorld && state.itemClipboardItems.length)){
+      return { enabled: true, normalBuf: null, normalLen: 0, waypointBuf: null, waypointLen: 0, selectedBuf: null, selectedLen: 0, pasteBuf: null, pasteLen: 0 };
+    }
 
     const normalCount = 3 * items.length;
     const waypointCount = 3 * items.length;
@@ -6877,6 +6888,112 @@
       }
     }
 
+    let pasteBuf = null;
+    let pasteLen = 0;
+    if(state.pastePlacementActive&&state.pastePreviewWorld&&state.itemClipboardItems.length){
+      const maxPasteLen = state.itemClipboardItems.length * 3;
+      pasteBuf = ensureScratchCapacity('paste', maxPasteLen);
+      for(const entry of state.itemClipboardItems){
+        pasteBuf[pasteLen++]=state.pastePreviewWorld.x+entry.dx;
+        pasteBuf[pasteLen++]=state.pastePreviewWorld.y+entry.dy;
+        pasteBuf[pasteLen++]=state.pastePreviewWorld.z||0;
+      }
+    }
+
+    return { enabled: true, normalBuf, normalLen, waypointBuf, waypointLen, selectedBuf, selectedLen, pasteBuf, pasteLen };
+  }
+
+  function ensureThreeItemsReady(){
+    if (!state.glb.ready || !state.glb.THREE || !state.glb.renderer || !state.glb.camera) return false;
+    if (state.threeItems.ready) return true;
+    const { THREE } = state.glb;
+    const items = state.threeItems;
+    items.scene = new THREE.Scene();
+    items.materials = new Map();
+    items.pointsByGroup = new Map();
+    items.drawCountByGroup = new Map();
+
+    const groupDefs = [
+      ['normal', [0.88,0.9,1.0,1], 8],
+      ['waypoint', [1.0,0.8,0.2,1], 8],
+      ['selected', [0.35,0.45,0.95,1], 11],
+      ['paste', [0.34,0.83,0.55,0.9], 13],
+    ];
+
+    for (const [group, color, size] of groupDefs){
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Vector4(color[0], color[1], color[2], color[3]) },
+          uPointSize: { value: size },
+        },
+        vertexShader: `uniform float uPointSize; void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = uPointSize; }`,
+        fragmentShader: `uniform vec4 uColor; void main(){ vec2 c = gl_PointCoord - vec2(0.5); if(dot(c,c) > 0.25) discard; gl_FragColor = uColor; }`,
+        transparent: true,
+        depthWrite: true,
+      });
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+      geometry.setDrawRange(0, 0);
+      const points = new THREE.Points(geometry, material);
+      items.materials.set(group, material);
+      items.pointsByGroup.set(group, points);
+      items.drawCountByGroup.set(group, 0);
+      items.scene.add(points);
+    }
+    items.ready = true;
+    addLog('[items_three] item points layer initialized.');
+    return true;
+  }
+
+  function updateThreeItemGroup(group, srcBuf, srcLen){
+    const points = state.threeItems.pointsByGroup.get(group);
+    if (!points) return;
+    const needed = srcLen;
+    let attr = points.geometry.getAttribute('position');
+    if (!attr || attr.array.length < needed){
+      let cap = Math.max(64, attr?.array?.length || 64);
+      while (cap < needed) cap *= 2;
+      attr = new state.glb.THREE.BufferAttribute(new Float32Array(cap), 3);
+      attr.setUsage(state.glb.THREE.DynamicDrawUsage);
+      points.geometry.setAttribute('position', attr);
+    }
+    if (srcLen > 0 && srcBuf){
+      attr.array.set(srcBuf.subarray(0, srcLen), 0);
+      attr.needsUpdate = true;
+    }
+    points.geometry.setDrawRange(0, Math.floor(srcLen / 3));
+    points.visible = srcLen > 0;
+    state.threeItems.drawCountByGroup.set(group, Math.floor(srcLen / 3));
+  }
+
+  function drawItemsThree(P, V){
+    if (!ensureThreeItemsReady()) return;
+    const groups = collectItemPointGroups();
+    if (!groups.enabled) {
+      updateThreeItemGroup('normal', null, 0);
+      updateThreeItemGroup('waypoint', null, 0);
+      updateThreeItemGroup('selected', null, 0);
+      updateThreeItemGroup('paste', null, 0);
+      return;
+    }
+    updateThreeItemGroup('normal', groups.normalBuf, groups.normalLen);
+    updateThreeItemGroup('waypoint', groups.waypointBuf, groups.waypointLen);
+    updateThreeItemGroup('selected', groups.selectedBuf, groups.selectedLen);
+    updateThreeItemGroup('paste', groups.pasteBuf, groups.pasteLen);
+
+    applyThreeCameraFromPV(P, V);
+    state.glb.renderer.resetState();
+    state.glb.renderer.render(state.threeItems.scene, state.glb.camera);
+    state.glb.renderer.resetState();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+
+  function drawItems(PV){
+    const groups = collectItemPointGroups();
+    if (!groups.enabled) return;
+    const { normalBuf, normalLen, waypointBuf, waypointLen, selectedBuf, selectedLen, pasteBuf, pasteLen } = groups;
+
     gl.useProgram(itemProg);
     gl.bindBuffer(gl.ARRAY_BUFFER,itemVB);
     gl.enableVertexAttribArray(iaPos);
@@ -6895,17 +7012,7 @@
     drawGroup(waypointBuf, waypointLen, [1.0,0.8,0.2,1], 8);
     drawGroup(selectedBuf, selectedLen, [0.35,0.45,0.95,1], 11);
 
-    if(state.pastePlacementActive&&state.pastePreviewWorld&&state.itemClipboardItems.length){
-      const pasteLen = state.itemClipboardItems.length * 3;
-      const p = ensureScratchCapacity('paste', pasteLen);
-      let ptr = 0;
-      for(const entry of state.itemClipboardItems){
-        p[ptr++]=state.pastePreviewWorld.x+entry.dx;
-        p[ptr++]=state.pastePreviewWorld.y+entry.dy;
-        p[ptr++]=state.pastePreviewWorld.z||0;
-      }
-      drawGroup(p, ptr, [0.34,0.83,0.55,0.9], 13);
-    }
+    drawGroup(pasteBuf, pasteLen, [0.34,0.83,0.55,0.9], 13);
   }
 
   function applyItemTransformToObject(obj, it){
