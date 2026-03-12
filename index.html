@@ -1961,6 +1961,15 @@
   function renderLayersByBackend(P, V, PV, forward){
     const result = { drawCalls: 0 };
     if (state.renderBackend === RENDER_BACKENDS.THREE_ONLY){
+      if (!state.glb.ready){
+        ensureGlbRendererReady();
+        // Keep canvas responsive while Three.js renderer is still booting/fetching modules.
+        // This avoids a full black frame in three-only mode during init failures/delays.
+        result.drawCalls = drawTerrain(P, V, forward);
+        drawItems(PV);
+        drawGlbItems(P, V);
+        return result;
+      }
       result.drawCalls = drawTerrainThree(P, V, forward);
       drawOverlaysThree(P, V, forward);
       drawItemsThree(P, V);
@@ -7339,6 +7348,7 @@
       } catch (err) {
         addLog(`[3d_items] error starting GLB renderer: ${err?.message || err}`);
         state.glb.ready = false;
+        state.glb.initPromise = null;
       }
       return state.glb.ready;
     })();
