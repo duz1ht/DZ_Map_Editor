@@ -6771,7 +6771,7 @@
 
     const gridGeom = new THREE.BufferGeometry();
     gridGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
-    const gridMat = new THREE.LineBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, transparent: false });
+    const gridMat = new THREE.LineBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, transparent: false, fog: false });
     overlays.gridLines = new THREE.LineSegments(gridGeom, gridMat);
     overlays.gridLines.frustumCulled = false;
     overlays.scene.add(overlays.gridLines);
@@ -6779,7 +6779,7 @@
     const rectGeom = new THREE.BufferGeometry();
     rectGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
     rectGeom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(0), 3));
-    const rectMat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, depthWrite: false, transparent: false });
+    const rectMat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, depthWrite: false, transparent: false, fog: false });
     overlays.rectLines = new THREE.LineSegments(rectGeom, rectMat);
     overlays.rectLines.frustumCulled = false;
     overlays.scene.add(overlays.rectLines);
@@ -7153,6 +7153,7 @@
         vertexShader: `uniform float uPointSize; void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = uPointSize; }`,
         fragmentShader: `uniform vec4 uColor; void main(){ vec2 c = gl_PointCoord - vec2(0.5); if(dot(c,c) > 0.25) discard; gl_FragColor = uColor; }`,
         transparent: true,
+        fog: false,
         depthWrite: true,
       });
       const geometry = new THREE.BufferGeometry();
