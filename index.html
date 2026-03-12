@@ -1897,6 +1897,12 @@
       gridLines: null,
       sectorLines: null,
       mainAreaLines: null,
+      anchorPointItemIds: {
+        normal: [],
+        waypoint: [],
+        selected: [],
+      },
+      terrainLastHit: null,
       useThreeCameraAsSource: true,
     },
     debugFog: {
@@ -2046,6 +2052,7 @@
     showStats: showStatsEl?.checked !== false,
     showAnchorPoints: showAnchorPointsEl?.checked !== false,
     useLegacyTerrain: false,
+    useLegacyPickingFallback: true,
   };
 
   function syncRenderUiState(){
@@ -6906,13 +6913,23 @@
     const normal = [];
     const waypoint = [];
     const selected = [];
+    const normalIds = [];
+    const waypointIds = [];
+    const selectedIds = [];
     for (const it of items){
       const x = rawToWorld(it.x,'x');
       const y = rawToWorld(it.y,'y');
       const z = getItemWorldZ(it);
-      if (it.id===state.selectedId||state.multiSelectedIds.has(it.id)) selected.push(x,y,z);
-      else if (state.selectedWaypointMarkerIds.has(it.id)) waypoint.push(x,y,z);
-      else normal.push(x,y,z);
+      if (it.id===state.selectedId||state.multiSelectedIds.has(it.id)){
+        selected.push(x,y,z);
+        selectedIds.push(it.id);
+      } else if (state.selectedWaypointMarkerIds.has(it.id)){
+        waypoint.push(x,y,z);
+        waypointIds.push(it.id);
+      } else {
+        normal.push(x,y,z);
+        normalIds.push(it.id);
+      }
     }
 
     const paste = [];
@@ -6930,6 +6947,9 @@
     setThreePositions(world.waypointPoints, waypoint);
     setThreePositions(world.selectedPoints, selected);
     setThreePositions(world.pastePoints, paste);
+    world.anchorPointItemIds.normal = normalIds;
+    world.anchorPointItemIds.waypoint = waypointIds;
+    world.anchorPointItemIds.selected = selectedIds;
   }
 
   function updateThreeTerrainOverlayLines(){
@@ -7725,7 +7745,7 @@ void main() {`
     return null;
   }
 
-  function pickItemFromGlbAt(sx, sy){
+  function ensureThreePickingRay(sx, sy){
     if (!state.glb.ready || !state.glb.THREE || !state.glb.camera) return null;
     const rect = cv.getBoundingClientRect();
     const nx = (sx / rect.width) * 2 - 1;
@@ -7734,20 +7754,74 @@ void main() {`
 
     if (!state.glb.raycaster) state.glb.raycaster = new state.glb.THREE.Raycaster();
     if (!state.glb.pointerNdc) state.glb.pointerNdc = new state.glb.THREE.Vector2();
+    state.glb.raycaster.params.Points = state.glb.raycaster.params.Points || {};
+    state.glb.raycaster.params.Points.threshold = 6;
     state.glb.pointerNdc.set(nx, ny);
     state.glb.raycaster.setFromCamera(state.glb.pointerNdc, state.glb.camera);
+    return state.glb.raycaster;
+  }
+
+  function pickThreeGlbItemAt(sx, sy){
+    const raycaster = ensureThreePickingRay(sx, sy);
+    if (!raycaster) return null;
     const hits = state.glb.raycaster.intersectObjects(Array.from(state.glb.itemInstances.values()), true);
     for (const hit of hits){
       const itemId = getItemIdFromObject3D(hit.object);
       if (itemId == null) continue;
       const it = state.items.find(x => x.id === itemId) || null;
-      if (it) return it;
+      if (it) return { layer: 'glb', item: it, hit };
     }
     return null;
   }
 
+  function pickThreeAnchorItemAt(sx, sy){
+    const raycaster = ensureThreePickingRay(sx, sy);
+    if (!raycaster || !state.threeWorld) return null;
+    const world = state.threeWorld;
+    const layers = [
+      [world.selectedPoints, world.anchorPointItemIds.selected],
+      [world.waypointPoints, world.anchorPointItemIds.waypoint],
+      [world.anchorPoints, world.anchorPointItemIds.normal],
+    ];
+    const itemsById = state.itemsById || new Map();
+    for (const [pointsObj, ids] of layers){
+      if (!pointsObj?.visible || !pointsObj.geometry || !ids?.length) continue;
+      const hits = raycaster.intersectObject(pointsObj, false);
+      if (!hits.length) continue;
+      const idx = hits[0].index;
+      if (idx == null || idx < 0 || idx >= ids.length) continue;
+      const itemId = ids[idx];
+      const it = itemsById.get(itemId) || state.items.find(x => x.id === itemId) || null;
+      if (it) return { layer: 'anchor_points', item: it, hit: hits[0] };
+    }
+    return null;
+  }
+
+  function pickThreeTerrainAt(sx, sy){
+    const raycaster = ensureThreePickingRay(sx, sy);
+    if (!raycaster || !state.threeWorld?.terrainLodRoots?.length) return null;
+    const hits = raycaster.intersectObjects(state.threeWorld.terrainLodRoots, true);
+    if (!hits.length) return null;
+    return { layer: 'terrain', hit: hits[0] };
+  }
+
+  function pickThreeSceneAt(sx, sy){
+    const glbHit = pickThreeGlbItemAt(sx, sy);
+    if (glbHit?.item) return glbHit;
+
+    const pointHit = pickThreeAnchorItemAt(sx, sy);
+    if (pointHit?.item) return pointHit;
+
+    const terrainHit = pickThreeTerrainAt(sx, sy);
+    state.threeWorld.terrainLastHit = terrainHit?.hit || null;
+    return terrainHit;
+  }
+
   function pickItemAtCanvas(sx, sy){
-    return pickItemFromGlbAt(sx, sy) || pickItemAt(sx, sy);
+    const threePick = pickThreeSceneAt(sx, sy);
+    if (threePick?.item) return threePick.item;
+    if (renderUiState.useLegacyPickingFallback) return pickItemAt(sx, sy);
+    return null;
   }
 
   function applyItemOrientationToKv(it){
