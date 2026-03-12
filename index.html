@@ -1870,6 +1870,15 @@
       drawCountByGroup: new Map(),
       ready: false,
     },
+    threeOverlays: {
+      scene: null,
+      waterMaterial: null,
+      waterPool: [],
+      waterMap: new Map(),
+      gridLines: null,
+      rectLines: null,
+      ready: false,
+    },
     itemsById: new Map(),
     itemSectionByStart: new Map(),
     layerVisibility: new Map(),
@@ -1935,6 +1944,7 @@
     if (state.renderBackend === normalized && !options.force) return;
     state.renderBackend = normalized;
     state.renderLayers.terrain.owner = normalized === RENDER_BACKENDS.THREE_ONLY ? 'three' : 'legacy-webgl';
+    state.renderLayers.overlays.owner = normalized === RENDER_BACKENDS.THREE_ONLY ? 'three' : 'legacy-webgl';
     try { localStorage.setItem('dz.renderBackend', normalized); } catch (_) {}
     addLog(`[render_backend] active=${normalized} (terrain=${state.renderLayers.terrain.owner}, items=${state.renderLayers.items.owner}, overlays=${state.renderLayers.overlays.owner}, glb=${state.renderLayers.glb.owner})`);
   }
@@ -1952,7 +1962,7 @@
     const result = { drawCalls: 0 };
     if (state.renderBackend === RENDER_BACKENDS.THREE_ONLY){
       result.drawCalls = drawTerrainThree(P, V, forward);
-      drawTerrain(P, V, forward, { drawBase: false });
+      drawOverlaysThree(P, V, forward);
       drawItemsThree(P, V);
       drawGlbItems(P, V);
       return result;
@@ -6390,6 +6400,11 @@
     state.threeTerrain.textures.delta = null;
     state.threeTerrain.dirty = true;
     state.threeTerrain.ready = false;
+    if (state.threeOverlays.scene){
+      for (const mesh of state.threeOverlays.waterMap.values()) state.threeOverlays.scene.remove(mesh);
+      state.threeOverlays.waterMap.clear();
+      state.threeOverlays.waterPool.length = 0;
+    }
   }
   function Mesh(){ this.vb=null; this.ib=null; this.indexCount=0; this.indexType=gl.UNSIGNED_INT; }
   Mesh.prototype.upload=function(mesh){ this.vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.vb); gl.bufferData(gl.ARRAY_BUFFER,mesh.verts,gl.STATIC_DRAW); this.ib=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,mesh.idx,gl.STATIC_DRAW); this.indexCount=mesh.idx.length; this.indexType=(mesh.idx instanceof Uint32Array)?gl.UNSIGNED_INT:gl.UNSIGNED_SHORT; this.sourceVerts=mesh.verts; this.sourceIdx=mesh.idx; if(this.indexType===gl.UNSIGNED_INT&&!extUInt) throw new Error('OES_element_index_uint not supported'); };
@@ -6716,6 +6731,180 @@
   }
 
   function bindMesh(m){ gl.bindBuffer(gl.ARRAY_BUFFER,m.vb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib); gl.enableVertexAttribArray(aPos); gl.enableVertexAttribArray(aUV); gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,20,0); gl.vertexAttribPointer(aUV,2,gl.FLOAT,false,20,12); }
+
+  function ensureThreeOverlaysReady(){
+    if (!state.glb.ready || !state.glb.THREE || !state.glb.renderer || !state.glb.camera) return false;
+    if (state.threeOverlays.ready) return true;
+    const { THREE } = state.glb;
+    const overlays = state.threeOverlays;
+    overlays.scene = new THREE.Scene();
+    overlays.waterMaterial = new THREE.MeshBasicMaterial({ color: 0x8cd8ff, transparent: true, opacity: 0.28, depthWrite: false, fog: true });
+    overlays.waterPool = [];
+    overlays.waterMap = new Map();
+
+    const gridGeom = new THREE.BufferGeometry();
+    gridGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+    const gridMat = new THREE.LineBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, transparent: false });
+    overlays.gridLines = new THREE.LineSegments(gridGeom, gridMat);
+    overlays.gridLines.frustumCulled = false;
+    overlays.scene.add(overlays.gridLines);
+
+    const rectGeom = new THREE.BufferGeometry();
+    rectGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+    rectGeom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(0), 3));
+    const rectMat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, depthWrite: false, transparent: false });
+    overlays.rectLines = new THREE.LineSegments(rectGeom, rectMat);
+    overlays.rectLines.frustumCulled = false;
+    overlays.scene.add(overlays.rectLines);
+    overlays.ready = true;
+    addLog('[overlays_three] overlays layer initialized.');
+    return true;
+  }
+
+  function updateThreeLineGeometry(lineSegments, positions, colors=null){
+    if (!lineSegments?.geometry) return;
+    const g = lineSegments.geometry;
+    let posAttr = g.getAttribute('position');
+    if (!posAttr || posAttr.array.length < positions.length){
+      let cap = Math.max(128, posAttr?.array?.length || 128);
+      while (cap < positions.length) cap *= 2;
+      posAttr = new state.glb.THREE.BufferAttribute(new Float32Array(cap), 3);
+      posAttr.setUsage(state.glb.THREE.DynamicDrawUsage);
+      g.setAttribute('position', posAttr);
+    }
+    if (positions.length) posAttr.array.set(positions, 0);
+    posAttr.needsUpdate = true;
+
+    if (colors){
+      let colAttr = g.getAttribute('color');
+      if (!colAttr || colAttr.array.length < colors.length){
+        let cap = Math.max(128, colAttr?.array?.length || 128);
+        while (cap < colors.length) cap *= 2;
+        colAttr = new state.glb.THREE.BufferAttribute(new Float32Array(cap), 3);
+        colAttr.setUsage(state.glb.THREE.DynamicDrawUsage);
+        g.setAttribute('color', colAttr);
+      }
+      if (colors.length) colAttr.array.set(colors, 0);
+      colAttr.needsUpdate = true;
+    }
+
+    g.setDrawRange(0, Math.floor(positions.length / 3));
+    lineSegments.visible = positions.length > 0;
+  }
+
+  function appendRectLineData(posArr, colorArr, offsetX, offsetY, scaleX, scaleY, z, color){
+    const pts = [
+      [0,0],[1,0], [1,0],[1,1], [1,1],[0,1], [0,1],[0,0],
+    ];
+    for (const [px,py] of pts){
+      posArr.push(px*scaleX+offsetX, py*scaleY+offsetY, z);
+      colorArr.push(color[0], color[1], color[2]);
+    }
+  }
+
+  function drawOverlaysThree(P, V, forward){
+    if (!ensureThreeOverlaysReady()) return;
+    const overlays = state.threeOverlays;
+    const vis = collectVisibleTerrainTiles(P, V, forward);
+    const { visibleTiles: tilesForSector, ox, oy, radius } = vis;
+
+    const overlayRadius=Math.max(SECTOR_STRIDE*2, radius*OVERLAY_RADIUS_FACTOR);
+    const overlayI0=Math.floor((cam.pos.x-overlayRadius-ox)/SECTOR_STRIDE)-1, overlayI1=Math.floor((cam.pos.x+overlayRadius-ox)/SECTOR_STRIDE)+1;
+    const overlayJ0=Math.floor((cam.pos.y-overlayRadius-oy)/SECTOR_STRIDE)-1, overlayJ1=Math.floor((cam.pos.y+overlayRadius-oy)/SECTOR_STRIDE)+1;
+
+    const waterRender = getRenderWaterHeightRaw();
+    const nextWaterKeys = new Set();
+    if(waterRender.raw!==null&&Number.isFinite(waterRender.raw)){
+      let waterTiles=0;
+      for (const tile of tilesForSector){
+        if(waterTiles>=MAX_WATER_TILES_PER_FRAME) break;
+        const gx = tile.gx, gy = tile.gy;
+        if(gx<overlayI0||gx>overlayI1||gy<overlayJ0||gy>overlayJ1) continue;
+        const key = `${gx}:${gy}`;
+        nextWaterKeys.add(key);
+        let mesh = overlays.waterMap.get(key);
+        if (!mesh){
+          mesh = overlays.waterPool.pop();
+          if (!mesh){
+            mesh = new state.glb.THREE.Mesh(new state.glb.THREE.PlaneGeometry(1,1), overlays.waterMaterial);
+          }
+          overlays.waterMap.set(key, mesh);
+          overlays.scene.add(mesh);
+        }
+        mesh.position.set(ox+gx*SECTOR_STRIDE+SECTOR_STRIDE*0.5, oy+gy*SECTOR_STRIDE+SECTOR_STRIDE*0.5, waterRender.raw*0.5);
+        mesh.scale.set(SECTOR_STRIDE, SECTOR_STRIDE, 1);
+        mesh.visible = true;
+        waterTiles++;
+      }
+    }
+    for (const [key, mesh] of Array.from(overlays.waterMap.entries())){
+      if (nextWaterKeys.has(key)) continue;
+      overlays.scene.remove(mesh);
+      overlays.waterMap.delete(key);
+      overlays.waterPool.push(mesh);
+    }
+
+    const fogRender = getRenderFogSettings();
+    if (fogRender.enabled && fogRender.ramp.far > 0){
+      if (!overlays.scene.fog || !overlays.scene.fog.isFog){
+        overlays.scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
+      }
+      overlays.scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
+      overlays.scene.fog.near = 1;
+      overlays.scene.fog.far = Math.max(1, fogRender.ramp.far);
+    } else {
+      overlays.scene.fog = null;
+    }
+
+    const gridPositions = [];
+    if(gridVisible){
+      const gridSize=gridSizeMeters();
+      if(gridSize>0){
+        const spanVisibleX=(overlayI1-overlayI0+1)*SECTOR_STRIDE;
+        const spanVisibleY=(overlayJ1-overlayJ0+1)*SECTOR_STRIDE;
+        let gridMinX=ox + overlayI0*SECTOR_STRIDE;
+        let gridMaxX=gridMinX + spanVisibleX;
+        let gridMinY=oy + overlayJ0*SECTOR_STRIDE;
+        let gridMaxY=gridMinY + spanVisibleY;
+        const maxSpan=gridSize*MAX_GRID_LINES_PER_AXIS;
+        if((gridMaxX-gridMinX)>maxSpan){ const cx=cam.pos.x; gridMinX=Math.max(gridMinX, cx-maxSpan*0.5); gridMaxX=Math.min(gridMaxX, cx+maxSpan*0.5); }
+        if((gridMaxY-gridMinY)>maxSpan){ const cy=cam.pos.y; gridMinY=Math.max(gridMinY, cy-maxSpan*0.5); gridMaxY=Math.min(gridMaxY, cy+maxSpan*0.5); }
+        const firstX=ox + Math.ceil((gridMinX-ox)/gridSize)*gridSize;
+        const firstY=oy + Math.ceil((gridMinY-oy)/gridSize)*gridSize;
+        const countX=Math.max(0, Math.floor((gridMaxX-firstX)/gridSize)+1);
+        const countY=Math.max(0, Math.floor((gridMaxY-firstY)/gridSize)+1);
+        for(let i=0;i<countX;i++){ const x=firstX+i*gridSize; gridPositions.push(x, gridMinY, 0.2, x, gridMaxY, 0.2); }
+        for(let i=0;i<countY;i++){ const y=firstY+i*gridSize; gridPositions.push(gridMinX, y, 0.2, gridMaxX, y, 0.2); }
+      }
+    }
+    updateThreeLineGeometry(overlays.gridLines, new Float32Array(gridPositions));
+
+    const rectPos=[];
+    const rectColors=[];
+    const mainAreaOn=renderUiState.mainArea; const showSectorsOn=renderUiState.showSectors;
+    if(mainAreaOn||showSectorsOn){
+      const spanX=terrainSpanX(), spanY=terrainSpanY();
+      if(showSectorsOn){
+        let rectCount=0;
+        for (const tile of tilesForSector){
+          if(rectCount>=MAX_SECTOR_RECTS_PER_FRAME) break;
+          appendRectLineData(rectPos, rectColors, ox+tile.gx*SECTOR_STRIDE, oy+tile.gy*SECTOR_STRIDE, SECTOR_STRIDE, SECTOR_STRIDE, 0.25, [0.2,0.8,1]);
+          rectCount++;
+        }
+      }
+      if(mainAreaOn){
+        appendRectLineData(rectPos, rectColors, ox, oy, spanX, spanY, 0.25, [1,0,0]);
+      }
+    }
+    updateThreeLineGeometry(overlays.rectLines, new Float32Array(rectPos), new Float32Array(rectColors));
+
+    applyThreeCameraFromPV(P, V);
+    state.glb.renderer.resetState();
+    state.glb.renderer.render(overlays.scene, state.glb.camera);
+    state.glb.renderer.resetState();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
   function drawTerrain(P,V,forward, options={}){
     const tex=activeTerrainTexture();
     if(!(sectors&&meshSectorLods[0]?.[1])) return 0;
