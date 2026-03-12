@@ -8127,8 +8127,8 @@
     const {P,V,PV}=currentPV();
     const terrainRender = drawTerrain(P,V,forward);
     const drawCalls = terrainRender?.draws || 0;
-    if (postFogReady) compositeFullscreenDepthFog(fogRender);
     drawGlbItems(P, V);
+    if (postFogReady) compositeFullscreenDepthFog(fogRender);
     drawTerrainEditorOverlays(terrainRender);
     gl.disable(gl.DEPTH_TEST);
     drawItems(PV);
