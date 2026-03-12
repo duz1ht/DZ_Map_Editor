@@ -7129,6 +7129,7 @@
           uFogFarDist: { value: 0.0 },
           uFogNearStrength: { value: 0.0 },
           uFogMidStrength: { value: 0.0 },
+          uFogColor: { value: new THREE.Color(0.65, 0.70, 0.75) },
         };
         if (!state.glb.lodConfigLogged){
           const activeLevels = Array.isArray(state.glb.activeLodLevels) && state.glb.activeLodLevels.length
@@ -7216,12 +7217,12 @@ uniform float uFogMidDist;
 uniform float uFogFarDist;
 uniform float uFogNearStrength;
 uniform float uFogMidStrength;
+uniform vec3 uFogColor;
 void main() {`
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <fog_fragment>',
-        `#ifdef USE_FOG
-          float fogAmount = 0.0;
+        `float fogAmount = 0.0;
           if (uFogEnabled > 0.5 && uFogFarDist > 0.0) {
             float distToCam = vFogDepth;
             if (distToCam <= uFogNearDist) {
@@ -7236,8 +7237,7 @@ void main() {`
               fogAmount = 1.0;
             }
           }
-          gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, clamp(fogAmount, 0.0, 1.0));
-        #endif`
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, uFogColor, clamp(fogAmount, 0.0, 1.0));`
       );
     };
     material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v1`;
@@ -7563,6 +7563,34 @@ void main() {`
     state.glb.transformDirtyIds.clear();
   }
 
+  function syncGlbFogState(fogRender){
+    if (!state.glb.THREE || !state.glb.fogUniforms) return;
+    const fogEnabled = !!(fogRender?.enabled && fogRender?.ramp?.far > 0);
+    state.glb.fogUniforms.uFogEnabled.value = fogEnabled ? 1.0 : 0.0;
+    state.glb.fogUniforms.uFogNearDist.value = fogRender?.ramp?.near || 0;
+    state.glb.fogUniforms.uFogMidDist.value = fogRender?.ramp?.mid || 0;
+    state.glb.fogUniforms.uFogFarDist.value = fogRender?.ramp?.far || 0;
+    state.glb.fogUniforms.uFogNearStrength.value = fogRender?.ramp?.nearStrength || 0;
+    state.glb.fogUniforms.uFogMidStrength.value = fogRender?.ramp?.midStrength || 0;
+    state.glb.fogUniforms.uFogColor.value.setRGB(
+      fogRender?.color?.r || 0,
+      fogRender?.color?.g || 0,
+      fogRender?.color?.b || 0,
+    );
+
+    // Fallback global antigo mantido nesta fase para compatibilidade com materiais não patchados.
+    if (fogEnabled){
+      if (!state.glb.scene.fog || !state.glb.scene.fog.isFog){
+        state.glb.scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
+      }
+      state.glb.scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
+      state.glb.scene.fog.near = 1;
+      state.glb.scene.fog.far = Math.max(1, fogRender.ramp.far);
+    } else {
+      state.glb.scene.fog = null;
+    }
+  }
+
   function drawGlbItems(P, V, fogRenderArg){
     if (!state.glb.ready){
       ensureGlbRendererReady().then((ready) => {
@@ -7574,26 +7602,7 @@ void main() {`
 
     const { renderer, scene } = state.glb;
     const fogRender = fogRenderArg || getRenderFogSettings();
-    if (state.glb.THREE && state.glb.fogUniforms){
-      const fogEnabled = fogRender.enabled && fogRender.ramp.far > 0;
-      state.glb.fogUniforms.uFogEnabled.value = fogEnabled ? 1.0 : 0.0;
-      state.glb.fogUniforms.uFogNearDist.value = fogRender.ramp.near;
-      state.glb.fogUniforms.uFogMidDist.value = fogRender.ramp.mid;
-      state.glb.fogUniforms.uFogFarDist.value = fogRender.ramp.far;
-      state.glb.fogUniforms.uFogNearStrength.value = fogRender.ramp.nearStrength;
-      state.glb.fogUniforms.uFogMidStrength.value = fogRender.ramp.midStrength;
-
-      if (fogEnabled){
-        if (!scene.fog || !scene.fog.isFog){
-          scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
-        }
-        scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
-        scene.fog.near = 1;
-        scene.fog.far = Math.max(1, fogRender.ramp.far);
-      } else {
-        scene.fog = null;
-      }
-    }
+    syncGlbFogState(fogRender);
     logFogLayerDiagnostics('glb', fogRender, `instances=${state.glb.itemInstances.size}`);
     applyThreeCameraFromPV(P, V);
     updateSelectedGlbVisual();
