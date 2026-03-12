@@ -6539,6 +6539,9 @@
   }
 
   function collectVisibleTerrainTiles(P, V, forward){
+    if (!sectors || !Number.isFinite(sectorCount) || sectorCount <= 0){
+      return { visibleTiles: [], culledFrustum: 0, culledBackface: 0, ox: originWorldX(), oy: originWorldY(), radius: renderUiState.drawRadius || 0 };
+    }
     const ox=originWorldX(),oy=originWorldY(),radius=renderUiState.drawRadius;
     const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1;
     const j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1;
@@ -6828,6 +6831,14 @@
 
   function drawOverlaysThree(P, V, forward){
     if (!ensureThreeOverlaysReady()) return;
+    if (!sectors || !Number.isFinite(sectorCount) || sectorCount <= 0){
+      updateThreeLineGeometry(state.threeOverlays.gridLines, new Float32Array(0));
+      updateThreeLineGeometry(state.threeOverlays.rectLines, new Float32Array(0), new Float32Array(0));
+      for (const mesh of state.threeOverlays.waterMap.values()) state.threeOverlays.scene.remove(mesh);
+      state.threeOverlays.waterMap.clear();
+      state.threeOverlays.waterPool.length = 0;
+      return;
+    }
     const overlays = state.threeOverlays;
     const vis = collectVisibleTerrainTiles(P, V, forward);
     const { visibleTiles: tilesForSector, ox, oy, radius } = vis;
