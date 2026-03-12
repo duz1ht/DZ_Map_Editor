@@ -1964,22 +1964,13 @@
     addLog(`[render_diag] backend=${state.renderBackend} terrain_draw_calls=${drawCalls} glb_ready=${state.glb.ready ? 'yes' : 'no'} glb_instances=${state.glb.itemInstances.size}`);
   }
 
-  function toLinearFogColor(color){
-    if (!color) return { r: 0, g: 0, b: 0 };
-    if (!state.glb.THREE) return color;
-    const c = new state.glb.THREE.Color();
-    c.setRGB(color.r || 0, color.g || 0, color.b || 0, state.glb.THREE.SRGBColorSpace);
-    return { r: c.r, g: c.g, b: c.b };
-  }
-
   function applyFogToThreeScene(scene, fogRender){
     if (!scene || !state.glb.THREE) return;
     if (fogRender?.enabled && fogRender?.ramp?.far > 0){
       if (!scene.fog || !scene.fog.isFog){
         scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
       }
-      const fogColorLinear = toLinearFogColor(fogRender.color);
-      scene.fog.color.setRGB(fogColorLinear.r, fogColorLinear.g, fogColorLinear.b);
+      scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
       scene.fog.near = 1;
       scene.fog.far = Math.max(1, fogRender.ramp.far);
       return;
@@ -7591,11 +7582,10 @@ void main() {`
     state.glb.fogUniforms.uFogFarDist.value = fogRender?.ramp?.far || 0;
     state.glb.fogUniforms.uFogNearStrength.value = fogRender?.ramp?.nearStrength || 0;
     state.glb.fogUniforms.uFogMidStrength.value = fogRender?.ramp?.midStrength || 0;
-    const fogColorLinear = toLinearFogColor(fogRender?.color);
     state.glb.fogUniforms.uFogColor.value.setRGB(
-      fogColorLinear.r,
-      fogColorLinear.g,
-      fogColorLinear.b,
+      fogRender?.color?.r || 0,
+      fogRender?.color?.g || 0,
+      fogRender?.color?.b || 0,
     );
   }
 
@@ -7609,8 +7599,7 @@ void main() {`
       if (!state.glb.scene.fog || !state.glb.scene.fog.isFog){
         state.glb.scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
       }
-      const fogColorLinear = toLinearFogColor(fogRender.color);
-      state.glb.scene.fog.color.setRGB(fogColorLinear.r, fogColorLinear.g, fogColorLinear.b);
+      state.glb.scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
       state.glb.scene.fog.near = 1;
       state.glb.scene.fog.far = Math.max(1, fogRender.ramp.far);
     } else {
@@ -8485,8 +8474,7 @@ void main() {`
     const fogRender = getRenderFogSettings();
     const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
     if (state.glb.renderer){
-      const clearLinear = toLinearFogColor(clearCol);
-      state.glb.renderer.setClearColor(new state.glb.THREE.Color(clearLinear.r, clearLinear.g, clearLinear.b), 1);
+      state.glb.renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
       state.glb.renderer.clear(true, true, true);
     }
     const {P,V,PV}=currentPV(); const renderStats=renderLayersByBackend(P, V, PV, forward, fogRender); const drawCalls=renderStats.drawCalls;
