@@ -1978,6 +1978,12 @@
     scene.fog = null;
   }
 
+  function disableSceneFogForPatchedMaterials(scene){
+    // Terrain/overlays now use the custom 3-point fog shader ramp.
+    // Keeping scene.fog enabled here would apply fog twice (scene + shader).
+    if (!scene) return;
+    scene.fog = null;
+  }
 
   function logFogLayerDiagnostics(layerName, fogRender, extra = ''){
     const now = performance.now();
@@ -6695,7 +6701,7 @@
     }
 
     const fogRender = fogRenderArg || getRenderFogSettings();
-    applyFogToThreeScene(terrain.scene, fogRender);
+    disableSceneFogForPatchedMaterials(terrain.scene);
     logFogLayerDiagnostics('terrain', fogRender, `tiles=${vis.visibleTiles.length}`);
 
     applyThreeCameraFromPV(P, V);
@@ -6835,7 +6841,7 @@
     }
 
     const fogRender = fogRenderArg || getRenderFogSettings();
-    applyFogToThreeScene(overlays.scene, fogRender);
+    disableSceneFogForPatchedMaterials(overlays.scene);
     logFogLayerDiagnostics('overlays', fogRender, `water_tiles=${overlays.waterMap.size}`);
 
     const gridPositions = [];
