@@ -6630,7 +6630,15 @@
     }
 
     if (!terrain.material){
-      terrain.material = new THREE.MeshPhongMaterial({ color: 0xffffff, side: THREE.FrontSide, fog: true });
+      // Terrain in three-only should not depend on scene lights to keep colormap parity
+      // with legacy WebGL path and avoid black terrain when no lights are configured.
+      terrain.material = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        fog: true,
+        transparent: false,
+        depthWrite: true,
+      });
     }
     terrain.material.map = getThreeTerrainTextureByMode();
     terrain.material.needsUpdate = true;
@@ -6738,7 +6746,14 @@
     const { THREE } = state.glb;
     const overlays = state.threeOverlays;
     overlays.scene = new THREE.Scene();
-    overlays.waterMaterial = new THREE.MeshBasicMaterial({ color: 0x8cd8ff, transparent: true, opacity: 0.28, depthWrite: false, fog: true });
+    overlays.waterMaterial = new THREE.MeshBasicMaterial({
+      color: 0x8cd8ff,
+      transparent: true,
+      opacity: 0.28,
+      depthTest: true,
+      depthWrite: false,
+      fog: true,
+    });
     overlays.waterPool = [];
     overlays.waterMap = new Map();
 
