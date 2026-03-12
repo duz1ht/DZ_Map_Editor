@@ -1890,6 +1890,13 @@
       terrainLodRoots: [],
       terrainGeometryCache: new Map(),
       terrainMeshCount: 0,
+      anchorPoints: null,
+      waypointPoints: null,
+      selectedPoints: null,
+      pastePoints: null,
+      gridLines: null,
+      sectorLines: null,
+      mainAreaLines: null,
       useThreeCameraAsSource: true,
     },
     debugFog: {
@@ -6817,6 +6824,182 @@
     }
   }
 
+  function ensureThreeOverlayResources(){
+    if (!state.glb.ready || !state.glb.THREE || !state.threeWorld?.overlayScene) return false;
+    const THREE = state.glb.THREE;
+    const world = state.threeWorld;
+    if (!world.anchorPoints){
+      const mkPoints = (colorHex, size) => {
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+        const material = new THREE.PointsMaterial({
+          color: colorHex,
+          size,
+          sizeAttenuation: false,
+          transparent: true,
+          opacity: 1,
+          depthTest: true,
+          depthWrite: false,
+          toneMapped: false,
+        });
+        return new THREE.Points(geometry, material);
+      };
+      world.anchorPoints = mkPoints(0xe0e6ff, 8);
+      world.waypointPoints = mkPoints(0xffcc33, 8);
+      world.selectedPoints = mkPoints(0x5c74f2, 11);
+      world.pastePoints = mkPoints(0x57d48c, 13);
+      world.overlayScene.add(world.anchorPoints, world.waypointPoints, world.selectedPoints, world.pastePoints);
+    }
+    if (!world.gridLines || !world.sectorLines || !world.mainAreaLines){
+      const mkLines = (colorHex) => {
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+        const material = new THREE.LineBasicMaterial({
+          color: colorHex,
+          transparent: true,
+          opacity: 1,
+          depthTest: false,
+          depthWrite: false,
+          toneMapped: false,
+        });
+        return new THREE.LineSegments(geometry, material);
+      };
+      world.gridLines = mkLines(0x000000);
+      world.sectorLines = mkLines(0x33ccff);
+      world.mainAreaLines = mkLines(0xff0000);
+      world.overlayScene.add(world.gridLines, world.sectorLines, world.mainAreaLines);
+    }
+    return true;
+  }
+
+  function setThreePositions(target, points){
+    if (!target?.geometry) return;
+    const arr = points?.length ? new Float32Array(points) : new Float32Array(0);
+    target.geometry.setAttribute('position', new state.glb.THREE.BufferAttribute(arr, 3));
+    target.geometry.computeBoundingSphere();
+  }
+
+  function appendRectLineVertices(out, x, y, sx, sy, z){
+    out.push(x,y,z, x+sx,y,z);
+    out.push(x+sx,y,z, x+sx,y+sy,z);
+    out.push(x+sx,y+sy,z, x,y+sy,z);
+    out.push(x,y+sy,z, x,y,z);
+  }
+
+  function updateThreeItemPoints(){
+    if (!ensureThreeOverlayResources()) return;
+    const world = state.threeWorld;
+    const showAnchors = !!renderUiState.showAnchorPoints;
+    world.anchorPoints.visible = showAnchors;
+    world.waypointPoints.visible = showAnchors;
+    world.selectedPoints.visible = showAnchors;
+    world.pastePoints.visible = showAnchors;
+    if (!showAnchors){
+      setThreePositions(world.anchorPoints, []);
+      setThreePositions(world.waypointPoints, []);
+      setThreePositions(world.selectedPoints, []);
+      setThreePositions(world.pastePoints, []);
+      return;
+    }
+
+    const items = getFilteredItems().filter((it) => isItemLayerVisible(it));
+    const normal = [];
+    const waypoint = [];
+    const selected = [];
+    for (const it of items){
+      const x = rawToWorld(it.x,'x');
+      const y = rawToWorld(it.y,'y');
+      const z = getItemWorldZ(it);
+      if (it.id===state.selectedId||state.multiSelectedIds.has(it.id)) selected.push(x,y,z);
+      else if (state.selectedWaypointMarkerIds.has(it.id)) waypoint.push(x,y,z);
+      else normal.push(x,y,z);
+    }
+
+    const paste = [];
+    if(state.pastePlacementActive&&state.pastePreviewWorld&&state.itemClipboardItems.length){
+      for(const entry of state.itemClipboardItems){
+        paste.push(
+          state.pastePreviewWorld.x+entry.dx,
+          state.pastePreviewWorld.y+entry.dy,
+          state.pastePreviewWorld.z||0
+        );
+      }
+    }
+
+    setThreePositions(world.anchorPoints, normal);
+    setThreePositions(world.waypointPoints, waypoint);
+    setThreePositions(world.selectedPoints, selected);
+    setThreePositions(world.pastePoints, paste);
+  }
+
+  function updateThreeTerrainOverlayLines(){
+    if (!ensureThreeOverlayResources()) return;
+    const world = state.threeWorld;
+    const canDrawTerrainOverlays = !!sectors;
+
+    world.gridLines.visible = gridVisible && canDrawTerrainOverlays;
+    world.sectorLines.visible = renderUiState.showSectors && canDrawTerrainOverlays;
+    world.mainAreaLines.visible = renderUiState.mainArea && canDrawTerrainOverlays;
+    if (!canDrawTerrainOverlays){
+      setThreePositions(world.gridLines, []);
+      setThreePositions(world.sectorLines, []);
+      setThreePositions(world.mainAreaLines, []);
+      return;
+    }
+
+    const ox=originWorldX(),oy=originWorldY(),radius=renderUiState.drawRadius;
+    const i0=Math.floor((cam.pos.x-radius-ox)/SECTOR_STRIDE)-1,i1=Math.floor((cam.pos.x+radius-ox)/SECTOR_STRIDE)+1;
+    const j0=Math.floor((cam.pos.y-radius-oy)/SECTOR_STRIDE)-1,j1=Math.floor((cam.pos.y+radius-oy)/SECTOR_STRIDE)+1;
+
+    const sectorVerts = [];
+    if (renderUiState.showSectors){
+      let rectCount=0;
+      for(let gy=j0; gy<=j1; gy++) for(let gx=i0; gx<=i1; gx++){
+        if(rectCount>=MAX_SECTOR_RECTS_PER_FRAME) break;
+        const srcX=mapSrcIdx(gx,wrapX), srcY=mapSrcIdx(gy,wrapY);
+        if(srcX<0||srcY<0||srcX>=sectorCount||srcY>=sectorCount) continue;
+        const sectorIndex=sectors[srcY*sectorCount+srcX]|0;
+        if(sectorIndex<=0) continue;
+        appendRectLineVertices(sectorVerts, ox+gx*SECTOR_STRIDE, oy+gy*SECTOR_STRIDE, SECTOR_STRIDE, SECTOR_STRIDE, 0.25);
+        rectCount++;
+      }
+    }
+
+    const mainAreaVerts = [];
+    if (renderUiState.mainArea){
+      appendRectLineVertices(mainAreaVerts, ox, oy, terrainSpanX(), terrainSpanY(), 0.25);
+    }
+
+    const gridVerts = [];
+    if (gridVisible){
+      const overlayRadius=Math.max(SECTOR_STRIDE*2, radius*OVERLAY_RADIUS_FACTOR);
+      const overlayI0=Math.floor((cam.pos.x-overlayRadius-ox)/SECTOR_STRIDE)-1, overlayI1=Math.floor((cam.pos.x+overlayRadius-ox)/SECTOR_STRIDE)+1;
+      const overlayJ0=Math.floor((cam.pos.y-overlayRadius-oy)/SECTOR_STRIDE)-1, overlayJ1=Math.floor((cam.pos.y+overlayRadius-oy)/SECTOR_STRIDE)+1;
+      const gridSize=gridSizeMeters();
+      if(gridSize>0){
+        const spanVisibleX=(overlayI1-overlayI0+1)*SECTOR_STRIDE;
+        const spanVisibleY=(overlayJ1-overlayJ0+1)*SECTOR_STRIDE;
+        let gridMinX=ox + overlayI0*SECTOR_STRIDE;
+        let gridMaxX=gridMinX + spanVisibleX;
+        let gridMinY=oy + overlayJ0*SECTOR_STRIDE;
+        let gridMaxY=gridMinY + spanVisibleY;
+        const maxSpan=gridSize*MAX_GRID_LINES_PER_AXIS;
+        if((gridMaxX-gridMinX)>maxSpan){ const cx=cam.pos.x; gridMinX=Math.max(gridMinX, cx-maxSpan*0.5); gridMaxX=Math.min(gridMaxX, cx+maxSpan*0.5); }
+        if((gridMaxY-gridMinY)>maxSpan){ const cy=cam.pos.y; gridMinY=Math.max(gridMinY, cy-maxSpan*0.5); gridMaxY=Math.min(gridMaxY, cy+maxSpan*0.5); }
+        const firstX=ox + Math.ceil((gridMinX-ox)/gridSize)*gridSize;
+        const firstY=oy + Math.ceil((gridMinY-oy)/gridSize)*gridSize;
+        const countX=Math.max(0, Math.floor((gridMaxX-firstX)/gridSize)+1);
+        const countY=Math.max(0, Math.floor((gridMaxY-firstY)/gridSize)+1);
+        for(let i=0;i<countX;i++){ const x=firstX+i*gridSize; gridVerts.push(x,gridMinY,0.2, x,gridMaxY,0.2); }
+        for(let i=0;i<countY;i++){ const y=firstY+i*gridSize; gridVerts.push(gridMinX,y,0.2, gridMaxX,y,0.2); }
+      }
+    }
+
+    setThreePositions(world.gridLines, gridVerts);
+    setThreePositions(world.sectorLines, sectorVerts);
+    setThreePositions(world.mainAreaLines, mainAreaVerts);
+  }
+
   function applyItemTransformToObject(obj, it){
     if (!obj || !it) return;
     obj.position.set(
@@ -8276,8 +8459,21 @@ void main() {`
     gl.clearColor(clearCol.r, clearCol.g, clearCol.b, 1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
     const {P,V,PV}=currentPV();
     const drawCalls = renderUiState.useLegacyTerrain ? drawTerrain(P,V,forward) : (state.threeWorld?.terrainMeshCount || 0);
-    if (renderUiState.useLegacyTerrain) drawItems(PV);
-    else if (renderUiState.showAnchorPoints) drawItems(PV);
+    if (renderUiState.useLegacyTerrain) {
+      drawItems(PV);
+      if (state.threeWorld){
+        if (state.threeWorld.anchorPoints) state.threeWorld.anchorPoints.visible = false;
+        if (state.threeWorld.waypointPoints) state.threeWorld.waypointPoints.visible = false;
+        if (state.threeWorld.selectedPoints) state.threeWorld.selectedPoints.visible = false;
+        if (state.threeWorld.pastePoints) state.threeWorld.pastePoints.visible = false;
+        if (state.threeWorld.gridLines) state.threeWorld.gridLines.visible = false;
+        if (state.threeWorld.sectorLines) state.threeWorld.sectorLines.visible = false;
+        if (state.threeWorld.mainAreaLines) state.threeWorld.mainAreaLines.visible = false;
+      }
+    } else {
+      updateThreeItemPoints();
+      updateThreeTerrainOverlayLines();
+    }
     drawGlbItems();
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
