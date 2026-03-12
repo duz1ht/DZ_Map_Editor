@@ -1853,6 +1853,7 @@
       lastTickMs: 0,
       fogByLayer: new Map(),
       fogLastTickMs: 0,
+      fogFallbackByScope: new Map(),
     },
     threeTerrain: {
       scene: null,
@@ -1964,18 +1965,67 @@
     addLog(`[render_diag] backend=${state.renderBackend} terrain_draw_calls=${drawCalls} glb_ready=${state.glb.ready ? 'yes' : 'no'} glb_instances=${state.glb.itemInstances.size}`);
   }
 
-  function applyFogToThreeScene(scene, fogRender){
-    if (!scene || !state.glb.THREE) return;
-    if (fogRender?.enabled && fogRender?.ramp?.far > 0){
-      if (!scene.fog || !scene.fog.isFog){
-        scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
-      }
-      scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
-      scene.fog.near = 1;
-      scene.fog.far = Math.max(1, fogRender.ramp.far);
-      return;
+  const DISABLED_FOG_RENDER = Object.freeze({
+    enabled: false,
+    distance: 0,
+    color: { r: 0.65, g: 0.7, b: 0.75 },
+    source: 'disabled',
+    fogType: 0,
+    ramp: { near: 0, mid: 0, far: 0, nearStrength: 0, midStrength: 0 },
+  });
+
+  function logFogFallbackOnce(scope, reason){
+    const key = `${scope}:${reason}`;
+    if (state.renderDiagnostics.fogFallbackByScope.get(scope) === key) return;
+    state.renderDiagnostics.fogFallbackByScope.set(scope, key);
+    addLog(`[fog_fallback] scope=${scope} reason=${reason} -> disabled`);
+  }
+
+  function sanitizeThreePointFogRender(fogRender, scope = 'global'){
+    if (!fogRender || !fogRender.enabled) return DISABLED_FOG_RENDER;
+    const rawFar = Number(fogRender?.ramp?.far);
+    if (!(Number.isFinite(rawFar) && rawFar > 0)){
+      logFogFallbackOnce(scope, `invalid_far(${String(fogRender?.ramp?.far)})`);
+      return DISABLED_FOG_RENDER;
     }
-    scene.fog = null;
+
+    const far = Math.max(0, rawFar);
+    const nearRaw = Number(fogRender?.ramp?.near);
+    const near = Math.max(0, Math.min(far, Number.isFinite(nearRaw) ? nearRaw : 0));
+    const midRaw = Number(fogRender?.ramp?.mid);
+    const mid = Math.max(near, Math.min(far, Number.isFinite(midRaw) ? midRaw : near));
+
+    const nearStrengthRaw = Number(fogRender?.ramp?.nearStrength);
+    const nearStrength = Math.max(0, Math.min(1, Number.isFinite(nearStrengthRaw) ? nearStrengthRaw : 0));
+    const midStrengthRaw = Number(fogRender?.ramp?.midStrength);
+    const midStrength = Math.max(nearStrength, Math.min(1, Number.isFinite(midStrengthRaw) ? midStrengthRaw : 0));
+
+    const color = {
+      r: Math.max(0, Math.min(1, Number(fogRender?.color?.r) || 0)),
+      g: Math.max(0, Math.min(1, Number(fogRender?.color?.g) || 0)),
+      b: Math.max(0, Math.min(1, Number(fogRender?.color?.b) || 0)),
+    };
+
+    const hadFixes = near !== nearRaw
+      || mid !== midRaw
+      || nearStrength !== nearStrengthRaw
+      || midStrength !== midStrengthRaw;
+    if (hadFixes){
+      logFogFallbackOnce(scope, `sanitized near=${near.toFixed(2)} mid=${mid.toFixed(2)} far=${far.toFixed(2)} strengths=${nearStrength.toFixed(2)}/${midStrength.toFixed(2)}`);
+    }
+
+    return {
+      ...fogRender,
+      enabled: true,
+      color,
+      ramp: {
+        near,
+        mid,
+        far,
+        nearStrength,
+        midStrength,
+      },
+    };
   }
 
   function logFogLayerDiagnostics(layerName, fogRender, extra = ''){
@@ -1996,12 +2046,13 @@
 
   function renderLayersByBackend(P, V, PV, forward, fogRender){
     const result = { drawCalls: 0 };
+    const safeFogRender = sanitizeThreePointFogRender(fogRender, 'render_layers');
     if (!state.glb.ready) ensureGlbRendererReady();
-    syncThreePointFogUniforms(fogRender);
-    result.drawCalls = drawTerrainThree(P, V, forward, fogRender);
-    drawOverlaysThree(P, V, forward, fogRender);
-    drawItemsThree(P, V, fogRender);
-    drawGlbItems(P, V, fogRender);
+    syncThreePointFogUniforms(safeFogRender);
+    result.drawCalls = drawTerrainThree(P, V, forward, safeFogRender);
+    drawOverlaysThree(P, V, forward, safeFogRender);
+    drawItemsThree(P, V, safeFogRender);
+    drawGlbItems(P, V, safeFogRender);
     return result;
   }
 
@@ -6693,8 +6744,7 @@
       terrain.meshPool.push(mesh);
     }
 
-    const fogRender = fogRenderArg || getRenderFogSettings();
-    applyFogToThreeScene(terrain.scene, fogRender);
+    const fogRender = sanitizeThreePointFogRender(fogRenderArg || getRenderFogSettings(), 'terrain');
     logFogLayerDiagnostics('terrain', fogRender, `tiles=${vis.visibleTiles.length}`);
 
     applyThreeCameraFromPV(P, V);
@@ -6833,8 +6883,7 @@
       overlays.waterPool.push(mesh);
     }
 
-    const fogRender = fogRenderArg || getRenderFogSettings();
-    applyFogToThreeScene(overlays.scene, fogRender);
+    const fogRender = sanitizeThreePointFogRender(fogRenderArg || getRenderFogSettings(), 'overlays');
     logFogLayerDiagnostics('overlays', fogRender, `water_tiles=${overlays.waterMap.size}`);
 
     const gridPositions = [];
@@ -7013,7 +7062,7 @@
     updateThreeItemGroup('selected', groups.selectedBuf, groups.selectedLen);
     updateThreeItemGroup('paste', groups.pasteBuf, groups.pasteLen);
 
-    const fogRender = fogRenderArg || getRenderFogSettings();
+    const fogRender = sanitizeThreePointFogRender(fogRenderArg || getRenderFogSettings(), 'items');
     const totalPoints = Math.floor((groups.normalLen + groups.waypointLen + groups.selectedLen + groups.pasteLen) / 3);
     logFogLayerDiagnostics('items', fogRender, `anchors_no_fog=yes points=${totalPoints}`);
 
@@ -7574,36 +7623,23 @@ void main() {`
 
   function syncThreePointFogUniforms(fogRender){
     if (!state.glb.THREE || !state.glb.fogUniforms) return;
-    const fogEnabled = !!(fogRender?.enabled && fogRender?.ramp?.far > 0);
+    const safeFog = sanitizeThreePointFogRender(fogRender, 'uniforms');
+    const fogEnabled = !!(safeFog?.enabled && safeFog?.ramp?.far > 0);
     state.glb.fogUniforms.uFogEnabled.value = fogEnabled ? 1.0 : 0.0;
-    state.glb.fogUniforms.uFogNearDist.value = fogRender?.ramp?.near || 0;
-    state.glb.fogUniforms.uFogMidDist.value = fogRender?.ramp?.mid || 0;
-    state.glb.fogUniforms.uFogFarDist.value = fogRender?.ramp?.far || 0;
-    state.glb.fogUniforms.uFogNearStrength.value = fogRender?.ramp?.nearStrength || 0;
-    state.glb.fogUniforms.uFogMidStrength.value = fogRender?.ramp?.midStrength || 0;
+    state.glb.fogUniforms.uFogNearDist.value = safeFog?.ramp?.near || 0;
+    state.glb.fogUniforms.uFogMidDist.value = safeFog?.ramp?.mid || 0;
+    state.glb.fogUniforms.uFogFarDist.value = safeFog?.ramp?.far || 0;
+    state.glb.fogUniforms.uFogNearStrength.value = safeFog?.ramp?.nearStrength || 0;
+    state.glb.fogUniforms.uFogMidStrength.value = safeFog?.ramp?.midStrength || 0;
     state.glb.fogUniforms.uFogColor.value.setRGB(
-      fogRender?.color?.r || 0,
-      fogRender?.color?.g || 0,
-      fogRender?.color?.b || 0,
+      safeFog?.color?.r || 0,
+      safeFog?.color?.g || 0,
+      safeFog?.color?.b || 0,
     );
   }
 
   function syncGlbFogState(fogRender){
     syncThreePointFogUniforms(fogRender);
-    if (!state.glb.THREE || !state.glb.fogUniforms) return;
-    const fogEnabled = !!(fogRender?.enabled && fogRender?.ramp?.far > 0);
-
-    // Fallback global antigo mantido nesta fase para compatibilidade com materiais não patchados.
-    if (fogEnabled){
-      if (!state.glb.scene.fog || !state.glb.scene.fog.isFog){
-        state.glb.scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
-      }
-      state.glb.scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
-      state.glb.scene.fog.near = 1;
-      state.glb.scene.fog.far = Math.max(1, fogRender.ramp.far);
-    } else {
-      state.glb.scene.fog = null;
-    }
   }
 
   function drawGlbItems(P, V, fogRenderArg){
@@ -7616,7 +7652,7 @@ void main() {`
     updateGlbTransformsFromState();
 
     const { renderer, scene } = state.glb;
-    const fogRender = fogRenderArg || getRenderFogSettings();
+    const fogRender = sanitizeThreePointFogRender(fogRenderArg || getRenderFogSettings(), 'glb');
     syncGlbFogState(fogRender);
     logFogLayerDiagnostics('glb', fogRender, `instances=${state.glb.itemInstances.size}`);
     applyThreeCameraFromPV(P, V);
@@ -8153,7 +8189,7 @@ void main() {`
   initDebugFogPanel();
 
   function getRenderFogSettings(){
-    const fallback = { enabled: false, distance: 0, color: { r: 0.65, g: 0.7, b: 0.75 }, source: 'disabled', fogType: 0, ramp: { near: 0, mid: 0, far: 0, nearStrength: 0, midStrength: 0 } };
+    const fallback = DISABLED_FOG_RENDER;
     const gi = state.sectionBlocks.find(s => s.kind === 'general_information');
     if (!(gi && gi.kv)){
       updateDebugFogColorReadout(fallback.color);
