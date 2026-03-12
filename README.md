@@ -1,19 +1,21 @@
-This project ports the map editor from Delta Force: Black Hawk Down, released in 2003 by NovaLogic, to HTML and JavaScript, with plans to later migrate it to Electron or another platform that makes it easy to reuse and extend the existing work.
+This project ports the map editor from Delta Force: Black Hawk Down, released in 2003 by NovaLogic, into a simple HTML file using Three.js. We can keep it as a web app or later migrate it to something simple like Electron, or another platform that makes it easy to reuse and build on the existing work.
 
 Todo:
 - [x] 3D terrain renderer
 - [x] 3D item models
-- [ ] Briefing
 - [x] General Information
-- [ ] Groups
+- [ ] Briefing Window
+- [ ] Groups Window
 - [ ] Area Triggers
-- [x] Waypoints
+- [ ] Waypoints
 - [ ] Events
 - [ ] Layer Names
 - [ ] Global Replace
 - [ ] Weapon Loadouts
 - [ ] Item Attributes
 
+I couldn’t get it implemented:
+- Fog: I tried implementing “Fullscreen Depth Fog” using 3 points (near, mid, far, which I think is how BHD uses it). But since I don’t technically know how fog works in games, I couldn’t guide the AI in a way that avoided issues like fog color mismatch when applying it to each thing on the canvas, object silhouettes showing through the fog, etc. Every time I fixed one problem, another one showed up. So I decided to remove it and wait for help from other collaborators in the future.
 
 
 ## Feedback
