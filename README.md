@@ -19,3 +19,7 @@ Todo:
 ## Feedback
 If you’ve got any feedback, hit me up on Discord, username duz1ht.
 
+
+
+## Engineering Roadmap
+- [ ] WebGL -> Three.js migration (see `MIGRACAO_THREEJS.md`)
