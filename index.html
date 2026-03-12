@@ -1246,9 +1246,9 @@
         </div>
         <div class="debugFogGroup">
           <h4>Preset tuning (proporção)</h4>
-          <div class="debugFogRow"><label for="fogDbgNearDist">Near start</label><input id="fogDbgNearDist" type="range" min="0" max="1" step="0.001" /><span id="fogDbgNearDistVal">-</span></div>
-          <div class="debugFogRow"><label for="fogDbgMidDist">Mid start</label><input id="fogDbgMidDist" type="range" min="0" max="1" step="0.001" /><span id="fogDbgMidDistVal">-</span></div>
-          <div class="debugFogRow"><label for="fogDbgFarDist">Far ref</label><input id="fogDbgFarDist" type="range" min="0.05" max="1" step="0.001" /><span id="fogDbgFarDistVal">-</span></div>
+          <div class="debugFogRow"><label for="fogDbgNearDist">Near start</label><input id="fogDbgNearDist" type="range" min="0" max="2" step="0.001" /><span id="fogDbgNearDistVal">-</span></div>
+          <div class="debugFogRow"><label for="fogDbgMidDist">Mid start</label><input id="fogDbgMidDist" type="range" min="0" max="2" step="0.001" /><span id="fogDbgMidDistVal">-</span></div>
+          <div class="debugFogRow"><label for="fogDbgFarDist">Far ref</label><input id="fogDbgFarDist" type="range" min="0.05" max="2" step="0.001" /><span id="fogDbgFarDistVal">-</span></div>
         </div>
         <div class="debugFogGroup">
           <h4>Força do fog</h4>
@@ -7999,17 +7999,17 @@ void main() {`
 
   const FOG_PRESET_BASE_DISTANCE = 128;
   const FOG_PRESET_DEFAULTS = {
-    0: { nearDistance: 1.275392, midDistance: 35.325952, farDistance: 24.064, nearStrength: 0.24, midStrength: 0.86 },
-    1: { nearDistance: 10.233984, midDistance: 102.457472, farDistance: 117.632, nearStrength: 0.06, midStrength: 0.59 },
-    2: { nearDistance: 48.3616, midDistance: 77.05344, farDistance: 81.28, nearStrength: 0.06, midStrength: 0.69 },
+    0: { nearDistance: 6.784, midDistance: 187.904, farDistance: 24.064, nearStrength: 0.24, midStrength: 0.86 },
+    1: { nearDistance: 11.136, midDistance: 111.488, farDistance: 117.632, nearStrength: 0.06, midStrength: 0.59 },
+    2: { nearDistance: 76.16, midDistance: 121.344, farDistance: 81.28, nearStrength: 0.06, midStrength: 0.69 },
     3: { nearDistance: 40.192, midDistance: 90.368, farDistance: 128, nearStrength: 0.0, midStrength: 0.34 },
   };
 
   function makeFogPresetRatios(preset){
     return {
-      nearStartRatio: Math.max(0, Math.min(1, (Number(preset?.nearDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
-      midStartRatio: Math.max(0, Math.min(1, (Number(preset?.midDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
-      farRefRatio: Math.max(0.05, Math.min(1, (Number(preset?.farDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
+      nearStartRatio: Math.max(0, Math.min(2, (Number(preset?.nearDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
+      midStartRatio: Math.max(0, Math.min(2, (Number(preset?.midDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
+      farRefRatio: Math.max(0.05, Math.min(2, (Number(preset?.farDistance) || 0) / FOG_PRESET_BASE_DISTANCE)),
       nearStrength: Math.max(0, Math.min(1, Number(preset?.nearStrength) || 0)),
       midStrength: Math.max(0, Math.min(1, Number(preset?.midStrength) || 0)),
     };
@@ -8034,8 +8034,8 @@ void main() {`
 
     const preset = getFogPresetConfig(fogType);
     const farRefRatio = Math.max(0.05, Number(preset.farRefRatio) || 0.05);
-    const nearStartRatio = Math.max(0, Math.min(1, Number(preset.nearStartRatio) || 0));
-    const midStartRatio = Math.max(0, Math.min(1, Number(preset.midStartRatio) || 0));
+    const nearStartRatio = Math.max(0, Math.min(2, Number(preset.nearStartRatio) || 0));
+    const midStartRatio = Math.max(0, Math.min(2, Number(preset.midStartRatio) || 0));
 
     const near = safeFar * (nearStartRatio / farRefRatio);
     const mid = safeFar * (midStartRatio / farRefRatio);
@@ -8138,9 +8138,9 @@ void main() {`
       });
     }
 
-    bindDebugFogSlider(fogDbgNearDistEl, (preset, value) => { preset.nearStartRatio = Math.max(0, Math.min(1, value || 0)); });
-    bindDebugFogSlider(fogDbgMidDistEl, (preset, value) => { preset.midStartRatio = Math.max(0, Math.min(1, value || 0)); });
-    bindDebugFogSlider(fogDbgFarDistEl, (preset, value) => { preset.farRefRatio = Math.max(0.05, Math.min(1, value || 0.05)); });
+    bindDebugFogSlider(fogDbgNearDistEl, (preset, value) => { preset.nearStartRatio = Math.max(0, Math.min(2, value || 0)); });
+    bindDebugFogSlider(fogDbgMidDistEl, (preset, value) => { preset.midStartRatio = Math.max(0, Math.min(2, value || 0)); });
+    bindDebugFogSlider(fogDbgFarDistEl, (preset, value) => { preset.farRefRatio = Math.max(0.05, Math.min(2, value || 0.05)); });
     bindDebugFogSlider(fogDbgNearStrengthEl, (preset, value) => { preset.nearStrength = Math.max(0, Math.min(1, value || 0)); });
     bindDebugFogSlider(fogDbgMidStrengthEl, (preset, value) => { preset.midStrength = Math.max(0, Math.min(1, value || 0)); });
 
