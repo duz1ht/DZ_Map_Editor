@@ -7214,6 +7214,16 @@
     material.userData._customFogRampPatched = true;
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, state.glb.fogUniforms);
+      shader.vertexShader = shader.vertexShader.replace(
+        'void main() {',
+        `varying float vCustomFogDepth;
+void main() {`
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+vCustomFogDepth = -mvPosition.z;`
+      );
       shader.fragmentShader = shader.fragmentShader.replace(
         'void main() {',
         `uniform float uFogEnabled;
@@ -7225,13 +7235,14 @@ uniform float uFogMidStrength;
 uniform float uCameraNear;
 uniform float uCameraFar;
 uniform vec3 uFogColor;
+varying float vCustomFogDepth;
 void main() {`
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <fog_fragment>',
         `float fogAmount = 0.0;
         if (uFogEnabled > 0.5 && uFogFarDist > 0.0) {
-          float distToCam = max(0.0, vFogDepth);
+          float distToCam = max(0.0, vCustomFogDepth);
           if (distToCam <= uFogNearDist) {
             fogAmount = 0.0;
           } else if (distToCam <= uFogMidDist) {
@@ -7247,7 +7258,7 @@ void main() {`
         gl_FragColor.rgb = mix(gl_FragColor.rgb, uFogColor, clamp(fogAmount, 0.0, 1.0));`
       );
     };
-    material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v5_${patchKey}`;
+    material.customProgramCacheKey = () => `${material.type}_custom_fog_ramp_v6_${patchKey}`;
     material.needsUpdate = true;
   }
 
