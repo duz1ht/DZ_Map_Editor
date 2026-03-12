@@ -6636,6 +6636,14 @@
       gl.disable(gl.BLEND);
     }
 
+    state.terrainPerf = { draws, culledFrustum, culledBackface };
+    return { draws, visibleTiles, overlayI0, overlayI1, overlayJ0, overlayJ1, ox, oy, PV };
+  }
+
+  function drawTerrainEditorOverlays(terrainRender){
+    if (!terrainRender) return;
+    const { visibleTiles, overlayI0, overlayI1, overlayJ0, overlayJ1, ox, oy, PV } = terrainRender;
+
     if(gridVisible){
       const gridSize=gridSizeMeters();
       if(gridSize>0){
@@ -6667,19 +6675,17 @@
           gl.disable(gl.DEPTH_TEST);
           gl.drawArrays(gl.LINES,0,lineCount*2);
           gl.enable(gl.DEPTH_TEST);
-          gl.useProgram(prog);
         }
       }
     }
 
     const mainAreaOn=renderUiState.mainArea; const showSectorsOn=renderUiState.showSectors;
     if(mainAreaOn||showSectorsOn){
-      const MVPcam=PV;
       gl.useProgram(lineProg);
       gl.bindBuffer(gl.ARRAY_BUFFER,lineVB);
       gl.enableVertexAttribArray(laPos);
       gl.vertexAttribPointer(laPos,3,gl.FLOAT,false,12,0);
-      gl.uniformMatrix4fv(luMVP,false,MVPcam);
+      gl.uniformMatrix4fv(luMVP,false,PV);
       gl.uniform1f(luZ,0.25);
       gl.disable(gl.DEPTH_TEST);
       const spanX=terrainSpanX(), spanY=terrainSpanY();
@@ -6694,10 +6700,7 @@
       }
       if(mainAreaOn) drawRect(ox,oy,spanX,spanY,[1,0,0]);
       gl.enable(gl.DEPTH_TEST);
-      gl.useProgram(prog);
     }
-    state.terrainPerf = { draws, culledFrustum, culledBackface };
-    return draws;
   }
 
 
@@ -8121,8 +8124,15 @@
     gl.clearColor(clearCol.r, clearCol.g, clearCol.b, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
+    const {P,V,PV}=currentPV();
+    const terrainRender = drawTerrain(P,V,forward);
+    const drawCalls = terrainRender?.draws || 0;
+    drawGlbItems(P, V);
     if (postFogReady) compositeFullscreenDepthFog(fogRender);
+    drawTerrainEditorOverlays(terrainRender);
+    gl.disable(gl.DEPTH_TEST);
+    drawItems(PV);
+    gl.enable(gl.DEPTH_TEST);
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
