@@ -1841,6 +1841,17 @@
     pendingUiRenderRaf: 0,
     pendingLiveMisRaf: 0,
     terrainPerf: { draws: 0, culledFrustum: 0, culledBackface: 0 },
+    renderBackend: 'hybrid',
+    renderLayers: {
+      terrain: { owner: 'legacy-webgl', phase: 1 },
+      items: { owner: 'legacy-webgl', phase: 2 },
+      overlays: { owner: 'legacy-webgl', phase: 3 },
+      glb: { owner: 'three', phase: 'existing' },
+    },
+    renderDiagnostics: {
+      lastBackendLogged: null,
+      lastTickMs: 0,
+    },
     itemsById: new Map(),
     itemSectionByStart: new Map(),
     layerVisibility: new Map(),
@@ -1883,6 +1894,64 @@
       lastEnvFogType: null,
     },
   };
+
+  const RENDER_BACKENDS = Object.freeze({ HYBRID: 'hybrid', THREE_ONLY: 'three-only' });
+
+  function normalizeRenderBackend(value){
+    return value === RENDER_BACKENDS.THREE_ONLY ? RENDER_BACKENDS.THREE_ONLY : RENDER_BACKENDS.HYBRID;
+  }
+
+  function parseRenderBackend(value){
+    if (value === RENDER_BACKENDS.HYBRID || value === RENDER_BACKENDS.THREE_ONLY) return value;
+    return null;
+  }
+
+  function resolveInitialRenderBackend(){
+    const qsBackend = parseRenderBackend(new URLSearchParams(location.search).get('renderBackend'));
+    const storedBackend = parseRenderBackend(localStorage.getItem('dz.renderBackend'));
+    return qsBackend || storedBackend || RENDER_BACKENDS.HYBRID;
+  }
+
+  function setRenderBackend(nextBackend, options = {}){
+    const normalized = normalizeRenderBackend(nextBackend);
+    if (state.renderBackend === normalized && !options.force) return;
+    state.renderBackend = normalized;
+    try { localStorage.setItem('dz.renderBackend', normalized); } catch (_) {}
+    addLog(`[render_backend] active=${normalized} (terrain=${state.renderLayers.terrain.owner}, items=${state.renderLayers.items.owner}, overlays=${state.renderLayers.overlays.owner}, glb=${state.renderLayers.glb.owner})`);
+  }
+
+  function logRenderDiagnostics(drawCalls){
+    const now = performance.now();
+    const backendChanged = state.renderDiagnostics.lastBackendLogged !== state.renderBackend;
+    if (!backendChanged && (now - state.renderDiagnostics.lastTickMs) < 5000) return;
+    state.renderDiagnostics.lastBackendLogged = state.renderBackend;
+    state.renderDiagnostics.lastTickMs = now;
+    addLog(`[render_diag] backend=${state.renderBackend} terrain_draw_calls=${drawCalls} glb_ready=${state.glb.ready ? 'yes' : 'no'} glb_instances=${state.glb.itemInstances.size}`);
+  }
+
+  function renderLayersByBackend(P, V, PV, forward){
+    const result = { drawCalls: 0 };
+    if (state.renderBackend === RENDER_BACKENDS.THREE_ONLY){
+      // Phase 0 scaffold: three-only path is intentionally routed through current layers
+      // to keep visual parity while each layer migrates in future phases.
+      result.drawCalls = drawTerrain(P, V, forward);
+      drawItems(PV);
+      drawGlbItems(P, V);
+      return result;
+    }
+    result.drawCalls = drawTerrain(P, V, forward);
+    drawItems(PV);
+    drawGlbItems(P, V);
+    return result;
+  }
+
+  window.DZMapEditor = window.DZMapEditor || {};
+  window.DZMapEditor.setRenderBackend = (backend) => {
+    setRenderBackend(backend);
+    requestRender();
+    return state.renderBackend;
+  };
+  window.DZMapEditor.getRenderBackend = () => state.renderBackend;
 
   // UI refs
   const fileMisEl = document.getElementById("fileMis");
@@ -8054,7 +8123,8 @@ void main() {`
     const fogRender = getRenderFogSettings();
     const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
     gl.clearColor(clearCol.r, clearCol.g, clearCol.b, 1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV(); const drawCalls=drawTerrain(P,V,forward); drawItems(PV); drawGlbItems(P, V);
+    const {P,V,PV}=currentPV(); const renderStats=renderLayersByBackend(P, V, PV, forward); const drawCalls=renderStats.drawCalls;
+    logRenderDiagnostics(drawCalls);
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
@@ -8076,6 +8146,7 @@ water_z_used          ${waterZUsedLabel}
 water_source          ${waterRender.source}
 
 Mode: ${renderMode==='C' ? 'Colormap' : (renderMode==='H' ? 'Heightmap' : 'Delta')}
+Render backend: ${state.renderBackend}
 Grid: ${gridVisible ? formatGridValue(gridSizeMeters()) : 'off'}
 Top view lock: ${topViewLocked?'on':'off'}
 Draw calls: ${drawCalls}
@@ -8386,6 +8457,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   (async function boot(){
     initTheme();
     addLog("Editor boot started.");
+    setRenderBackend(resolveInitialRenderBackend(), { force: true });
     try{
       await loadAndApplyItemCatalogs();
     } catch (err){
