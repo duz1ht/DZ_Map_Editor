@@ -6233,8 +6233,6 @@
   const fpsCounterEl = document.getElementById("fpsCounter");
   const gizmoCanvasEl = document.getElementById("gizmoCanvas");
   const gizmoCtx = gizmoCanvasEl?.getContext("2d");
-  const gl = cv.getContext('webgl',{antialias:true, alpha:false});
-  if(!gl){ statusEl.textContent = "WebGL unavailable."; throw new Error('WebGL not available'); }
   const itemDrawScratch = {
     normal: new Float32Array(0),
     waypoint: new Float32Array(0),
@@ -6677,7 +6675,6 @@
     renderer.resetState();
     renderer.render(terrain.scene, camera);
     renderer.resetState();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     terrain.activeDraws = vis.visibleTiles.length;
     return vis.visibleTiles.length;
   }
@@ -6867,7 +6864,6 @@
     state.glb.renderer.resetState();
     state.glb.renderer.render(overlays.scene, state.glb.camera);
     state.glb.renderer.resetState();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
 
@@ -7002,7 +6998,6 @@
     state.glb.renderer.resetState();
     state.glb.renderer.render(state.threeItems.scene, state.glb.camera);
     state.glb.renderer.resetState();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
 
@@ -7086,7 +7081,7 @@
       try {
         const THREE = await import(THREE_MODULE_URL);
         const { GLTFLoader } = await import(GLTF_LOADER_URL);
-        const renderer = new THREE.WebGLRenderer({ canvas: cv, context: gl, antialias: true, alpha: false });
+        const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: false });
         renderer.autoClear = false;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -7585,7 +7580,6 @@ void main() {`
     renderer.resetState();
     renderer.render(scene, state.glb.camera);
     renderer.resetState();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   function applyThreeCameraFromPV(P, V){
@@ -8341,7 +8335,7 @@ void main() {`
 
 
 
-  function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); gl.viewport(0,0,cv.width,cv.height); if(gizmoCanvasEl){ gizmoCanvasEl.width=Math.floor(r.width*dpr); gizmoCanvasEl.height=Math.floor(r.height*dpr); } }
+  function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); if(state.glb.renderer){ state.glb.renderer.setSize(cv.width, cv.height, false); } if(gizmoCanvasEl){ gizmoCanvasEl.width=Math.floor(r.width*dpr); gizmoCanvasEl.height=Math.floor(r.height*dpr); } }
 
   function fitView(){
     const items = state.items || [];
@@ -8433,7 +8427,10 @@ void main() {`
     if(renderUiState.groundClamp && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=renderUiState.clearance; if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
     const fogRender = getRenderFogSettings();
     const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
-    gl.clearColor(clearCol.r, clearCol.g, clearCol.b, 1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+    if (state.glb.renderer){
+      state.glb.renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
+      state.glb.renderer.clear(true, true, true);
+    }
     const {P,V,PV}=currentPV(); const renderStats=renderLayersByBackend(P, V, PV, forward); const drawCalls=renderStats.drawCalls;
     logRenderDiagnostics(drawCalls);
     updateItemGizmo();
