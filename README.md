@@ -15,7 +15,7 @@ Todo:
 - [ ] Item Attributes
 
 I couldn’t get it implemented:
-- Fog: I tried implementing “Fullscreen Depth Fog” using 3 points (near, mid, far, which I think is how BHD uses it). But since I don’t technically know how fog works in games, I couldn’t guide the AI in a way that avoided issues like fog color mismatch when applying it to each thing on the canvas, object silhouettes showing through the fog, etc. Every time I fixed one problem, another one showed up. So I decided to remove it and wait for help from other collaborators in the future.
+- Fog: I tried implementing “Fullscreen Depth Fog” using 3 points (near, mid, far, which I think is how BHD uses it). But since I don’t technically know how fog works in games, I couldn’t guide the AI in a way that avoided issues like fog color mismatch when applying it to each thing on the canvas, object silhouettes showing through the fog, etc. Every time I fixed one problem, another one showed up. So I decided to remove it and wait for help from other collaborators in the future. I left the Debug Fog button in the canvas, it can be reused in the future to fine-tune the near, mid, and far values for each fog preset in the .env files.
 
 
 ## Feedback
