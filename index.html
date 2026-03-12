@@ -1914,6 +1914,7 @@
       raycaster: null,
       pointerNdc: null,
       fogUniforms: null,
+      fullscreenFog: null,
       ready: false,
     },
     debugFog: {
@@ -1966,15 +1967,7 @@
 
   function applyFogToThreeScene(scene, fogRender){
     if (!scene || !state.glb.THREE) return;
-    if (fogRender?.enabled && fogRender?.ramp?.far > 0){
-      if (!scene.fog || !scene.fog.isFog){
-        scene.fog = new state.glb.THREE.Fog(0x000000, 1, fogRender.ramp.far);
-      }
-      scene.fog.color.setRGB(fogRender.color.r, fogRender.color.g, fogRender.color.b);
-      scene.fog.near = 1;
-      scene.fog.far = Math.max(1, fogRender.ramp.far);
-      return;
-    }
+    // Fullscreen depth fog: camadas Three não usam scene.fog local.
     scene.fog = null;
   }
 
@@ -7587,8 +7580,7 @@ void main() {`
 
   function syncThreePointFogUniforms(fogRender){
     if (!state.glb.THREE || !state.glb.fogUniforms) return;
-    const fogEnabled = !!(fogRender?.enabled && fogRender?.ramp?.far > 0);
-    state.glb.fogUniforms.uFogEnabled.value = fogEnabled ? 1.0 : 0.0;
+    state.glb.fogUniforms.uFogEnabled.value = 0.0;
     state.glb.fogUniforms.uFogNearDist.value = fogRender?.ramp?.near || 0;
     state.glb.fogUniforms.uFogMidDist.value = fogRender?.ramp?.mid || 0;
     state.glb.fogUniforms.uFogFarDist.value = fogRender?.ramp?.far || 0;
@@ -7608,9 +7600,120 @@ void main() {`
   function syncGlbFogState(fogRender){
     syncThreePointFogUniforms(fogRender);
     if (!state.glb.THREE || !state.glb.fogUniforms) return;
-    // Fog de GLB é 100% controlado pelo shader custom de 3 pontos.
-    // Não dependemos de scene.fog (fog global do Three.js) neste caminho.
+    // Fog de GLB é 100% controlado pelo fullscreen depth fog.
     state.glb.scene.fog = null;
+  }
+
+  function ensureFullscreenFogPass(){
+    if (!state.glb.ready || !state.glb.renderer || !state.glb.THREE) return false;
+    const { THREE, renderer } = state.glb;
+    const width = Math.max(1, cv.width || renderer.domElement?.width || 1);
+    const height = Math.max(1, cv.height || renderer.domElement?.height || 1);
+
+    if (!state.glb.fullscreenFog){
+      const target = new THREE.WebGLRenderTarget(width, height, {
+        depthBuffer: true,
+        stencilBuffer: false,
+      });
+      target.texture.minFilter = THREE.LinearFilter;
+      target.texture.magFilter = THREE.LinearFilter;
+      target.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
+      target.depthTexture.minFilter = THREE.NearestFilter;
+      target.depthTexture.magFilter = THREE.NearestFilter;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          tColor: { value: target.texture },
+          tDepth: { value: target.depthTexture },
+          uFogEnabled: { value: 0.0 },
+          uFogNearDist: { value: 0.0 },
+          uFogMidDist: { value: 0.0 },
+          uFogFarDist: { value: 0.0 },
+          uFogNearStrength: { value: 0.0 },
+          uFogMidStrength: { value: 0.0 },
+          uFogColor: { value: new THREE.Color(0.65, 0.70, 0.75) },
+          uCameraNear: { value: 0.1 },
+          uCameraFar: { value: 20000.0 },
+        },
+        vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+        fragmentShader: `uniform sampler2D tColor;
+uniform sampler2D tDepth;
+uniform float uFogEnabled;
+uniform float uFogNearDist;
+uniform float uFogMidDist;
+uniform float uFogFarDist;
+uniform float uFogNearStrength;
+uniform float uFogMidStrength;
+uniform vec3 uFogColor;
+uniform float uCameraNear;
+uniform float uCameraFar;
+varying vec2 vUv;
+void main(){
+  vec4 baseColor = texture2D(tColor, vUv);
+  float depth = texture2D(tDepth, vUv).x;
+  float zNdc = depth * 2.0 - 1.0;
+  float linearDepth = (2.0 * uCameraNear * uCameraFar) / max(0.0001, (uCameraFar + uCameraNear) - zNdc * (uCameraFar - uCameraNear));
+  float distToCam = max(0.0, linearDepth - uCameraNear);
+  float fogAmount = 0.0;
+  if (uFogEnabled > 0.5 && uFogFarDist > 0.0) {
+    if (distToCam <= uFogNearDist) {
+      fogAmount = 0.0;
+    } else if (distToCam <= uFogMidDist) {
+      float tNearMid = clamp((distToCam - uFogNearDist) / max(0.0001, uFogMidDist - uFogNearDist), 0.0, 1.0);
+      fogAmount = mix(uFogNearStrength, uFogMidStrength, tNearMid);
+    } else if (distToCam <= uFogFarDist) {
+      float tMidFar = clamp((distToCam - uFogMidDist) / max(0.0001, uFogFarDist - uFogMidDist), 0.0, 1.0);
+      fogAmount = mix(uFogMidStrength, 1.0, tMidFar);
+    } else {
+      fogAmount = 1.0;
+    }
+  }
+  gl_FragColor = vec4(mix(baseColor.rgb, uFogColor, clamp(fogAmount, 0.0, 1.0)), baseColor.a);
+}`,
+        depthTest: false,
+        depthWrite: false,
+      });
+      scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+      state.glb.fullscreenFog = { target, scene, camera, material, width, height };
+    }
+
+    const pass = state.glb.fullscreenFog;
+    if (pass.width !== width || pass.height !== height){
+      pass.target.setSize(width, height);
+      if (pass.target.depthTexture){
+        pass.target.depthTexture.image.width = width;
+        pass.target.depthTexture.image.height = height;
+      }
+      pass.width = width;
+      pass.height = height;
+    }
+    pass.material.uniforms.tColor.value = pass.target.texture;
+    pass.material.uniforms.tDepth.value = pass.target.depthTexture;
+    return true;
+  }
+
+  function syncFullscreenFogUniforms(fogRender){
+    const pass = state.glb.fullscreenFog;
+    if (!pass || !pass.material || !pass.material.uniforms) return;
+    const uniforms = pass.material.uniforms;
+    const fogEnabled = !!(fogRender?.enabled && fogRender?.ramp?.far > 0);
+    uniforms.uFogEnabled.value = fogEnabled ? 1.0 : 0.0;
+    uniforms.uFogNearDist.value = fogRender?.ramp?.near || 0;
+    uniforms.uFogMidDist.value = fogRender?.ramp?.mid || 0;
+    uniforms.uFogFarDist.value = fogRender?.ramp?.far || 0;
+    uniforms.uFogNearStrength.value = fogRender?.ramp?.nearStrength || 0;
+    uniforms.uFogMidStrength.value = fogRender?.ramp?.midStrength || 0;
+    uniforms.uFogColor.value.setRGB(
+      fogRender?.color?.r || 0,
+      fogRender?.color?.g || 0,
+      fogRender?.color?.b || 0,
+    );
+    const camNear = Number(state.glb.camera?.near);
+    const camFar = Number(state.glb.camera?.far);
+    uniforms.uCameraNear.value = Number.isFinite(camNear) ? Math.max(0.0001, camNear) : 0.1;
+    uniforms.uCameraFar.value = Number.isFinite(camFar) ? Math.max(uniforms.uCameraNear.value + 0.0001, camFar) : 20000.0;
   }
 
   function drawGlbItems(P, V, fogRenderArg){
@@ -8387,7 +8490,7 @@ void main() {`
 
 
 
-  function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); if(state.glb.renderer){ state.glb.renderer.setSize(cv.width, cv.height, false); } if(gizmoCanvasEl){ gizmoCanvasEl.width=Math.floor(r.width*dpr); gizmoCanvasEl.height=Math.floor(r.height*dpr); } }
+  function resizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(r.width*dpr); cv.height=Math.floor(r.height*dpr); if(state.glb.renderer){ state.glb.renderer.setSize(cv.width, cv.height, false); } if(state.glb.fullscreenFog && state.glb.fullscreenFog.target){ state.glb.fullscreenFog.target.setSize(Math.max(1, cv.width), Math.max(1, cv.height)); state.glb.fullscreenFog.width=Math.max(1, cv.width); state.glb.fullscreenFog.height=Math.max(1, cv.height); } if(gizmoCanvasEl){ gizmoCanvasEl.width=Math.floor(r.width*dpr); gizmoCanvasEl.height=Math.floor(r.height*dpr); } }
 
   function fitView(){
     const items = state.items || [];
@@ -8479,11 +8582,30 @@ void main() {`
     if(renderUiState.groundClamp && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=renderUiState.clearance; if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
     const fogRender = getRenderFogSettings();
     const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
-    if (state.glb.renderer){
-      state.glb.renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
-      state.glb.renderer.clear(true, true, true);
+    const {P,V,PV}=currentPV();
+    let renderStats = { drawCalls: 0 };
+    if (state.glb.renderer && ensureFullscreenFogPass()){
+      const renderer = state.glb.renderer;
+      const pass = state.glb.fullscreenFog;
+      renderer.setRenderTarget(pass.target);
+      renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
+      renderer.clear(true, true, true);
+      renderStats = renderLayersByBackend(P, V, PV, forward, fogRender);
+      syncFullscreenFogUniforms(fogRender);
+      renderer.setRenderTarget(null);
+      renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
+      renderer.clear(true, true, true);
+      renderer.resetState();
+      renderer.render(pass.scene, pass.camera);
+      renderer.resetState();
+    } else {
+      if (state.glb.renderer){
+        state.glb.renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
+        state.glb.renderer.clear(true, true, true);
+      }
+      renderStats = renderLayersByBackend(P, V, PV, forward, fogRender);
     }
-    const {P,V,PV}=currentPV(); const renderStats=renderLayersByBackend(P, V, PV, forward, fogRender); const drawCalls=renderStats.drawCalls;
+    const drawCalls=renderStats.drawCalls;
     logRenderDiagnostics(drawCalls);
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
