@@ -3,17 +3,19 @@ This project ports the map editor from Delta Force: Black Hawk Down, released in
 Todo:
 - [x] 3D terrain renderer
 - [x] 3D item models
-- [ ] Briefing
 - [x] General Information
-- [ ] Groups
+- [ ] Briefing Window
+- [ ] Groups Window
 - [ ] Area Triggers
-- [x] Waypoints
+- [ ] Waypoints
 - [ ] Events
 - [ ] Layer Names
 - [ ] Global Replace
 - [ ] Weapon Loadouts
 - [ ] Item Attributes
 
+I couldn’t get it implemented:
+- Fog: I tried implementing “Fullscreen Depth Fog” using 3 points (near, mid, far, which I think is how BHD uses it). But since I don’t technically know how fog works in games, I couldn’t guide the AI in a way that avoided issues like fog color mismatch when applying it to each thing on the canvas, object silhouettes showing through the fog, etc. Every time I fixed one problem, another one showed up. So I decided to remove it and wait for help from other collaborators in the future.
 
 
 ## Feedback
