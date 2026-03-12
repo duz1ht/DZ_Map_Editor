@@ -6599,7 +6599,9 @@
     if (lastImg?.pixels){
       const colorTex = new THREE.DataTexture(lastImg.pixels, lastImg.w, lastImg.h, THREE.RGBAFormat, THREE.UnsignedByteType);
       colorTex.needsUpdate = true;
-      colorTex.flipY = false;
+      // Legacy WebGL path flips only colormap V in shader (uFlipV when renderMode='C').
+      // Mirror that behavior here to keep sector placement/repetition parity in three-only.
+      colorTex.flipY = true;
       colorTex.colorSpace = THREE.SRGBColorSpace;
       colorTex.wrapS = THREE.ClampToEdgeWrapping;
       colorTex.wrapT = THREE.ClampToEdgeWrapping;
