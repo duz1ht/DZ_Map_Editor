@@ -2051,8 +2051,7 @@
     showSectors: !!showSectorsEl?.checked,
     showStats: showStatsEl?.checked !== false,
     showAnchorPoints: showAnchorPointsEl?.checked !== false,
-    useLegacyTerrain: false,
-    useLegacyPickingFallback: true,
+    useLegacyPickingFallback: false,
   };
 
   function syncRenderUiState(){
@@ -6234,14 +6233,6 @@
   function mat4Identity(){ return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]); }
   function mat4MulInto(out,a,b){ for(let c=0;c<4;c++) for(let r=0;r<4;r++) out[c*4+r]=a[0*4+r]*b[c*4+0]+a[1*4+r]*b[c*4+1]+a[2*4+r]*b[c*4+2]+a[3*4+r]*b[c*4+3]; return out; }
   function mat4TranslateInto(out,x,y,z){ out[0]=1; out[1]=0; out[2]=0; out[3]=0; out[4]=0; out[5]=1; out[6]=0; out[7]=0; out[8]=0; out[9]=0; out[10]=1; out[11]=0; out[12]=x; out[13]=y; out[14]=z; out[15]=1; return out; }
-  function resetFixedGlState(){
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.disable(gl.BLEND);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthMask(true);
-    gl.useProgram(null);
-  }
   function mat4Mul(a,b){ const o=new Float32Array(16); for(let c=0;c<4;c++) for(let r=0;r<4;r++) o[c*4+r]=a[0*4+r]*b[c*4+0]+a[1*4+r]*b[c*4+1]+a[2*4+r]*b[c*4+2]+a[3*4+r]*b[c*4+3]; return o; }
   function mat4Perspective(fovy,aspect,near,far){ const f=1/Math.tan(fovy/2), nf=1/(near-far); const o=new Float32Array(16); o[0]=f/aspect;o[5]=f;o[10]=(far+near)*nf;o[11]=-1;o[14]=(2*far*near)*nf; return o; }
   function vec3(x,y,z){return {x,y,z};} function vec3Add(a,b){return vec3(a.x+b.x,a.y+b.y,a.z+b.z);} function vec3Sub(a,b){return vec3(a.x-b.x,a.y-b.y,a.z-b.z);} function vec3Scale(a,s){return vec3(a.x*s,a.y*s,a.z*s);} function vec3Dot(a,b){return a.x*b.x+a.y*b.y+a.z*b.z;} function vec3Cross(a,b){return vec3(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);} function vec3Len(a){return Math.hypot(a.x,a.y,a.z);} function vec3Norm(a){const l=vec3Len(a)||1;return vec3(a.x/l,a.y/l,a.z/l);}
@@ -7594,13 +7585,13 @@ void main() {`
       ensureGlbRendererReady().then((ready) => {
         if (ready) syncGlbItems();
       });
-      return;
+      return { drawCalls: 0, triangles: 0 };
     }
     updateGlbTransformsFromState();
 
     const renderer = state.glb.renderer;
     const scene = state.threeWorld.rootScene || state.glb.scene;
-    if (!renderer || !scene || !state.glb.camera) return;
+    if (!renderer || !scene || !state.glb.camera) return { drawCalls: 0, triangles: 0 };
     const fogRender = getRenderFogSettings();
     if (state.glb.THREE && state.glb.fogUniforms){
       const fogEnabled = fogRender.enabled && fogRender.ramp.far > 0;
@@ -7625,10 +7616,17 @@ void main() {`
     syncThreeCameraFromEditorCamera();
     updateSelectedGlbVisual();
 
+    const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
+    renderer.setClearColor(new state.glb.THREE.Color(clearCol.r, clearCol.g, clearCol.b), 1);
+    renderer.clear(true, true, true);
+
     renderer.resetState();
     renderer.render(scene, state.glb.camera);
     renderer.resetState();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return {
+      drawCalls: renderer.info?.render?.calls || 0,
+      triangles: renderer.info?.render?.triangles || 0,
+    };
   }
 
   function applyThreeCameraFromPV(P, V){
@@ -8527,28 +8525,11 @@ void main() {`
     }
     const {forwardXY,right,forward}=cameraBasis(); const canMoveWithKeys=(document.pointerLockElement===cv && state.cameraLookActive); let dir=vec3(0,0,0); if(canMoveWithKeys&&move.w) dir=vec3Add(dir,forwardXY); if(canMoveWithKeys&&move.s) dir=vec3Sub(dir,forwardXY); if(canMoveWithKeys&&move.d) dir=vec3Add(dir,right); if(canMoveWithKeys&&move.a) dir=vec3Sub(dir,right); if(canMoveWithKeys&&move.e) dir=vec3Add(dir,vec3(0,0,1)); if(canMoveWithKeys&&move.q) dir=vec3Sub(dir,vec3(0,0,1)); const dlen=vec3Len(dir); const speedTable=[12.5,25,50,100,200,300,450,600]; const lvl=Math.max(1,Math.min(8,renderUiState.speedLevel|0)); const scalar=Math.max(0.1,renderUiState.speedScalar||1); const base=speedTable[lvl-1]*scalar; const spd=base; state.camera.speed=spd; const targetVel=dlen>0?vec3Scale(dir,spd/dlen):vec3(0,0,0); const smoothBoost=1.3; const accel=12.0/smoothBoost, decel=10.0/smoothBoost; const blend=Math.min(1, (dlen>0?accel:decel)*dt); camVel=vec3Add(camVel, vec3Scale(vec3Sub(targetVel,camVel), blend)); cam.pos=vec3Add(cam.pos,vec3Scale(camVel,dt));
     if(renderUiState.groundClamp && lastDepth){ const h=heightAtWorld(cam.pos.x,cam.pos.y,1.0); if(h>-1e8){ const clearance=renderUiState.clearance; if(cam.pos.z < h+clearance) cam.pos.z = h+clearance; } }
-    resetFixedGlState();
-    const fogRender = getRenderFogSettings();
-    const clearCol = fogRender.enabled ? fogRender.color : { r: 0.05, g: 0.06, b: 0.08 };
-    gl.clearColor(clearCol.r, clearCol.g, clearCol.b, 1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
-    const {P,V,PV}=currentPV();
-    const drawCalls = renderUiState.useLegacyTerrain ? drawTerrain(P,V,forward) : (state.threeWorld?.terrainMeshCount || 0);
-    if (renderUiState.useLegacyTerrain) {
-      drawItems(PV);
-      if (state.threeWorld){
-        if (state.threeWorld.anchorPoints) state.threeWorld.anchorPoints.visible = false;
-        if (state.threeWorld.waypointPoints) state.threeWorld.waypointPoints.visible = false;
-        if (state.threeWorld.selectedPoints) state.threeWorld.selectedPoints.visible = false;
-        if (state.threeWorld.pastePoints) state.threeWorld.pastePoints.visible = false;
-        if (state.threeWorld.gridLines) state.threeWorld.gridLines.visible = false;
-        if (state.threeWorld.sectorLines) state.threeWorld.sectorLines.visible = false;
-        if (state.threeWorld.mainAreaLines) state.threeWorld.mainAreaLines.visible = false;
-      }
-    } else {
-      updateThreeItemPoints();
-      updateThreeTerrainOverlayLines();
-    }
-    drawGlbItems();
+    updateThreeItemPoints();
+    updateThreeTerrainOverlayLines();
+    const renderInfo = drawGlbItems();
+    const drawCalls = renderInfo?.drawCalls || 0;
+    const triCount = renderInfo?.triangles || 0;
     updateItemGizmo();
     const waterRender = getRenderWaterHeightRaw();
     const waterHeightLabel = (waterRender.raw===0 || waterRender.raw) ? waterRender.raw : '-';
@@ -8573,7 +8554,8 @@ Mode: ${renderMode==='C' ? 'Colormap' : (renderMode==='H' ? 'Heightmap' : 'Delta
 Grid: ${gridVisible ? formatGridValue(gridSizeMeters()) : 'off'}
 Top view lock: ${topViewLocked?'on':'off'}
 Draw calls: ${drawCalls}
-Terrain cull (frustum/back): ${state.terrainPerf?.culledFrustum ?? '-'} / ${state.terrainPerf?.culledBackface ?? '-'}
+Renderer triangles: ${triCount}
+Terrain meshes (Three): ${state.threeWorld?.terrainMeshCount || 0}
 GLB instances: ${state.glb.itemInstances.size}
 GLB sync: #${state.glb.syncCount} (${state.glb.lastSyncMs.toFixed(2)} ms)
 GLB total/render: ${state.glb.lastStats?.totalItems ?? '-'} / ${state.glb.lastStats?.renderableItems ?? '-'}
