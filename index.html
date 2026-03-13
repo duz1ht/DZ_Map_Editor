@@ -2855,7 +2855,23 @@
     setAttribBit(it, 16, parseFloatSafe(ui.lessThan.value) > 0);
     setAttribBit(it, 32, parseFloatSafe(ui.moreThan.value) > 0);
     setAttribBit(it, 64, !!ui.multiplayerOnly.checked);
-    setAttribBit(it, 4194304, !!ui.navWp.checked);
+
+    // Navigation Waypoint must be represented in bmsi_attributes via bitmask 4194304.
+    const navBit = 4194304;
+    let attribValue = getItemAttribValue(it);
+    if (ui.navWp.checked) attribValue |= navBit;
+    else attribValue &= ~navBit;
+
+    const normalized = Math.max(0, Math.trunc(Number(attribValue) || 0));
+    if (normalized > 0){
+      it.kv.bmsi_attributes = String(normalized);
+      delete it.kv.attrib;
+      it.lines = (it.lines || []).filter((raw) => !/^\s*attrib\b/i.test(String(raw || "")));
+    } else {
+      delete it.kv.bmsi_attributes;
+      delete it.kv.attrib;
+      it.lines = (it.lines || []).filter((raw) => !/^\s*(bmsi_attributes|attrib)\b/i.test(String(raw || "")));
+    }
   }
 
   function setEnabled(el, enabled){
@@ -5174,7 +5190,7 @@
     setEnabled(ui.wpDistance, hasWaypointChoices || wpEnabled);
     setEnabled(ui.wpName, state.wpNames.length > 0);
     setEnabled(ui.advEvent, wpEnabled && !!wpAdvKey);
-    setEnabled(ui.navWp, wpEnabled && (kvHas(it, "nav_wp") || kvHas(it, "attrib")));
+    setEnabled(ui.navWp, true);
 
     setValueIf(ui.wpList, kvHas(it, "waypoint_id") ? it.kv.waypoint_id : "");
     setValueIf(ui.wpNumber, kvHas(it, "wpnumber") ? it.kv.wpnumber : "");
@@ -5290,9 +5306,10 @@
     }
 
     const wpNum = Math.trunc(Number(ui.wpNumber.value));
-    if (kvHas(it, "wpnumber")){
-      if (hasWaypointRef && Number.isFinite(wpNum) && wpNum > 0) it.kv.wpnumber = String(wpNum);
-      else delete it.kv.wpnumber;
+    if (Number.isFinite(wpNum) && wpNum > 0) it.kv.wpnumber = String(wpNum);
+    else {
+      delete it.kv.wpnumber;
+      it.lines = (it.lines || []).filter((raw) => !/^\s*wpnumber\b/i.test(String(raw || "")));
     }
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     if (!ui.wpDistance.disabled){
