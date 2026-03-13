@@ -946,7 +946,7 @@
       height:520px;
       min-height:0;
     }
-    #sectionList{ overflow:auto; border:1px solid var(--line-muted); background:var(--surface); padding:6px; min-height:0; max-height:100%; }
+    #sectionList{ overflow:auto; border:1px solid var(--line-muted); background:var(--surface); padding:6px; min-height:0; max-height:100%; box-sizing:border-box; }
     .secCard{ border:1px solid var(--line-card); padding:6px; margin-bottom:5px; cursor:pointer; font-size:12px; background:var(--surface); }
     .secCard.active{ border-color:#5865f2; box-shadow:0 0 0 1px var(--accent-glow-strong); }
     #sectionEditor{ display:grid; grid-template-rows:auto auto 1fr auto; gap:6px; min-height:0; }
@@ -970,13 +970,13 @@
     #sectionWindow[data-section-mode="briefing"] #sectionBody,
     #sectionWindow[data-section-mode="event"] #sectionBody,
     #sectionWindow[data-section-mode="weapon_availability"] #sectionBody,
-    #sectionWindow[data-section-mode="layer"] #sectionBody{ height:468px; }
+    #sectionWindow[data-section-mode="layer"] #sectionBody{ height:100%; min-height:0; }
     #sectionWindow[data-section-mode="group"] #sectionBody{
-      grid-template-columns:240px 1fr;
+      grid-template-columns:300px 1fr;
       height:100%;
     }
-    #sectionWindow[data-section-mode="waypoint"] #sectionBody{ grid-template-columns:1fr 240px; }
-    #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:174px 1fr; }
+    #sectionWindow[data-section-mode="waypoint"] #sectionBody{ grid-template-columns:300px 1fr; }
+    #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:300px 1fr; }
     #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto 1fr auto; }
     #sectionWindow[data-section-mode="group"] #sectionMeta,
     #sectionWindow[data-section-mode="group"] #sectionHint{ display:none; }
@@ -1047,7 +1047,7 @@
     #sectionWindow[data-section-mode="layer"] #sectionHint,
     #sectionWindow[data-section-mode="layer"] #sectionText,
     #sectionWindow[data-section-mode="layer"] #sectionActions{ display:none; }
-    #sectionWindow[data-section-mode="layer"] #sectionBody{ grid-template-columns:260px 1fr; }
+    #sectionWindow[data-section-mode="layer"] #sectionBody{ grid-template-columns:300px 1fr; }
     #sectionWindow[data-section-mode="layer"] #sectionEditor{ grid-template-rows:1fr; }
     #sectionWindow[data-section-mode="areatrig"] #sectionKindSelect,
     #sectionWindow[data-section-mode="areatrig"] #sectionSearch,
