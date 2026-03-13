@@ -994,7 +994,9 @@
       line-height:1.1;
       align-self:center;
     }
+    #groupNameLabel{ display:none; font-size:12px; }
     #groupNameInput{ display:none; width:100%; align-self:start; }
+    #sectionWindow[data-section-mode="group"] #groupNameLabel,
     #sectionWindow[data-section-mode="group"] #groupNameInput{ display:block; }
     #sectionWindow[data-section-mode="group"] #sectionText{ display:none; }
     #groupSelectMembersBtn,
@@ -1014,7 +1016,7 @@
       color:var(--text-subtle);
       margin-top:2px;
     }
-    #waypointTopActions{ display:none; gap:8px; }
+    #waypointTopActions{ display:none; gap:8px; justify-content:flex-end; margin-top:auto; }
     #sectionWindow[data-section-mode="waypoint"] #waypointTopActions{ display:flex; }
     #sectionWindow[data-section-mode="waypoint"] #sectionAddBtn{ display:none; }
     #sectionWindow #sectionQuickNav{ max-width:220px; }
@@ -1291,11 +1293,6 @@
             </select>
             <input id="sectionSearch" placeholder="filter by id/text" />
             <button id="sectionAddBtn">Add block</button>
-            <div id="waypointTopActions">
-              <button id="wpSelectMarkersBtn">Select Markers</button>
-              <button id="wpSaveAsBtn">Save As</button>
-              <button id="wpOkBtn">Ok</button>
-            </div>
           </div>
           <div id="sectionBody">
             <div id="sectionList"></div>
@@ -1303,6 +1300,7 @@
               <div id="sectionMeta">Select a block.</div>
               <div class="hint" id="sectionHint">Edit the block inner content (lines between begin/end). One line per key/value.</div>
               <textarea id="sectionText"></textarea>
+              <div class="inlineLabel" id="groupNameLabel">Group name:</div>
               <input id="groupNameInput" type="text" />
               <div id="generalInfoEditor">
                 <div class="giLayout">
@@ -1378,6 +1376,11 @@
                 <label class="checkRow"><input type="checkbox" id="wpBlueTeam" /><span>Blue Team Waypoint</span></label>
                 <label class="checkRow"><input type="checkbox" id="wpRedTeam" /><span>Red Team Waypoint</span></label>
                 <div id="wpMarkerCount">Markers selected: 0</div>
+                <div id="waypointTopActions">
+                  <button id="wpSelectMarkersBtn">Select Markers</button>
+                  <button id="wpSaveAsBtn">Save As</button>
+                  <button id="wpOkBtn">Ok</button>
+                </div>
               </div>
               <div id="areaTrigEditor">
                 <div>
