@@ -7,7 +7,7 @@ end
 begin "Waypoint"
 	type_id 106005
 	graphic 1_waypoint
-	graphic_scale 2
+	graphic_scale 3.5
 end
 
 
