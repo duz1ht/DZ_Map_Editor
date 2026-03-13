@@ -5291,7 +5291,10 @@
 
     const wpNum = Math.trunc(Number(ui.wpNumber.value));
     if (Number.isFinite(wpNum) && wpNum > 0) it.kv.wpnumber = String(wpNum);
-    else delete it.kv.wpnumber;
+    else {
+      delete it.kv.wpnumber;
+      it.lines = (it.lines || []).filter((raw) => !/^\s*wpnumber\b/i.test(String(raw || "")));
+    }
     const wpDistanceKey = kvFindKey(it, ["wpdistance", "waypoint_distance"]);
     if (!ui.wpDistance.disabled){
       const wpDistanceValue = parseFloatSafe(ui.wpDistance.value);
