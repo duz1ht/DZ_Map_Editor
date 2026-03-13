@@ -4,10 +4,10 @@ Todo:
 - [x] 3D terrain renderer
 - [x] 3D item models
 - [x] General Information
+- [X] Waypoints
 - [ ] Briefing Window
 - [ ] Groups Window
 - [ ] Area Triggers
-- [ ] Waypoints
 - [ ] Events
 - [ ] Layer Names
 - [ ] Global Replace
