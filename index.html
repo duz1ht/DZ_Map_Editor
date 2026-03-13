@@ -2855,7 +2855,21 @@
     setAttribBit(it, 16, parseFloatSafe(ui.lessThan.value) > 0);
     setAttribBit(it, 32, parseFloatSafe(ui.moreThan.value) > 0);
     setAttribBit(it, 64, !!ui.multiplayerOnly.checked);
-    setAttribBit(it, 4194304, !!ui.navWp.checked);
+
+    // Navigation Waypoint must be represented in bmsi_attributes via bitmask 4194304.
+    const navBit = 4194304;
+    let attribValue = getItemAttribValue(it);
+    if (ui.navWp.checked) attribValue |= navBit;
+    else attribValue &= ~navBit;
+
+    const normalized = Math.max(0, Math.trunc(Number(attribValue) || 0));
+    if (normalized > 0){
+      it.kv.bmsi_attributes = String(normalized);
+      delete it.kv.attrib;
+    } else {
+      delete it.kv.bmsi_attributes;
+      delete it.kv.attrib;
+    }
   }
 
   function setEnabled(el, enabled){
