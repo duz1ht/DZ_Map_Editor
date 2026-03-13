@@ -946,7 +946,7 @@
       height:520px;
       min-height:0;
     }
-    #sectionList{ overflow:auto; border:1px solid var(--line-muted); background:var(--surface); padding:6px; min-height:0; max-height:100%; }
+    #sectionList{ overflow:auto; border:1px solid var(--line-muted); background:var(--surface); padding:6px; min-height:0; max-height:100%; box-sizing:border-box; }
     .secCard{ border:1px solid var(--line-card); padding:6px; margin-bottom:5px; cursor:pointer; font-size:12px; background:var(--surface); }
     .secCard.active{ border-color:#5865f2; box-shadow:0 0 0 1px var(--accent-glow-strong); }
     #sectionEditor{ display:grid; grid-template-rows:auto auto 1fr auto; gap:6px; min-height:0; }
@@ -970,14 +970,14 @@
     #sectionWindow[data-section-mode="briefing"] #sectionBody,
     #sectionWindow[data-section-mode="event"] #sectionBody,
     #sectionWindow[data-section-mode="weapon_availability"] #sectionBody,
-    #sectionWindow[data-section-mode="layer"] #sectionBody{ height:468px; }
+    #sectionWindow[data-section-mode="layer"] #sectionBody{ height:100%; min-height:0; }
     #sectionWindow[data-section-mode="group"] #sectionBody{
-      grid-template-columns:240px 1fr;
+      grid-template-columns:300px 1fr;
       height:100%;
     }
-    #sectionWindow[data-section-mode="waypoint"] #sectionBody{ grid-template-columns:1fr 240px; }
-    #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:174px 1fr; }
-    #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto 1fr auto; }
+    #sectionWindow[data-section-mode="waypoint"] #sectionBody{ grid-template-columns:300px 1fr; }
+    #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:300px 1fr; }
+    #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto auto auto; align-content:start; }
     #sectionWindow[data-section-mode="group"] #sectionMeta,
     #sectionWindow[data-section-mode="group"] #sectionHint{ display:none; }
     #sectionWindow[data-section-mode="group"] #sectionKindSelect,
@@ -994,7 +994,10 @@
       line-height:1.1;
       align-self:center;
     }
-    #sectionWindow[data-section-mode="group"] #sectionText{ height:34px; min-height:34px; max-height:34px; resize:none; font-family:Tahoma, Arial, sans-serif; }
+    #groupNameField{ display:none; align-self:start; }
+    #groupNameInput{ width:100%; }
+    #sectionWindow[data-section-mode="group"] #groupNameField{ display:block; }
+    #sectionWindow[data-section-mode="group"] #sectionText{ display:none; }
     #groupSelectMembersBtn,
     #groupSaveAsTextBtn{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #sectionHint{ display:none; }
@@ -1012,7 +1015,7 @@
       color:var(--text-subtle);
       margin-top:2px;
     }
-    #waypointTopActions{ display:none; gap:8px; }
+    #waypointTopActions{ display:none; gap:8px; justify-content:flex-end; margin-top:auto; }
     #sectionWindow[data-section-mode="waypoint"] #waypointTopActions{ display:flex; }
     #sectionWindow[data-section-mode="waypoint"] #sectionAddBtn{ display:none; }
     #sectionWindow #sectionQuickNav{ max-width:220px; }
@@ -1047,7 +1050,7 @@
     #sectionWindow[data-section-mode="layer"] #sectionHint,
     #sectionWindow[data-section-mode="layer"] #sectionText,
     #sectionWindow[data-section-mode="layer"] #sectionActions{ display:none; }
-    #sectionWindow[data-section-mode="layer"] #sectionBody{ grid-template-columns:260px 1fr; }
+    #sectionWindow[data-section-mode="layer"] #sectionBody{ grid-template-columns:300px 1fr; }
     #sectionWindow[data-section-mode="layer"] #sectionEditor{ grid-template-rows:1fr; }
     #sectionWindow[data-section-mode="areatrig"] #sectionKindSelect,
     #sectionWindow[data-section-mode="areatrig"] #sectionSearch,
@@ -1289,11 +1292,6 @@
             </select>
             <input id="sectionSearch" placeholder="filter by id/text" />
             <button id="sectionAddBtn">Add block</button>
-            <div id="waypointTopActions">
-              <button id="wpSelectMarkersBtn">Select Markers</button>
-              <button id="wpSaveAsBtn">Save As</button>
-              <button id="wpOkBtn">Ok</button>
-            </div>
           </div>
           <div id="sectionBody">
             <div id="sectionList"></div>
@@ -1301,6 +1299,10 @@
               <div id="sectionMeta">Select a block.</div>
               <div class="hint" id="sectionHint">Edit the block inner content (lines between begin/end). One line per key/value.</div>
               <textarea id="sectionText"></textarea>
+              <div id="groupNameField">
+                <div class="inlineLabel">Group name</div>
+                <input id="groupNameInput" type="text" />
+              </div>
               <div id="generalInfoEditor">
                 <div class="giLayout">
                   <div>
@@ -1375,6 +1377,11 @@
                 <label class="checkRow"><input type="checkbox" id="wpBlueTeam" /><span>Blue Team Waypoint</span></label>
                 <label class="checkRow"><input type="checkbox" id="wpRedTeam" /><span>Red Team Waypoint</span></label>
                 <div id="wpMarkerCount">Markers selected: 0</div>
+                <div id="waypointTopActions">
+                  <button id="wpSelectMarkersBtn">Select Markers</button>
+                  <button id="wpSaveAsBtn">Save As</button>
+                  <button id="wpOkBtn">Ok</button>
+                </div>
               </div>
               <div id="areaTrigEditor">
                 <div>
@@ -2027,6 +2034,7 @@
   const sectionList = document.getElementById("sectionList");
   const sectionMeta = document.getElementById("sectionMeta");
   const sectionText = document.getElementById("sectionText");
+  const groupNameInput = document.getElementById("groupNameInput");
   const sectionApplyBtn = document.getElementById("sectionApplyBtn");
   const sectionDeleteBtn = document.getElementById("sectionDeleteBtn");
   const groupSelectMembersBtn = document.getElementById("groupSelectMembersBtn");
@@ -3905,6 +3913,25 @@
     return state.sectionBlocks.find(s => s.kind === "waypoint" && parseWaypointNumber(s) === n) || null;
   }
 
+  function parseAreaTrigNumber(sec){
+    if (!sec || sec.kind !== "areatrig") return null;
+    const fromLabel = Number((sec.label || "").trim());
+    if (Number.isInteger(fromLabel) && fromLabel >= 1 && fromLabel <= 99) return fromLabel;
+    const m = String(sec.beginLine || "").trim().match(/^begin\s+areatrig\s+(\d+)$/i);
+    if (m) return Number(m[1]);
+    return null;
+  }
+
+  function getAreaTrigSectionByNumber(n){
+    return state.sectionBlocks.find(s => s.kind === "areatrig" && parseAreaTrigNumber(s) === n) || null;
+  }
+
+  function getAreaTrigDescription(sec){
+    if (!sec) return "";
+    if (sec.kv && sec.kv.description) return String(sec.kv.description);
+    return "";
+  }
+
   function parseLayerNumber(sec){
     if (!sec || sec.kind !== "layer") return null;
     const fromLabel = Number((sec.label || "").trim());
@@ -4059,6 +4086,9 @@
     const desc = String(wpDesc.value || "").trim();
     const colorVal = Number(wpColor.value || "0");
     const attribVal = buildWaypointAttrib();
+    const hasWaypointData = !!desc || colorVal > 0 || attribVal > 0;
+
+    if (!sec && !hasWaypointData) return;
 
     if (!sec){
       const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
@@ -4601,6 +4631,22 @@
       return;
     }
 
+    if (kind === "areatrig"){
+      sectionDeleteBtn.disabled = true;
+      const cards = [];
+      for (let n=1; n<=99; n++){
+        const sec = getAreaTrigSectionByNumber(n);
+        const desc = getAreaTrigDescription(sec);
+        const label = `${n} - ${desc || ""}`;
+        if (!q || label.toLowerCase().includes(q)) cards.push({ n, label });
+      }
+      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.sectionSelectedId===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("");
+      sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
+      if (!Number.isInteger(state.sectionSelectedId) || state.sectionSelectedId < 1 || state.sectionSelectedId > 99) state.sectionSelectedId = 1;
+      selectSectionBlock(state.sectionSelectedId);
+      return;
+    }
+
     sectionDeleteBtn.disabled = false;
     const secs = getSectionsByKind(kind).filter(s => kind === "general_information" || !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
     sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
@@ -4614,7 +4660,7 @@
       sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===state.groupSelectedNumber));
       const sec = getGroupSectionByNumber(state.groupSelectedNumber);
       sectionMeta.textContent = `begin group ${state.groupSelectedNumber}`;
-      sectionText.value = sec ? getGroupDescription(sec) : '';
+      groupNameInput.value = sec ? getGroupDescription(sec) : '';
       return;
     }
 
@@ -4635,6 +4681,13 @@
       sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===layerNumber));
       const sec = getLayerSectionByNumber(layerNumber);
       fillLayerEditor(sec);
+      return;
+    }
+
+    if (state.sectionKind === "areatrig"){
+      const areaTrigNumber = Math.max(1, Math.min(99, Number(id) || 1));
+      state.sectionSelectedId = areaTrigNumber;
+      sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===areaTrigNumber));
       return;
     }
 
@@ -4667,7 +4720,7 @@
     if (state.sectionKind === 'group'){
       const n = state.groupSelectedNumber || 1;
       let sec = getGroupSectionByNumber(n);
-      const desc = String(sectionText.value || '').trim();
+      const desc = String(groupNameInput.value || '').trim();
 
       if (!sec){
         const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
@@ -4693,6 +4746,7 @@
       renderSectionList();
       scheduleLiveMisRefresh();
       if (state.modalOpen) renderItemWindow();
+      closeSectionEditor();
       return;
     }
 
