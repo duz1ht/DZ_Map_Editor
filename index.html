@@ -3905,6 +3905,25 @@
     return state.sectionBlocks.find(s => s.kind === "waypoint" && parseWaypointNumber(s) === n) || null;
   }
 
+  function parseAreaTrigNumber(sec){
+    if (!sec || sec.kind !== "areatrig") return null;
+    const fromLabel = Number((sec.label || "").trim());
+    if (Number.isInteger(fromLabel) && fromLabel >= 1 && fromLabel <= 99) return fromLabel;
+    const m = String(sec.beginLine || "").trim().match(/^begin\s+areatrig\s+(\d+)$/i);
+    if (m) return Number(m[1]);
+    return null;
+  }
+
+  function getAreaTrigSectionByNumber(n){
+    return state.sectionBlocks.find(s => s.kind === "areatrig" && parseAreaTrigNumber(s) === n) || null;
+  }
+
+  function getAreaTrigDescription(sec){
+    if (!sec) return "";
+    if (sec.kv && sec.kv.description) return String(sec.kv.description);
+    return "";
+  }
+
   function parseLayerNumber(sec){
     if (!sec || sec.kind !== "layer") return null;
     const fromLabel = Number((sec.label || "").trim());
@@ -4604,6 +4623,22 @@
       return;
     }
 
+    if (kind === "areatrig"){
+      sectionDeleteBtn.disabled = true;
+      const cards = [];
+      for (let n=1; n<=99; n++){
+        const sec = getAreaTrigSectionByNumber(n);
+        const desc = getAreaTrigDescription(sec);
+        const label = `${n} - ${desc || ""}`;
+        if (!q || label.toLowerCase().includes(q)) cards.push({ n, label });
+      }
+      sectionList.innerHTML = cards.map(c => `<div class="secCard ${state.sectionSelectedId===c.n?'active':''}" data-id="${c.n}">${escapeHtml(c.label)}</div>`).join("");
+      sectionList.querySelectorAll('.secCard').forEach(el => el.addEventListener('click',()=>selectSectionBlock(Number(el.dataset.id))));
+      if (!Number.isInteger(state.sectionSelectedId) || state.sectionSelectedId < 1 || state.sectionSelectedId > 99) state.sectionSelectedId = 1;
+      selectSectionBlock(state.sectionSelectedId);
+      return;
+    }
+
     sectionDeleteBtn.disabled = false;
     const secs = getSectionsByKind(kind).filter(s => kind === "general_information" || !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
     sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
@@ -4638,6 +4673,13 @@
       sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===layerNumber));
       const sec = getLayerSectionByNumber(layerNumber);
       fillLayerEditor(sec);
+      return;
+    }
+
+    if (state.sectionKind === "areatrig"){
+      const areaTrigNumber = Math.max(1, Math.min(99, Number(id) || 1));
+      state.sectionSelectedId = areaTrigNumber;
+      sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===areaTrigNumber));
       return;
     }
 
