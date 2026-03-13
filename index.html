@@ -977,7 +977,7 @@
     }
     #sectionWindow[data-section-mode="waypoint"] #sectionBody{ grid-template-columns:300px 1fr; }
     #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:300px 1fr; }
-    #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto 1fr auto; }
+    #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto auto auto; }
     #sectionWindow[data-section-mode="group"] #sectionMeta,
     #sectionWindow[data-section-mode="group"] #sectionHint{ display:none; }
     #sectionWindow[data-section-mode="group"] #sectionKindSelect,
@@ -994,7 +994,9 @@
       line-height:1.1;
       align-self:center;
     }
-    #sectionWindow[data-section-mode="group"] #sectionText{ height:34px; min-height:34px; max-height:34px; resize:none; font-family:Tahoma, Arial, sans-serif; }
+    #groupNameInput{ display:none; width:100%; font-family:Tahoma, Arial, sans-serif; }
+    #sectionWindow[data-section-mode="group"] #groupNameInput{ display:block; }
+    #sectionWindow[data-section-mode="group"] #sectionText{ display:none; }
     #groupSelectMembersBtn,
     #groupSaveAsTextBtn{ display:none; }
     #sectionWindow[data-section-mode="waypoint"] #sectionHint{ display:none; }
@@ -1301,6 +1303,7 @@
               <div id="sectionMeta">Select a block.</div>
               <div class="hint" id="sectionHint">Edit the block inner content (lines between begin/end). One line per key/value.</div>
               <textarea id="sectionText"></textarea>
+              <input id="groupNameInput" type="text" />
               <div id="generalInfoEditor">
                 <div class="giLayout">
                   <div>
@@ -2027,6 +2030,7 @@
   const sectionList = document.getElementById("sectionList");
   const sectionMeta = document.getElementById("sectionMeta");
   const sectionText = document.getElementById("sectionText");
+  const groupNameInput = document.getElementById("groupNameInput");
   const sectionApplyBtn = document.getElementById("sectionApplyBtn");
   const sectionDeleteBtn = document.getElementById("sectionDeleteBtn");
   const groupSelectMembersBtn = document.getElementById("groupSelectMembersBtn");
@@ -4652,7 +4656,7 @@
       sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===state.groupSelectedNumber));
       const sec = getGroupSectionByNumber(state.groupSelectedNumber);
       sectionMeta.textContent = `begin group ${state.groupSelectedNumber}`;
-      sectionText.value = sec ? getGroupDescription(sec) : '';
+      groupNameInput.value = sec ? getGroupDescription(sec) : '';
       return;
     }
 
@@ -4712,7 +4716,7 @@
     if (state.sectionKind === 'group'){
       const n = state.groupSelectedNumber || 1;
       let sec = getGroupSectionByNumber(n);
-      const desc = String(sectionText.value || '').trim();
+      const desc = String(groupNameInput.value || '').trim();
 
       if (!sec){
         const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
