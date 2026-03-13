@@ -977,7 +977,7 @@
     }
     #sectionWindow[data-section-mode="waypoint"] #sectionBody{ grid-template-columns:300px 1fr; }
     #sectionWindow[data-section-mode="areatrig"] #sectionBody{ grid-template-columns:300px 1fr; }
-    #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto auto auto; }
+    #sectionWindow[data-section-mode="group"] #sectionEditor{ grid-template-rows:auto auto auto auto; align-content:start; }
     #sectionWindow[data-section-mode="group"] #sectionMeta,
     #sectionWindow[data-section-mode="group"] #sectionHint{ display:none; }
     #sectionWindow[data-section-mode="group"] #sectionKindSelect,
@@ -994,7 +994,7 @@
       line-height:1.1;
       align-self:center;
     }
-    #groupNameInput{ display:none; width:100%; font-family:Tahoma, Arial, sans-serif; }
+    #groupNameInput{ display:none; width:100%; min-height:24px; height:24px; padding:2px 6px; font-family:Tahoma, Arial, sans-serif; box-sizing:border-box; align-self:start; }
     #sectionWindow[data-section-mode="group"] #groupNameInput{ display:block; }
     #sectionWindow[data-section-mode="group"] #sectionText{ display:none; }
     #groupSelectMembersBtn,
