@@ -5188,7 +5188,7 @@
     setEnabled(ui.wpDistance, hasWaypointChoices || wpEnabled);
     setEnabled(ui.wpName, state.wpNames.length > 0);
     setEnabled(ui.advEvent, wpEnabled && !!wpAdvKey);
-    setEnabled(ui.navWp, wpEnabled && (kvHas(it, "nav_wp") || kvHas(it, "attrib")));
+    setEnabled(ui.navWp, true);
 
     setValueIf(ui.wpList, kvHas(it, "waypoint_id") ? it.kv.waypoint_id : "");
     setValueIf(ui.wpNumber, kvHas(it, "wpnumber") ? it.kv.wpnumber : "");
