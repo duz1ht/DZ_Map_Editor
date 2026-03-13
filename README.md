@@ -5,12 +5,13 @@ Todo:
 - [x] 3D item models
 - [x] General Information
 - [X] Waypoints
+- [X] Layer Names
 - [ ] 90% - Item Attributes
 - [ ] Briefing Window
 - [ ] Groups Window
 - [ ] Area Triggers
 - [ ] Events
-- [ ] Layer Names
+
 - [ ] Global Replace
 - [ ] Weapon Loadouts
 
