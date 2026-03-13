@@ -4059,6 +4059,9 @@
     const desc = String(wpDesc.value || "").trim();
     const colorVal = Number(wpColor.value || "0");
     const attribVal = buildWaypointAttrib();
+    const hasWaypointData = !!desc || colorVal > 0 || attribVal > 0;
+
+    if (!sec && !hasWaypointData) return;
 
     if (!sec){
       const nextId = state.sectionBlocks.reduce((m,s)=>Math.max(m,s.id),0) + 1;
