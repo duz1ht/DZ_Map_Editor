@@ -2866,9 +2866,11 @@
     if (normalized > 0){
       it.kv.bmsi_attributes = String(normalized);
       delete it.kv.attrib;
+      it.lines = (it.lines || []).filter((raw) => !/^\s*attrib\b/i.test(String(raw || "")));
     } else {
       delete it.kv.bmsi_attributes;
       delete it.kv.attrib;
+      it.lines = (it.lines || []).filter((raw) => !/^\s*(bmsi_attributes|attrib)\b/i.test(String(raw || "")));
     }
   }
 
