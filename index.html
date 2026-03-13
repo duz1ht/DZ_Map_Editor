@@ -994,10 +994,9 @@
       line-height:1.1;
       align-self:center;
     }
-    #groupNameLabel{ display:none; font-size:12px; }
-    #groupNameInput{ display:none; width:100%; align-self:start; }
-    #sectionWindow[data-section-mode="group"] #groupNameLabel,
-    #sectionWindow[data-section-mode="group"] #groupNameInput{ display:block; }
+    #groupNameField{ display:none; align-self:start; }
+    #groupNameInput{ width:100%; }
+    #sectionWindow[data-section-mode="group"] #groupNameField{ display:block; }
     #sectionWindow[data-section-mode="group"] #sectionText{ display:none; }
     #groupSelectMembersBtn,
     #groupSaveAsTextBtn{ display:none; }
@@ -1300,8 +1299,10 @@
               <div id="sectionMeta">Select a block.</div>
               <div class="hint" id="sectionHint">Edit the block inner content (lines between begin/end). One line per key/value.</div>
               <textarea id="sectionText"></textarea>
-              <div class="inlineLabel" id="groupNameLabel">Group name:</div>
-              <input id="groupNameInput" type="text" />
+              <div id="groupNameField">
+                <div class="inlineLabel">Group name</div>
+                <input id="groupNameInput" type="text" />
+              </div>
               <div id="generalInfoEditor">
                 <div class="giLayout">
                   <div>
