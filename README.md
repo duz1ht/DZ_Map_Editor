@@ -22,3 +22,5 @@ I couldn’t get it implemented:
 ## Feedback
 If you’ve got any feedback, hit me up on Discord, username duz1ht.
 
+## Contributors so far
+biggy, demonic, dataspiller, scott (novahq), angelexalted
