@@ -2,7 +2,7 @@ This project ports the map editor from Delta Force: Black Hawk Down, released in
 
 Todo:
 - [x] 3D terrain rendering
-- [x] Items conversion from .3DI to GLB
+- [x] Items conversion from .3DI to .GLB
 - [x] General Information
 - [X] Waypoints
 - [X] Layer Names
