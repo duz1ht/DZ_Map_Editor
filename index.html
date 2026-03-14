@@ -5691,6 +5691,23 @@
     return maxItemId + 1;
   }
 
+  function normalizeItemBeginLineSequence(){
+    const orderedItemSections = state.sectionBlocks
+      .filter((sec) => sec.kind === "item")
+      .sort((a,b) => a.start - b.start);
+    const beginLineByStart = new Map();
+    for (let i = 0; i < orderedItemSections.length; i++){
+      const sec = orderedItemSections[i];
+      const beginLine = `begin item ${i}`;
+      sec.beginLine = beginLine;
+      beginLineByStart.set(sec.start, beginLine);
+    }
+    for (const it of state.items){
+      const beginLine = beginLineByStart.get(it.start);
+      if (beginLine) it.beginLine = beginLine;
+    }
+  }
+
   function createPastedItemFrom(sourceItem, sourceSection = null, options = {}){
     const { offset = true, worldPosition = null, selectCreated = true, refresh = true } = options;
     const copy = structuredClone(sourceItem);
@@ -5830,6 +5847,7 @@
     removeItemFromSpatialIndex(it.id);
     state.items = state.items.filter(x => x.id !== it.id);
     state.sectionBlocks = state.sectionBlocks.filter(s => !(s.kind === "item" && s.start === it.start));
+    normalizeItemBeginLineSequence();
     markItemsChanged({ structure: true });
     state.selectedId = null;
     state.multiSelectedIds.clear();
