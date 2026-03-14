@@ -6,8 +6,8 @@ Todo:
 - [x] General Information
 - [X] Waypoints
 - [X] Layer Names
+- [X] Groups
 - [ ] 90% - Item Attributes
-- [ ] 90% - Groups
 - [ ] 90% - Area Triggers
 - [ ] Briefing
 - [ ] Events
