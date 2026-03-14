@@ -4394,7 +4394,8 @@
   function buildAdvancementEventOptions(selectedValue = ""){
     if (!ui?.advEvent) return;
     const selectedText = String(selectedValue ?? "").trim();
-    const selectedNum = Math.trunc(Number(selectedText));
+    const hasSelectedText = selectedText !== "";
+    const selectedNum = hasSelectedText ? Math.trunc(Number(selectedText)) : NaN;
     const events = getSortedEvents();
     const options = ['<option value="">None</option>'];
 
@@ -4407,7 +4408,7 @@
 
     ui.advEvent.innerHTML = options.join('');
 
-    if (Number.isFinite(selectedNum) && events.some(sec => getEventNumber(sec) === selectedNum)){
+    if (hasSelectedText && Number.isFinite(selectedNum) && events.some(sec => getEventNumber(sec) === selectedNum)){
       ui.advEvent.value = String(selectedNum);
     } else {
       ui.advEvent.value = "";
