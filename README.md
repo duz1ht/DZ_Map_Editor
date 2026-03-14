@@ -9,6 +9,8 @@ Todo:
 - [X] Groups
 - [ ] 90% - Item Attributes
 - [ ] 90% - Area Triggers
+- [ ] 60% - Item context menu
+- [ ] Canvas context menu
 - [ ] Briefing
 - [ ] Events
 - [ ] Global Replace
