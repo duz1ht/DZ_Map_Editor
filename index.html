@@ -6387,12 +6387,36 @@
     if (!itemContextMenu.contains(e.target)) closeItemContextMenu();
   });
 
+  function decodeMisTextFromFile(arrayBuffer){
+    const bytes = new Uint8Array(arrayBuffer || new ArrayBuffer(0));
+    const utf8 = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+
+    const utf8ReplacementCount = (utf8.match(/�/g) || []).length;
+    if (!utf8ReplacementCount) return { text: utf8, encoding: "utf-8" };
+
+    let win1252 = "";
+    try{
+      win1252 = new TextDecoder("windows-1252", { fatal: false }).decode(bytes);
+    } catch {
+      win1252 = new TextDecoder("iso-8859-1", { fatal: false }).decode(bytes);
+    }
+
+    const win1252ReplacementCount = (win1252.match(/�/g) || []).length;
+    if (win1252 && win1252ReplacementCount < utf8ReplacementCount){
+      return { text: win1252, encoding: "windows-1252" };
+    }
+
+    return { text: utf8, encoding: "utf-8" };
+  }
+
   // File inputs
   async function loadMisFile(file, fileHandle = null){
     if (!file) return;
     state.filename = file.name;
     state.currentMisFileHandle = fileHandle;
-    const text = await file.text();
+    const misBuffer = await file.arrayBuffer();
+    const decodedMis = decodeMisTextFromFile(misBuffer);
+    const text = decodedMis.text;
     state.rawText = text;
 
     const parsed = parseMIS(text);
@@ -6412,7 +6436,7 @@
     buildWaypointList();
     buildGroupOptions();
 
-    statusEl.textContent = `${file.name} loaded. items: ${state.items.length}`;
+    statusEl.textContent = `${file.name} loaded (${decodedMis.encoding}). items: ${state.items.length}`;
     fitView();
     renderList();
     requestRender();
