@@ -23,4 +23,4 @@ I couldn’t get it implemented:
 If you’ve got any feedback, hit me up on Discord, username duz1ht.
 
 ## Contributors so far
-biggy, demonic, dataspiller, scott (novahq), angelexalted
+biggy, Demonic, dataspiller, Scott (NovaHQ), AngelExalted
