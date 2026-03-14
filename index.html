@@ -4306,7 +4306,34 @@
 
     const appendedSections = Array.from(liveByKey.values())
       .sort((a,b) => a.start - b.start);
-    for (const sec of appendedSections){
+    const appendedItemSections = appendedSections.filter((sec) => sec.kind === "item");
+    const appendedNonItemSections = appendedSections.filter((sec) => sec.kind !== "item");
+
+    if (appendedItemSections.length){
+      const parsedCurrent = parseMIS(out.join("\n"));
+      const lastItemSection = parsedCurrent.sectionBlocks
+        .filter((sec) => sec.kind === "item")
+        .sort((a,b) => a.start - b.start)
+        .at(-1) || null;
+      let insertAt = lastItemSection ? (lastItemSection.end + 1) : out.length;
+      if (lastItemSection && out[insertAt] && out[insertAt].trim() === "") insertAt += 1;
+      if (lastItemSection && insertAt > 0 && out[insertAt - 1] && out[insertAt - 1].trim() !== ""){
+        out.splice(insertAt, 0, "");
+        insertAt += 1;
+      }
+      for (let i = 0; i < appendedItemSections.length; i++){
+        const sec = appendedItemSections[i];
+        const newBlock = buildSectionBlock(sec);
+        out.splice(insertAt, 0, ...newBlock);
+        insertAt += newBlock.length;
+        if (i < appendedItemSections.length - 1 || (out[insertAt] && out[insertAt].trim() !== "")){
+          out.splice(insertAt, 0, "");
+          insertAt += 1;
+        }
+      }
+    }
+
+    for (const sec of appendedNonItemSections){
       const newBlock = buildSectionBlock(sec);
       if (out.length && out[out.length - 1].trim() !== "") out.push("");
       out.push(...newBlock);
@@ -4367,7 +4394,8 @@
   function buildAdvancementEventOptions(selectedValue = ""){
     if (!ui?.advEvent) return;
     const selectedText = String(selectedValue ?? "").trim();
-    const selectedNum = Math.trunc(Number(selectedText));
+    const hasSelectedText = selectedText !== "";
+    const selectedNum = hasSelectedText ? Math.trunc(Number(selectedText)) : NaN;
     const events = getSortedEvents();
     const options = ['<option value="">None</option>'];
 
@@ -4380,7 +4408,7 @@
 
     ui.advEvent.innerHTML = options.join('');
 
-    if (Number.isFinite(selectedNum) && events.some(sec => getEventNumber(sec) === selectedNum)){
+    if (hasSelectedText && Number.isFinite(selectedNum) && events.some(sec => getEventNumber(sec) === selectedNum)){
       ui.advEvent.value = String(selectedNum);
     } else {
       ui.advEvent.value = "";
@@ -5640,11 +5668,57 @@
     }
   });
 
+  function getNextBeginItemNumber(){
+    let maxBeginItemNumber = 0;
+    for (const sec of state.sectionBlocks){
+      if (sec.kind !== "item") continue;
+      const m = String(sec.beginLine || "").trim().match(/^begin\s+item\s+(\d+)\b/i);
+      if (m){
+        maxBeginItemNumber = Math.max(maxBeginItemNumber, Number(m[1]) || 0);
+        continue;
+      }
+      if (Number.isFinite(sec.id)) maxBeginItemNumber = Math.max(maxBeginItemNumber, sec.id);
+    }
+    return maxBeginItemNumber + 1;
+  }
+
+  function getNextMisItemId(){
+    let maxItemId = 0;
+    for (const sec of state.sectionBlocks){
+      if (sec.kind !== "item") continue;
+      const val = Number(sec?.kv?.id);
+      if (Number.isFinite(val)) maxItemId = Math.max(maxItemId, val);
+    }
+    return maxItemId + 1;
+  }
+
+  function normalizeItemBeginLineSequence(){
+    const orderedItemSections = state.sectionBlocks
+      .filter((sec) => sec.kind === "item")
+      .sort((a,b) => a.start - b.start);
+    const beginLineByStart = new Map();
+    for (let i = 0; i < orderedItemSections.length; i++){
+      const sec = orderedItemSections[i];
+      const beginLine = `begin item ${i}`;
+      sec.beginLine = beginLine;
+      beginLineByStart.set(sec.start, beginLine);
+    }
+    for (const it of state.items){
+      const beginLine = beginLineByStart.get(it.start);
+      if (beginLine) it.beginLine = beginLine;
+    }
+  }
+
   function createPastedItemFrom(sourceItem, sourceSection = null, options = {}){
     const { offset = true, worldPosition = null, selectCreated = true, refresh = true } = options;
     const copy = structuredClone(sourceItem);
     copy.id = Math.max(...state.items.map(x => x.id)) + 1;
-    copy.beginLine = "begin item";
+    const beginItemNumber = getNextBeginItemNumber();
+    const nextMisItemId = getNextMisItemId();
+    copy.beginLine = `begin item ${beginItemNumber}`;
+    copy.kv = { ...(copy.kv || {}), id: String(nextMisItemId) };
+    copy.lines = (copy.lines || []).map((raw) => /^\s*id\b/i.test(String(raw || "")) ? `  id ${nextMisItemId}` : raw);
+    if (!(copy.lines || []).some((raw) => /^\s*id\b/i.test(String(raw || "")))) copy.lines.push(`  id ${nextMisItemId}`);
     if (offset){
       copy.x += 50000;
       copy.y += 50000;
@@ -5660,6 +5734,7 @@
       newSec.id = state.sectionBlocks.reduce((m,x)=>Math.max(m,x.id),0)+1;
       newSec.start = Number.MAX_SAFE_INTEGER - newSec.id;
       newSec.end = newSec.start;
+      newSec.beginLine = copy.beginLine;
       newSec.kv = { ...copy.kv };
       newSec.lines = copy.lines.slice();
       state.sectionBlocks.push(newSec);
@@ -5773,6 +5848,7 @@
     removeItemFromSpatialIndex(it.id);
     state.items = state.items.filter(x => x.id !== it.id);
     state.sectionBlocks = state.sectionBlocks.filter(s => !(s.kind === "item" && s.start === it.start));
+    normalizeItemBeginLineSequence();
     markItemsChanged({ structure: true });
     state.selectedId = null;
     state.multiSelectedIds.clear();
@@ -8647,7 +8723,7 @@ PointerLock: ${document.pointerLockElement===cv?'on':'off'}`;
   }
 
   cv.addEventListener('click',()=>{ if (!hasTypingFocus()) cv.focus(); });
-  addEventListener('keydown',e=>{ if(hasTypingFocus()) return; const k=e.key.toLowerCase(); const lookActive=(document.pointerLockElement===cv&&state.cameraLookActive); if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='g'){ gridVisible=!gridVisible; } if(k==='i'&&showStatsEl){ showStatsEl.checked=!showStatsEl.checked; syncRenderUiState(); } if(k==='h'&&showAnchorPointsEl){ showAnchorPointsEl.checked=!showAnchorPointsEl.checked; syncRenderUiState(); } if(k==='f'){ setGlbWireframeEnabled(!state.glb.wireframeEnabled); } if(k==='w'&&!lookActive){ state.transformMode='translate'; updateItemGizmo(); } if(k==='e'&&!lookActive){ state.transformMode='rotate'; updateItemGizmo(); } if(k==='w'&&lookActive) move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e'&&lookActive) move.e=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
+  addEventListener('keydown',e=>{ if(hasTypingFocus()) return; const k=e.key.toLowerCase(); const lookActive=(document.pointerLockElement===cv&&state.cameraLookActive); if(k==='delete'){ e.preventDefault(); deleteSelectedItem(); return; } if(k==='t'){ topViewLocked=!topViewLocked; if(topViewLocked){ topViewRestore={yaw:cam.yaw,pitch:cam.pitch}; cam.pitch=-Math.PI/2; } else { cam.yaw=topViewRestore.yaw; cam.pitch=topViewRestore.pitch; } } if(k==='g'){ gridVisible=!gridVisible; } if(k==='i'&&showStatsEl){ showStatsEl.checked=!showStatsEl.checked; syncRenderUiState(); } if(k==='h'&&showAnchorPointsEl){ showAnchorPointsEl.checked=!showAnchorPointsEl.checked; syncRenderUiState(); } if(k==='f'){ setGlbWireframeEnabled(!state.glb.wireframeEnabled); } if(k==='w'&&!lookActive){ state.transformMode='translate'; updateItemGizmo(); } if(k==='e'&&!lookActive){ state.transformMode='rotate'; updateItemGizmo(); } if(k==='w'&&lookActive) move.w=1; if(k==='a') move.a=1; if(k==='s') move.s=1; if(k==='d') move.d=1; if(k==='q') move.q=1; if(k==='e'&&lookActive) move.e=1; if(k==='r') setRenderMode(renderMode==='C'?'H':(renderMode==='H'?'D':'C')); state.keysDown.add(e.code); });
   addEventListener('keyup',e=>{ if(hasTypingFocus()) return; const k=e.key.toLowerCase(); if(k==='w') move.w=0; if(k==='a') move.a=0; if(k==='s') move.s=0; if(k==='d') move.d=0; if(k==='q') move.q=0; if(k==='e') move.e=0; state.keysDown.delete(e.code); });
   addEventListener('mousemove',e=>{ if(document.pointerLockElement!==cv) return; if(topViewLocked) return; if(!state.cameraLookActive) return; if(state.modalOpen||state.draggingItem||state.boxSelecting||state.gizmoDrag||state.pastePlacementActive) return; cam.yaw += e.movementX*0.002; cam.pitch -= e.movementY*0.002; cam.pitch=Math.max(-1.55,Math.min(1.55,cam.pitch)); });
 
