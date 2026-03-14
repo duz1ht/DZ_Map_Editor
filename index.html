@@ -4306,7 +4306,31 @@
 
     const appendedSections = Array.from(liveByKey.values())
       .sort((a,b) => a.start - b.start);
-    for (const sec of appendedSections){
+    const appendedItemSections = appendedSections.filter((sec) => sec.kind === "item");
+    const appendedNonItemSections = appendedSections.filter((sec) => sec.kind !== "item");
+
+    if (appendedItemSections.length){
+      const parsedCurrent = parseMIS(out.join("\n"));
+      const lastItemSection = parsedCurrent.sectionBlocks
+        .filter((sec) => sec.kind === "item")
+        .sort((a,b) => a.start - b.start)
+        .at(-1) || null;
+      let insertAt = lastItemSection ? (lastItemSection.end + 1) : out.length;
+      if (lastItemSection && out[insertAt] && out[insertAt].trim() !== ""){
+        out.splice(insertAt, 0, "");
+        insertAt += 1;
+      }
+      for (const sec of appendedItemSections){
+        const newBlock = buildSectionBlock(sec);
+        out.splice(insertAt, 0, ...newBlock, "");
+        insertAt += newBlock.length + 1;
+      }
+      if (out[insertAt - 1] === "" && (insertAt >= out.length || out[insertAt] === "")){
+        out.splice(insertAt - 1, 1);
+      }
+    }
+
+    for (const sec of appendedNonItemSections){
       const newBlock = buildSectionBlock(sec);
       if (out.length && out[out.length - 1].trim() !== "") out.push("");
       out.push(...newBlock);
@@ -5640,11 +5664,26 @@
     }
   });
 
+  function getNextBeginItemNumber(){
+    let maxBeginItemNumber = 0;
+    for (const sec of state.sectionBlocks){
+      if (sec.kind !== "item") continue;
+      const m = String(sec.beginLine || "").trim().match(/^begin\s+item\s+(\d+)\b/i);
+      if (m){
+        maxBeginItemNumber = Math.max(maxBeginItemNumber, Number(m[1]) || 0);
+        continue;
+      }
+      if (Number.isFinite(sec.id)) maxBeginItemNumber = Math.max(maxBeginItemNumber, sec.id);
+    }
+    return maxBeginItemNumber + 1;
+  }
+
   function createPastedItemFrom(sourceItem, sourceSection = null, options = {}){
     const { offset = true, worldPosition = null, selectCreated = true, refresh = true } = options;
     const copy = structuredClone(sourceItem);
     copy.id = Math.max(...state.items.map(x => x.id)) + 1;
-    copy.beginLine = "begin item";
+    const beginItemNumber = getNextBeginItemNumber();
+    copy.beginLine = `begin item ${beginItemNumber}`;
     if (offset){
       copy.x += 50000;
       copy.y += 50000;
@@ -5660,6 +5699,7 @@
       newSec.id = state.sectionBlocks.reduce((m,x)=>Math.max(m,x.id),0)+1;
       newSec.start = Number.MAX_SAFE_INTEGER - newSec.id;
       newSec.end = newSec.start;
+      newSec.beginLine = copy.beginLine;
       newSec.kv = { ...copy.kv };
       newSec.lines = copy.lines.slice();
       state.sectionBlocks.push(newSec);
