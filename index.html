@@ -4316,17 +4316,20 @@
         .sort((a,b) => a.start - b.start)
         .at(-1) || null;
       let insertAt = lastItemSection ? (lastItemSection.end + 1) : out.length;
-      if (lastItemSection && out[insertAt] && out[insertAt].trim() !== ""){
+      if (lastItemSection && out[insertAt] && out[insertAt].trim() === "") insertAt += 1;
+      if (lastItemSection && insertAt > 0 && out[insertAt - 1] && out[insertAt - 1].trim() !== ""){
         out.splice(insertAt, 0, "");
         insertAt += 1;
       }
-      for (const sec of appendedItemSections){
+      for (let i = 0; i < appendedItemSections.length; i++){
+        const sec = appendedItemSections[i];
         const newBlock = buildSectionBlock(sec);
-        out.splice(insertAt, 0, ...newBlock, "");
-        insertAt += newBlock.length + 1;
-      }
-      if (out[insertAt - 1] === "" && (insertAt >= out.length || out[insertAt] === "")){
-        out.splice(insertAt - 1, 1);
+        out.splice(insertAt, 0, ...newBlock);
+        insertAt += newBlock.length;
+        if (i < appendedItemSections.length - 1 || (out[insertAt] && out[insertAt].trim() !== "")){
+          out.splice(insertAt, 0, "");
+          insertAt += 1;
+        }
       }
     }
 
@@ -5678,12 +5681,26 @@
     return maxBeginItemNumber + 1;
   }
 
+  function getNextMisItemId(){
+    let maxItemId = 0;
+    for (const sec of state.sectionBlocks){
+      if (sec.kind !== "item") continue;
+      const val = Number(sec?.kv?.id);
+      if (Number.isFinite(val)) maxItemId = Math.max(maxItemId, val);
+    }
+    return maxItemId + 1;
+  }
+
   function createPastedItemFrom(sourceItem, sourceSection = null, options = {}){
     const { offset = true, worldPosition = null, selectCreated = true, refresh = true } = options;
     const copy = structuredClone(sourceItem);
     copy.id = Math.max(...state.items.map(x => x.id)) + 1;
     const beginItemNumber = getNextBeginItemNumber();
+    const nextMisItemId = getNextMisItemId();
     copy.beginLine = `begin item ${beginItemNumber}`;
+    copy.kv = { ...(copy.kv || {}), id: String(nextMisItemId) };
+    copy.lines = (copy.lines || []).map((raw) => /^\s*id\b/i.test(String(raw || "")) ? `  id ${nextMisItemId}` : raw);
+    if (!(copy.lines || []).some((raw) => /^\s*id\b/i.test(String(raw || "")))) copy.lines.push(`  id ${nextMisItemId}`);
     if (offset){
       copy.x += 50000;
       copy.y += 50000;
