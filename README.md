@@ -7,11 +7,10 @@ Todo:
 - [X] Waypoints
 - [X] Layer Names
 - [ ] 90% - Item Attributes
-- [ ] Briefing Window
-- [ ] Groups Window
-- [ ] Area Triggers
+- [ ] 90% - Groups
+- [ ] 90% - Area Triggers
+- [ ] Briefing
 - [ ] Events
-
 - [ ] Global Replace
 - [ ] Weapon Loadouts
 
