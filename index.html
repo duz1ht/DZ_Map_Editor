@@ -1094,10 +1094,28 @@
       border:1px solid var(--line-muted);
       background:var(--surface);
       overflow:auto;
-      white-space:pre;
       font-size:12px;
       line-height:1.2;
       padding:3px;
+    }
+    .eventListItem{
+      display:block;
+      width:100%;
+      border:0;
+      background:transparent;
+      color:inherit;
+      text-align:left;
+      font:inherit;
+      padding:2px 4px;
+      cursor:pointer;
+    }
+    .eventListItem:hover{ background:rgba(255,255,255,0.06); }
+    .eventListItem.active{ background:#2b3d8f; }
+    .eventListHint{ color:var(--text-subtle); padding:2px 4px; }
+    .eventListNew{ color:var(--text-subtle); padding:2px 4px; }
+    .eventNameField input:disabled{ opacity:0.7; }
+    .eventNestedList{
+      overflow:auto;
     }
     .eventSplitPanel{ display:grid; gap:12px; }
     .eventGroup{ border:1px solid var(--line); padding:8px; }
@@ -1407,7 +1425,7 @@
               <div class="eventTopFields">
                 <div class="eventNameField">
                   <div class="inlineLabel">Name</div>
-                  <input value="Event 0" />
+                  <input id="eventNameInput" value="" />
                 </div>
                 <div>
                   <label class="eventCheckRow"><input type="checkbox" /><span>Reset after (seconds)</span><input value="0" /></label>
@@ -1417,8 +1435,7 @@
               <div class="eventGrid">
                 <div>
                   <div class="eventMoveButtons"><button>Up</button><button>Down</button></div>
-                  <div class="eventListBox">(0) Event 0
-<< New Event >></div>
+                  <div class="eventListBox" id="eventListBox"></div>
                 </div>
                 <div class="eventSplitPanel">
                   <div class="eventGroup">
@@ -2071,6 +2088,8 @@
   const layerNameInput = document.getElementById("layerNameInput");
   const layerColorInput = document.getElementById("layerColorInput");
   const layerOkBtn = document.getElementById("layerOkBtn");
+  const eventNameInput = document.getElementById("eventNameInput");
+  const eventListBox = document.getElementById("eventListBox");
 
   const giMissionName = document.getElementById("giMissionName");
   const giDesigner = document.getElementById("giDesigner");
@@ -4320,6 +4339,93 @@
     return `${sec.kind} ${id}`;
   }
 
+  function getEventNumber(sec){
+    if (!sec || sec.kind !== "event") return null;
+    const m = String(sec.beginLine || "").trim().match(/^begin\s+event\s+(-?\d+)/i);
+    if (m) return Number(m[1]);
+    const labelNum = Number(sec.label);
+    return Number.isFinite(labelNum) ? labelNum : null;
+  }
+
+  function getEventName(sec){
+    if (!sec || sec.kind !== "event") return "";
+    const name = sec.kv?.name;
+    return String(name || "").trim();
+  }
+
+  function getSortedEvents(){
+    return getSectionsByKind("event").slice().sort((a,b) => {
+      const aNum = getEventNumber(a);
+      const bNum = getEventNumber(b);
+      if (aNum !== null && bNum !== null && aNum !== bNum) return aNum - bNum;
+      if (aNum !== null && bNum === null) return -1;
+      if (aNum === null && bNum !== null) return 1;
+      return a.start - b.start;
+    });
+  }
+
+  function ensureValidSelectedEvent(events){
+    if (!events.length){
+      state.sectionSelectedId = null;
+      return;
+    }
+    if (!events.some(sec => sec.id === state.sectionSelectedId)){
+      state.sectionSelectedId = events[0].id;
+    }
+  }
+
+  function renderEventEditor(){
+    if (!eventListBox || !eventNameInput) return;
+    const events = getSortedEvents();
+    ensureValidSelectedEvent(events);
+
+    if (!events.length){
+      eventListBox.innerHTML = '<div class="eventListHint">Nenhum evento no .mis.</div><div class="eventListNew">&lt;&lt; New Event &gt;&gt;</div>';
+      eventNameInput.value = "";
+      eventNameInput.disabled = true;
+      return;
+    }
+
+    eventNameInput.disabled = false;
+    eventListBox.innerHTML = events.map((sec) => {
+      const eventNum = getEventNumber(sec);
+      const eventName = getEventName(sec) || `Event ${eventNum ?? "?"}`;
+      const prefix = eventNum === null ? '(?)' : `(${eventNum})`;
+      const isActive = sec.id === state.sectionSelectedId;
+      return `<button type="button" class="eventListItem ${isActive ? "active" : ""}" data-id="${sec.id}">${escapeHtml(`${prefix} ${eventName}`)}</button>`;
+    }).join('') + '<div class="eventListNew">&lt;&lt; New Event &gt;&gt;</div>';
+
+    eventListBox.querySelectorAll('.eventListItem').forEach((el) => {
+      el.addEventListener('click', () => selectSectionBlock(Number(el.dataset.id)));
+    });
+
+    const selectedEvent = events.find(sec => sec.id === state.sectionSelectedId) || events[0];
+    eventNameInput.value = getEventName(selectedEvent) || "";
+  }
+
+  function setEventName(sec, value){
+    if (!sec || sec.kind !== "event") return;
+    const cleanValue = String(value || "").replace(/"/g, "").trim();
+    sec.kv = sec.kv || {};
+    if (cleanValue) sec.kv.name = cleanValue;
+    else delete sec.kv.name;
+
+    const nameLine = `  name "${cleanValue}"`;
+    let replaced = false;
+    const nextLines = [];
+    for (const raw of sec.lines || []){
+      const trimmed = String(raw || "").trim();
+      if (!replaced && /^name\s+/i.test(trimmed)){
+        if (cleanValue) nextLines.push(nameLine);
+        replaced = true;
+        continue;
+      }
+      nextLines.push(raw);
+    }
+    if (!replaced && cleanValue) nextLines.unshift(nameLine);
+    sec.lines = nextLines;
+  }
+
 
   function getSectionWindowTitle(kind){
     switch (kind){
@@ -4647,6 +4753,12 @@
       return;
     }
 
+    if (kind === "event"){
+      sectionDeleteBtn.disabled = false;
+      renderEventEditor();
+      return;
+    }
+
     sectionDeleteBtn.disabled = false;
     const secs = getSectionsByKind(kind).filter(s => kind === "general_information" || !q || sectionCardLabel(s).toLowerCase().includes(q) || JSON.stringify(s.kv).toLowerCase().includes(q));
     sectionList.innerHTML = secs.map(s => `<div class="secCard ${state.sectionSelectedId===s.id?'active':''}" data-id="${s.id}">${escapeHtml(sectionCardLabel(s))}</div>`).join("") || `<div class="hint">Nenhum bloco ${escapeHtml(kind)}.</div>`;
@@ -4688,6 +4800,12 @@
       const areaTrigNumber = Math.max(1, Math.min(99, Number(id) || 1));
       state.sectionSelectedId = areaTrigNumber;
       sectionList.querySelectorAll('.secCard').forEach(el => el.classList.toggle('active', Number(el.dataset.id)===areaTrigNumber));
+      return;
+    }
+
+    if (state.sectionKind === "event"){
+      state.sectionSelectedId = Number(id) || null;
+      renderEventEditor();
       return;
     }
 
@@ -5828,6 +5946,14 @@
     renderSectionList();
   });
   sectionSearch.addEventListener("input", renderSectionList);
+  eventNameInput?.addEventListener("input", () => {
+    if (state.sectionKind !== "event") return;
+    const sec = state.sectionBlocks.find(s => s.id === state.sectionSelectedId && s.kind === "event");
+    if (!sec) return;
+    setEventName(sec, eventNameInput.value);
+    renderEventEditor();
+    scheduleLiveMisRefresh();
+  });
   sectionApplyBtn.addEventListener("click", applySectionBlock);
   sectionDeleteBtn.addEventListener("click", deleteSectionBlock);
   layerOkBtn.addEventListener("click", () => {
